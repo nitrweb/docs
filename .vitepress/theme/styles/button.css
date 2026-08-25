@@ -1,0 +1,71 @@
+/* Buttons */
+.nitr-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 20px;
+    min-height: 42px;
+    border: 1px solid transparent;
+    border-radius: var(--nitr-radius);
+    background: transparent;
+    color: var(--nitr-text);
+    font: 600 0.94rem/1 var(--nitr-font-sans);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    text-decoration: none;
+}
+
+.nitr-btn-primary {
+    background: var(--nitr-accent);
+    border-color: var(--nitr-accent);
+    color: var(--nitr-on-brand);
+}
+
+.nitr-btn-primary:hover {
+    background: var(--nitr-accent-hover);
+    border-color: var(--nitr-accent-hover);
+    color: var(--nitr-on-brand);
+}
+
+.nitr-btn-ghost {
+    border-color: var(--nitr-border);
+    color: var(--nitr-text);
+}
+
+.nitr-btn-ghost:hover {
+    border-color: var(--nitr-accent);
+    color: var(--nitr-accent);
+}
+
+.nitr-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+    background: var(--nitr-surface);
+    color: var(--nitr-text-muted);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.nitr-icon-btn:hover {
+    color: var(--nitr-accent);
+    border-color: var(--nitr-accent);
+}
+
+.nitr-page .nitr-i-sun,
+.nitr-page .nitr-i-moon {
+    display: none;
+}
+
+.nitr-page[data-theme="dark"] .nitr-i-sun {
+    display: block;
+}
+
+.nitr-page[data-theme="light"] .nitr-i-moon {
+    display: block;
+}

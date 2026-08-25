@@ -1,0 +1,16 @@
+/* Nav */
+.nitr-nav {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.nitr-nav a {
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--nitr-text-muted);
+}
+
+.nitr-nav a:hover {
+    color: var(--nitr-text-strong);
+}

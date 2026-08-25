@@ -1,0 +1,51 @@
+.nitr-page {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    color: var(--nitr-text);
+    font: 16px/1.6 var(--nitr-font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--nitr-bg);
+    background-image: var(--nitr-bg-pattern);
+    background-repeat: repeat;
+    background-position: top left;
+}
+
+.nitr-page img,
+.nitr-page svg {
+    display: block;
+    max-width: 100%;
+}
+
+.nitr-page a {
+    text-decoration: none;
+}
+
+.nitr-page a:hover {}
+
+.nitr-page h1,
+.nitr-page h2,
+.nitr-page h3 {
+    margin: 0;
+    color: var(--nitr-text-strong);
+    font-family: var(--nitr-font-heading);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+.nitr-page code,
+.nitr-page pre {
+    font-family: var(--nitr-font-mono);
+}
+
+.nitr-page ::selection {
+    background: var(--nitr-accent);
+    color: var(--nitr-on-brand);
+}
+
+.nitr-page :where(a, button):focus-visible {
+    outline: 2px solid var(--nitr-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}

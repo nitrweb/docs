@@ -1,0 +1,29 @@
+# Configuration for https://github.com/crate-ci/typos
+#
+# Run with: make typos
+
+[files]
+extend-exclude = [
+    ".vitepress/cache",
+    ".vitepress/dist",
+    "node_modules",
+    "yarn.lock",
+]
+
+[default.extend-words]
+# Nitr's name comes from "niter"/"nitre", the mineral form of potassium
+# nitrate — not a typo of "inter".
+nitr = "nitr"
+niter = "niter"
+nitre = "nitre"
+# Crate name.
+flate = "flate"
+# "catch-alls" (plural of catch-all).
+alls = "alls"
+# Quoted verbatim from the generated `nitr.*` API description.
+unparseable = "unparseable"
+
+[default.extend-identifiers]
+# A deliberate misspelling: the example of a typo that `nitr check`
+# rejects as an unknown configuration key.
+hander_script = "hander_script"

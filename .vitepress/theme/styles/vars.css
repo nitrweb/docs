@@ -1,0 +1,237 @@
+/* =====================================================================
+   VitePress default theme variable overrides — Nitr brand
+
+   Palette source: nitr/ui/ui-ux/branding (potassium's flame test burns
+   lilac/violet, and niter is the potassium salt that was historically
+   burnt — the colour is argued, not decorative):
+
+     Violet (primary)  #8B5CF6
+     Violet light      #C4B5FD
+     Violet deep       #6D28D9
+     Magenta (accent)  #E879F9
+     Ink               #0E0C18
+   ===================================================================== */
+
+:root {
+  --vp-c-brand-1: #7c3aed;
+  --vp-c-brand-2: #8b5cf6;
+  --vp-c-brand-3: #6d28d9;
+  --vp-c-brand-soft: rgba(139, 92, 246, 0.14);
+
+  --vp-font-family-base: "Inter", system-ui, -apple-system, "Segoe UI", "Roboto", sans-serif;
+  --vp-font-family-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-soft: #f7f5fb;
+  --vp-c-bg-mute: #efebf5;
+
+  --vp-c-border: #e2dcee;
+  --vp-c-divider: #eeeaf4;
+
+  --vp-c-text-1: #1e1829;
+  --vp-c-text-2: #6b6478;
+  --vp-c-text-3: #9990a8;
+
+  --vp-button-brand-bg: #7c3aed;
+  --vp-button-brand-hover-bg: #8b5cf6;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: #ffffff;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: #ffffff;
+
+  --vp-button-alt-bg: #efebf5;
+  --vp-button-alt-hover-bg: #e2dcee;
+  --vp-button-alt-border: #e2dcee;
+  --vp-button-alt-hover-border: #8b5cf6;
+  --vp-button-alt-text: #1e1829;
+  --vp-button-alt-hover-text: #6d28d9;
+
+  --vp-nav-bg-color: #ffffff;
+  --vp-sidebar-bg-color: #f7f5fb;
+
+  --vp-code-bg: #efebf5;
+  --vp-code-color: #1e1829;
+  --vp-code-block-bg: #f7f5fb;
+  --vp-code-block-divider-color: #e2dcee;
+  --vp-code-line-highlight-color: rgba(139, 92, 246, 0.08);
+  --vp-code-copy-code-bg: #efebf5;
+  --vp-code-copy-code-hover-bg: #e2dcee;
+
+  /* Custom block (tip / info / warning / danger) accents */
+  --vp-custom-block-tip-border: rgba(139, 92, 246, 0.35);
+  --vp-custom-block-tip-text: #1e1829;
+  --vp-custom-block-tip-bg: rgba(139, 92, 246, 0.08);
+
+  /* Global Custom variables */
+  --nitr-radius: 0.375rem;
+  --nitr-maxw: 1100px;
+
+  --nitr-font-heading: var(--vp-font-family-base);
+  --nitr-font-sans: var(--vp-font-family-base);
+  --nitr-font-mono: var(--vp-font-family-mono);
+}
+
+.dark {
+  --vp-c-brand-1: #a78bfa;
+  --vp-c-brand-2: #8b5cf6;
+  --vp-c-brand-3: #c4b5fd;
+  --vp-c-brand-soft: rgba(167, 139, 250, 0.16);
+
+  --vp-c-bg: #0e0c18;
+  --vp-c-bg-soft: #16121f;
+  --vp-c-bg-mute: #1e1829;
+
+  --vp-c-border: #2c2439;
+  --vp-c-divider: #221c2e;
+
+  --vp-c-text-1: #efebf5;
+  --vp-c-text-2: #9990a8;
+  --vp-c-text-3: #7b7389;
+
+  --vp-button-brand-bg: #7c3aed;
+  --vp-button-brand-hover-bg: #8b5cf6;
+  --vp-button-brand-text: #ffffff;
+  --vp-button-brand-hover-text: #ffffff;
+
+  --vp-button-alt-bg: #1e1829;
+  --vp-button-alt-hover-bg: #2c2439;
+  --vp-button-alt-border: #2c2439;
+  --vp-button-alt-hover-border: #a78bfa;
+  --vp-button-alt-text: #efebf5;
+  --vp-button-alt-hover-text: #c4b5fd;
+
+  --vp-nav-bg-color: #0e0c18;
+  --vp-sidebar-bg-color: #16121f;
+
+  --vp-code-bg: #0d0b13;
+  --vp-code-block-bg: #0d0b13;
+  --vp-code-block-divider-color: #2c2439;
+  --vp-code-color: #dfd9e8;
+  --vp-code-line-highlight-color: rgba(167, 139, 250, 0.12);
+  --vp-code-copy-code-bg: #1e1829;
+  --vp-code-copy-code-hover-bg: #2c2439;
+
+  --vp-custom-block-tip-border: rgba(167, 139, 250, 0.35);
+  --vp-custom-block-tip-text: #efebf5;
+  --vp-custom-block-tip-bg: rgba(139, 92, 246, 0.1);
+}
+
+/* VitePress local search modal */
+:root {
+  --vp-local-search-bg: var(--vp-c-bg);
+  --vp-local-search-result-bg: var(--vp-c-bg-soft);
+  --vp-local-search-highlight-bg: var(--vp-c-brand-1);
+  --vp-local-search-highlight-text: #ffffff;
+}
+
+/* =====================================================================
+   Nitr landing page component variables (scoped)
+
+   Theme strategy:
+   1. `.nitr-page` base = LIGHT — CSS default, matches web convention
+   2. `html.dark .nitr-page` = DARK — VitePress synchronous <head> script
+      sets html.dark before first paint, so zero flash
+   3. `.nitr-page[data-theme="dark"]` = DARK — Vue post-hydration explicit
+   4. `.nitr-page[data-theme="light"]` = LIGHT explicit override
+   5. Code/terminal windows always dark (readability)
+   ===================================================================== */
+
+/* ── LIGHT defaults (also used by data-theme="light") ─────────────── */
+.nitr-page,
+.nitr-page[data-theme="light"] {
+  color-scheme: light;
+
+  --nitr-brand: #7c3aed;
+  --nitr-brand-hover: #8b5cf6;
+  --nitr-on-brand: #ffffff;
+
+  --nitr-radius: 0.375rem;
+  --nitr-maxw: 1100px;
+
+  --nitr-font-heading: var(--vp-font-family-base);
+  --nitr-font-sans: var(--vp-font-family-base);
+  --nitr-font-mono: var(--vp-font-family-mono);
+
+  /* subtle violet-tinted grid on white */
+  --nitr-bg-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='rgba(109,40,217,0.055)' stroke-width='1'/%3E%3C/svg%3E");
+
+  --nitr-bg: #ffffff;
+  --nitr-surface: #f7f5fb;
+  --nitr-surface-2: #efebf5;
+  --nitr-border: #ded6ee;
+  --nitr-border-soft: #eeeaf4;
+
+  --nitr-text: #1e1829;
+  --nitr-text-strong: #0e0c18;
+  --nitr-text-muted: #6b6478;
+  --nitr-text-dim: #9990a8;
+  --nitr-accent: var(--nitr-brand);
+  --nitr-accent-hover: var(--nitr-brand-hover);
+  --nitr-accent-soft: rgba(139, 92, 246, 0.12);
+  --nitr-ok: #16a34a;
+
+  /* Terminal / code windows are dark in both themes */
+  --nitr-code-bg: #0d0b13;
+  --nitr-code-bar: #16121f;
+  --nitr-code-border: #2c2439;
+  --nitr-code-fg: #dfd9e8;
+
+  --nitr-win-header-bg: #1e1829;
+  --nitr-win-btn-hover: #2c2439;
+  --nitr-win-btn-close-hover: #9f1239;
+
+  --nitr-syn-comment: #7b7389;
+  --nitr-syn-key: #c4b5fd;
+  --nitr-syn-str: #86efac;
+  --nitr-syn-num: #fda4af;
+  --nitr-syn-bool: #f472b6;
+  --nitr-syn-cmd: #a78bfa;
+  --nitr-syn-flag: #8b5cf6;
+  --nitr-syn-url: #e879f9;
+}
+
+/* ── DARK (VitePress html.dark class + explicit data-theme="dark") ─── */
+html.dark .nitr-page,
+.nitr-page[data-theme="dark"] {
+  color-scheme: dark;
+
+  --nitr-brand: #a78bfa;
+  --nitr-brand-hover: #c4b5fd;
+  --nitr-on-brand: #ffffff;
+
+  /* dark pattern: subtle violet lines on ink */
+  --nitr-bg-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='rgba(196,181,253,0.05)' stroke-width='1'/%3E%3C/svg%3E");
+
+  --nitr-bg: #0e0c18;
+  --nitr-surface: #16121f;
+  --nitr-surface-2: #1e1829;
+  --nitr-border: #2c2439;
+  --nitr-border-soft: #221c2e;
+
+  --nitr-text: #efebf5;
+  --nitr-text-strong: #ffffff;
+  --nitr-text-muted: #9990a8;
+  --nitr-text-dim: #7b7389;
+  --nitr-accent: var(--nitr-brand);
+  --nitr-accent-hover: var(--nitr-brand-hover);
+  --nitr-accent-soft: rgba(167, 139, 250, 0.14);
+  --nitr-ok: #4ade80;
+
+  --nitr-code-bg: #0d0b13;
+  --nitr-code-bar: #16121f;
+  --nitr-code-border: #2c2439;
+  --nitr-code-fg: #dfd9e8;
+
+  --nitr-win-header-bg: #1e1829;
+  --nitr-win-btn-hover: #2c2439;
+  --nitr-win-btn-close-hover: #9f1239;
+
+  --nitr-syn-comment: #7b7389;
+  --nitr-syn-key: #c4b5fd;
+  --nitr-syn-str: #86efac;
+  --nitr-syn-num: #fda4af;
+  --nitr-syn-bool: #f472b6;
+  --nitr-syn-cmd: #a78bfa;
+  --nitr-syn-flag: #8b5cf6;
+  --nitr-syn-url: #e879f9;
+}

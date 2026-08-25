@@ -1,0 +1,50 @@
+/* Header */
+.nitr-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--nitr-bg);
+}
+
+.nitr-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 4rem;
+    gap: 1rem;
+}
+
+.nitr-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    color: var(--nitr-text-strong);
+    letter-spacing: -0.01em;
+}
+
+.nitr-logo {
+    width: 30px;
+    height: 30px;
+}
+
+.nitr-page .nitr-logo-dark,
+.nitr-page .nitr-logo-light {
+    display: none;
+}
+
+/* Dark logo: html.dark (pre-hydration) or explicit data-theme="dark" */
+html.dark .nitr-page .nitr-logo-dark,
+.nitr-page[data-theme="dark"] .nitr-logo-dark {
+    display: block;
+}
+
+/* Light logo: default (no html.dark, no data-theme) or explicit data-theme="light" */
+.nitr-page:not([data-theme="dark"]) .nitr-logo-light {
+    display: block;
+}
+
+/* When html.dark is active pre-hydration, hide light logo */
+html.dark .nitr-page:not([data-theme="light"]) .nitr-logo-light {
+    display: none;
+}

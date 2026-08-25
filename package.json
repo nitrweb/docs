@@ -1,0 +1,33 @@
+{
+  "private": true,
+  "type": "module",
+  "author": "Jose Quintana <https://joseluisq.net>",
+  "engines": {
+    "node": ">=20",
+    "yarn": "=1.22"
+  },
+  "packageManager": "yarn@1.22.22",
+  "scripts": {
+    "start": "yarn docs:dev",
+    "build": "yarn docs:build",
+    "check": "yarn typecheck && yarn format:check",
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview",
+    "typecheck": "vue-tsc --noEmit",
+    "format:check": "markdownlint-cli2 \"src/**/*.md\" README.md && yarn prettier --check \"src/**/*.md\" README.md",
+    "format:fix": "yarn prettier --write \"src/**/*.md\" README.md"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^25.9.3",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "markdownlint-cli2": "^0.22.1",
+    "prettier": "^3.8.4",
+    "typescript": "^6.0.3",
+    "vitepress": "^2.0.0-alpha.17",
+    "vue-tsc": "^3.3.5",
+    "wrangler": "^4.102.0"
+  }
+}

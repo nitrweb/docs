@@ -1,0 +1,196 @@
+@import "./vars.css";
+@import "./base.css";
+@import "./page.css";
+@import "./layout.css";
+@import "./button.css";
+@import "./header.css";
+@import "./nav.css";
+@import "./hero.css";
+@import "./code_window.css";
+@import "./card.css";
+@import "./install.css";
+@import "./feature.css";
+@import "./footer.css";
+@import "./vitepress.css";
+
+/* =====================================================================
+   Nitr landing page — all styles scoped under .nitr-page
+   ===================================================================== */
+
+.nitr-accent {
+    color: var(--nitr-accent);
+}
+
+.nitr-lead {
+    margin: 18px 0 0;
+    color: var(--nitr-text-muted);
+    font-size: clamp(1rem, 1.3vw, 1.1rem);
+    max-width: 52ch;
+}
+
+.nitr-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-block-start: 24px;
+}
+
+.nitr-actions.nitr-center {
+    justify-content: center;
+}
+
+.nitr-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    margin: 24px 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--nitr-text-muted);
+    font-size: 0.9rem;
+}
+
+.nitr-meta li::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 8px;
+    border-radius: 1px;
+    background: var(--nitr-accent);
+    vertical-align: middle;
+}
+
+/* Two-col (Config) */
+.nitr-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(28px, 5vw, 56px);
+    align-items: center;
+}
+
+.nitr-check-list {
+    margin: 22px 0 22px;
+    padding: 0;
+    list-style: none;
+}
+
+.nitr-check-list li {
+    position: relative;
+    padding-left: 26px;
+    margin-bottom: 10px;
+    font-size: 0.96rem;
+}
+
+.nitr-check-list li::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 0.45em;
+    width: 12px;
+    height: 6px;
+    border-left: 2px solid var(--nitr-accent);
+    border-bottom: 2px solid var(--nitr-accent);
+    transform: rotate(-45deg);
+}
+
+.nitr-link-arrow {
+    display: inline-block;
+    font-weight: 600;
+    color: var(--nitr-accent);
+}
+
+.nitr-link-arrow:hover {
+    color: var(--nitr-accent-hover);
+}
+
+/* Platforms */
+.nitr-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 18px;
+    padding: 0;
+    list-style: none;
+}
+
+.nitr-pills li {
+    padding: 3px 15px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--nitr-text);
+    background: var(--nitr-bg);
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+}
+
+.nitr-note {
+    margin: 0;
+    color: var(--nitr-text-muted);
+    font-size: 0.94rem;
+}
+
+.nitr-note code {
+    padding: 0 5px;
+    font-size: 0.85em;
+    background: var(--nitr-surface-2);
+    border: 1px solid var(--nitr-border-soft);
+    border-radius: 4px;
+}
+
+
+
+/* Responsive */
+@media (max-width: 920px) {
+    .nitr-grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .nitr-hero-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .nitr-two-col {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 680px) {
+    .nitr-nav {
+        display: none;
+    }
+}
+
+@media (max-width: 520px) {
+    .nitr-grid-4 {
+        grid-template-columns: 1fr;
+    }
+
+    .nitr-actions .nitr-btn {
+        flex: 1;
+    }
+
+    .nitr-install-line {
+        flex-wrap: wrap;
+        padding: 12px;
+    }
+
+    .nitr-install-line .nitr-code {
+        white-space: normal;
+        word-break: break-all;
+    }
+
+    .nitr-copy-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .nitr-page *,
+    .nitr-page *::before,
+    .nitr-page *::after {
+        transition-duration: 0.01ms !important;
+    }
+}

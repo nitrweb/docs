@@ -1,0 +1,17 @@
+/* Hero */
+.nitr-hero {
+    padding-block: clamp(2rem, 7vw, 4rem);
+}
+
+.nitr-hero-grid {
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap: clamp(28px, 5vw, 56px);
+    align-items: center;
+}
+
+.nitr-hero h1 {
+    font-size: clamp(2rem, 4.6vw, 2.875rem);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+}

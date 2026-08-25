@@ -1,0 +1,66 @@
+/* Layout */
+.nitr-container {
+    width: 100%;
+    /* max-width: var(--nitr-maxw); */
+    max-width: calc(var(--vp-layout-max-width) - 64px);
+    margin-inline: auto;
+    padding-inline: 1.375rem;
+}
+
+.nitr-section {
+    padding-block: clamp(56px, 8vw, 88px);
+}
+
+.nitr-section.nitr-alt {
+    background: var(--nitr-surface);
+    border-block: 1px solid var(--nitr-border-soft);
+}
+
+.nitr-head {
+    max-width: 40rem;
+    margin-block-end: 2rem;
+}
+
+.nitr-head.nitr-center {
+    margin-inline: auto;
+    text-align: center;
+}
+
+.nitr-kicker {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--nitr-accent);
+}
+
+.nitr-head h2 {
+    font-size: clamp(1.5rem, 2.8vw, 2rem);
+    font-weight: 700;
+}
+
+.nitr-sub {
+    margin: 12px 0 0;
+    color: var(--nitr-text-muted);
+    font-size: 1.02rem;
+}
+
+.nitr-head.nitr-center .nitr-sub {
+    margin-inline: auto;
+}
+
+.nitr-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.nitr-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.nitr-grid>*,
+.nitr-hero-grid>*,
+.nitr-two-col>* {
+    min-width: 0;
+}

@@ -1,0 +1,63 @@
+
+/* Install */
+.nitr-install-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 50rem;
+    margin: 0 auto 3rem;
+    padding: 8px 8px 8px 14px;
+    background: var(--nitr-code-bg);
+    border: 1px solid var(--nitr-code-border);
+    border-radius: var(--nitr-radius);
+}
+
+.nitr-install-line .nitr-code {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
+
+.nitr-install-no-space {
+    margin-bottom: 0;
+}
+
+.nitr-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    padding: 8px 12px;
+    font: 600 0.82rem/1 var(--nitr-font-sans);
+    color: var(--nitr-text-muted);
+    background: var(--nitr-code-bar);
+    border: 1px solid var(--nitr-code-border);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    margin-left: auto;
+}
+
+.nitr-copy-btn:hover {
+    color: var(--nitr-text-strong);
+    border-color: var(--nitr-accent);
+}
+
+.nitr-page .nitr-i-check {
+    display: none;
+}
+
+.nitr-copy-btn.ok {
+    color: var(--nitr-ok);
+    border-color: var(--nitr-ok);
+}
+
+.nitr-copy-btn.ok .nitr-i-copy {
+    display: none;
+}
+
+.nitr-copy-btn.ok .nitr-i-check {
+    display: block;
+}

@@ -1,0 +1,36 @@
+/* Cards */
+.nitr-card {
+    padding: 22px;
+    background: var(--nitr-bg);
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+    transition: border-color 0.15s, transform 0.15s;
+}
+
+.nitr-card:hover {
+    border-color: var(--nitr-accent);
+    transform: translateY(-2px);
+}
+
+.nitr-card-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    margin-bottom: 14px;
+    border-radius: 8px;
+    background: var(--nitr-accent-soft);
+    color: var(--nitr-accent);
+}
+
+.nitr-card h3 {
+    font-size: 1.02rem;
+    font-weight: 600;
+}
+
+.nitr-card p {
+    margin: 6px 0 0;
+    color: var(--nitr-text-muted);
+    font-size: 0.94rem;
+}

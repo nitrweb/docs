@@ -1,0 +1,117 @@
+/* Code window */
+.nitr-window {
+    margin: 0;
+    background: var(--nitr-code-bg);
+    border: 1px solid var(--nitr-code-border);
+    border-radius: var(--nitr-radius);
+    overflow: hidden;
+}
+
+.nitr-window-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background: var(--nitr-win-header-bg);
+    border-bottom: 1px solid var(--nitr-code-border);
+    user-select: none;
+}
+
+.nitr-window-name {
+    font-family: var(--nitr-font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--nitr-text-muted);
+    opacity: 0.8;
+}
+
+.nitr-window-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.nitr-win-btn {
+    background: transparent;
+    border: none;
+    color: var(--nitr-text);
+    font-size: 11px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.nitr-win-btn:hover {
+    background: var(--nitr-win-btn-hover);
+}
+
+.nitr-win-btn.nitr-win-close:hover {
+    background: var(--nitr-win-btn-close-hover);
+    color: #fff;
+}
+
+.nitr-code {
+    margin: 0;
+    padding: 0.5rem 0.74rem;
+    color: var(--nitr-code-fg);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    tab-size: 2;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+/* Syntax tokens */
+.nitr-t-comment {
+    color: var(--nitr-syn-comment);
+}
+
+.nitr-t-key {
+    color: var(--nitr-syn-key);
+}
+
+.nitr-t-str {
+    color: var(--nitr-syn-str);
+}
+
+.nitr-t-num {
+    color: var(--nitr-syn-num);
+}
+
+.nitr-t-bool {
+    color: var(--nitr-syn-bool);
+}
+
+.nitr-t-cmd {
+    color: var(--nitr-syn-cmd);
+    font-weight: 600;
+}
+
+.nitr-t-flag {
+    color: var(--nitr-syn-flag);
+}
+
+.nitr-t-url {
+    color: var(--nitr-syn-url);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.nitr-t-prompt {
+    color: var(--nitr-text-dim);
+}
+
+.nitr-t-ok {
+    color: var(--nitr-ok);
+}
+
+.nitr-t-dim {
+    color: var(--nitr-text-dim);
+}
