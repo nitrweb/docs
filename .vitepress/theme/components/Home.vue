@@ -52,12 +52,11 @@ function fallbackCopy(text: string, onSuccess: () => void) {
       <section id="top" class="nitr-hero">
         <div class="nitr-container nitr-hero-grid">
           <div class="nitr-hero-text">
-            <h1>Small dynamic backends, in <span class="nitr-accent">Lua</span>, on a Rust server</h1>
+            <h1>Write lean <span class="nitr-accent">Lua</span> dynamic backends powered by <span class="nitr-accent">Rust</span> </h1>
 
             <p class="nitr-lead">
-              Nitr serves HTTP with embedded Lua 5.4. You write the handlers; the routing,
-              SQLite, templates, crypto and the rest of HTTP are already Rust — and every
-              script runs inside a real sandbox.
+              Nitr serves HTTP with embedded Lua 5.4. You write the dynamic logic parts.
+              The routing, SQLite, templates, crypto and the rest of HTTP are already Rust and every script runs inside a sandbox.
             </p>
 
             <div class="nitr-actions">
@@ -124,8 +123,7 @@ app:<span class="nitr-t-flag">get</span>(<span class="nitr-t-str">"/users/:id"</
             <p class="nitr-kicker">Why Nitr</p>
             <h2>A scripting language where it helps, Rust where it matters</h2>
             <p class="nitr-sub">
-              Dynamic handlers should be quick to write and quick to change. Everything
-              underneath them should not be your problem.
+              Dynamic handlers should be quick to write and easy to change. Nitr combines the simplicity of Lua with the performance, safety, and reliability of Rust; so the infrastructure stays out of your way.
             </p>
           </header>
 
@@ -357,7 +355,7 @@ app:<span class="nitr-t-flag">get</span>(<span class="nitr-t-str">"/users/:id"</
 
           <div>
             <p class="nitr-kicker">Extensible</p>
-            <h2>Bring your own Rust.</h2>
+            <h2>Bring your own Rust modules.</h2>
             <p class="nitr-sub">
               Nitr is also a library crate. Mount your own Rust modules into every Lua
               state at <code>nitr.ext.*</code> — one level below the standard library, so
