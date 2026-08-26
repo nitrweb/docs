@@ -7,8 +7,8 @@ valuable thing you can do is **use it and report what breaks**.
 
 |                            |                                                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **File an issue**          | [github.com/joseluisq/nitr/issues](https://github.com/joseluisq/nitr/issues) — bugs, rough edges, confusing errors |
-| **Open a pull request**    | [github.com/joseluisq/nitr/pulls](https://github.com/joseluisq/nitr/pulls)                                         |
+| **File an issue**          | [github.com/joseluisq/nitr/issues](https://github.com/nitrweb/nitr/issues) — bugs, rough edges, confusing errors |
+| **Open a pull request**    | [github.com/joseluisq/nitr/pulls](https://github.com/nitrweb/nitr/pulls)                                         |
 | **Improve these docs**     | Every page has an _Edit this page on GitHub_ link at the bottom                                                    |
 | **Report a vulnerability** | Privately, please — see [Report Security Issues](./report-security-issues)                                         |
 
@@ -44,10 +44,10 @@ A few conventions that will save you a review round:
 ## Documentation contributions
 
 These docs live in a separate repository:
-[joseluisq/nitr-docs](https://github.com/joseluisq/nitr-docs).
+[joseluisq/nitr-docs](https://github.com/nitrweb/nitr-docs).
 
 ```sh
-git clone https://github.com/joseluisq/nitr-docs
+git clone https://github.com/nitrweb/nitr-docs
 cd nitr-docs
 yarn install
 yarn docs:dev

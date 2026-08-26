@@ -13,7 +13,7 @@ handling and the stop timeout.
 FROM rust:1-slim AS build
 WORKDIR /src
 # No crates.io release yet — build from the repository:
-RUN cargo install --git https://github.com/joseluisq/nitr nitr-cli
+RUN cargo install --git https://github.com/nitrweb/nitr nitr-cli
 
 FROM debian:stable-slim
 # curl exists solely for the HEALTHCHECK below; drop both if your
@@ -49,7 +49,7 @@ docker run -p 3000:3000 -v myapp-data:/app/data myapp
 ```
 
 The original lives at
-[`deploy/docker/Dockerfile`](https://github.com/joseluisq/nitr/blob/master/deploy/docker/Dockerfile).
+[`deploy/docker/Dockerfile`](https://github.com/nitrweb/nitr/blob/master/deploy/docker/Dockerfile).
 
 ## The three things that matter
 

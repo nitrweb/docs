@@ -28,7 +28,7 @@ cargo add nitr --features all               # everything
 
 ```toml
 # From the repository, until a crates.io release exists:
-nitr = { git = "https://github.com/joseluisq/nitr", features = ["db", "template"] }
+nitr = { git = "https://github.com/nitrweb/nitr", features = ["db", "template"] }
 ```
 
 ## Always compiled in

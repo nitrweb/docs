@@ -7,7 +7,7 @@ finish, no prior Lua required.
 >
 > You need the `nitr` binary. If you do not have it yet, see
 > [Download & Install](./download-install) — for now that means
-> `cargo install --git https://github.com/joseluisq/nitr nitr-cli`.
+> `cargo install --git https://github.com/nitrweb/nitr nitr-cli`.
 
 ## Step 1 — Scaffold the application
 

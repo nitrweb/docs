@@ -75,7 +75,7 @@ WantedBy=multi-user.target
 ```
 
 The original lives at
-[`deploy/systemd/nitr.service`](https://github.com/joseluisq/nitr/blob/master/deploy/systemd/nitr.service).
+[`deploy/systemd/nitr.service`](https://github.com/nitrweb/nitr/blob/master/deploy/systemd/nitr.service).
 
 ## The two lines people get wrong
 

@@ -452,6 +452,6 @@ exec_timeout_ms = 30000
 ## The annotated original
 
 The Nitr repository ships a fully commented
-[`nitr.toml`](https://github.com/joseluisq/nitr/blob/master/nitr.toml)
+[`nitr.toml`](https://github.com/nitrweb/nitr/blob/master/nitr.toml)
 carrying the same content as inline comments, if you prefer to read it
 that way.

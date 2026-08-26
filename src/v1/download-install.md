@@ -13,7 +13,7 @@ You need a Rust toolchain at or above the project's MSRV (**1.88.0**).
 Get one from [rustup.rs](https://rustup.rs/) if you do not have it.
 
 ```sh
-cargo install --git https://github.com/joseluisq/nitr nitr-cli
+cargo install --git https://github.com/nitrweb/nitr nitr-cli
 ```
 
 This installs the `nitr` binary into `~/.cargo/bin`. Verify it:
@@ -38,8 +38,8 @@ nitr --version
 install, pin a commit or tag:
 
 ```sh
-cargo install --git https://github.com/joseluisq/nitr --rev <commit-sha> nitr-cli
-cargo install --git https://github.com/joseluisq/nitr --tag v0.0.0-beta.1 nitr-cli
+cargo install --git https://github.com/nitrweb/nitr --rev <commit-sha> nitr-cli
+cargo install --git https://github.com/nitrweb/nitr --tag v0.0.0-beta.1 nitr-cli
 ```
 
 ### Uninstalling
@@ -54,7 +54,7 @@ Useful when you want to run the tests, the examples or the benchmarks
 alongside the binary:
 
 ```sh
-git clone https://github.com/joseluisq/nitr
+git clone https://github.com/nitrweb/nitr
 cd nitr
 cargo build --release
 ./target/release/nitr --version
@@ -81,7 +81,7 @@ still runs, serving `scripts/handler.lua` on the same address — see
 ## Docker
 
 There is no published image yet. Until there is, the reference
-[`Dockerfile`](https://github.com/joseluisq/nitr/blob/master/deploy/docker/Dockerfile)
+[`Dockerfile`](https://github.com/nitrweb/nitr/blob/master/deploy/docker/Dockerfile)
 in the repository builds one, and [Docker
 deployment](./server/deployment/docker) explains the two settings that
 actually matter (exec-form `ENTRYPOINT`, and a stop timeout longer than

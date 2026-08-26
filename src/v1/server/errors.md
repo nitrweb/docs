@@ -232,4 +232,4 @@ corresponding log line is a Nitr bug. An actionable report includes:
 
 See [Report Security Issues](../report-security-issues) if it has a
 security dimension, otherwise
-[open an issue](https://github.com/joseluisq/nitr/issues).
+[open an issue](https://github.com/nitrweb/nitr/issues).

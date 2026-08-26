@@ -5,7 +5,7 @@
 Please **do not open a public issue** for a security vulnerability.
 
 Open a [private security
-advisory](https://github.com/joseluisq/nitr/security/advisories/new) on
+advisory](https://github.com/nitrweb/nitr/security/advisories/new) on
 the repository instead. That gives us a private channel to confirm the
 issue, prepare a fix and coordinate disclosure.
 

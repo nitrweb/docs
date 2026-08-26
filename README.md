@@ -1,10 +1,11 @@
 # Nitr Documentation
 
-The source of the [Nitr](https://github.com/joseluisq/nitr) documentation
+The source of the [Nitr](https://github.com/nitrweb/nitr) documentation
 site, built with [VitePress](https://vitepress.dev/).
 
 > Nitr is a Rust web server embedding Lua for fast, efficient and safe
 > smaller dynamic backends.
+> See [github.com/nitrweb/nitr](https://github.com/nitrweb/nitr) for the main repository.
 
 ## Development
 
@@ -78,7 +79,7 @@ repository): violet `#8B5CF6`, light `#C4B5FD`, deep `#6D28D9`, magenta
 ## License
 
 Documentation content is dual-licensed with Nitr itself under
-[MIT](https://github.com/joseluisq/nitr/blob/master/LICENSE-MIT) /
-[Apache-2.0](https://github.com/joseluisq/nitr/blob/master/LICENSE-APACHE).
+[MIT](https://github.com/nitrweb/nitr/blob/master/LICENSE-MIT) /
+[Apache-2.0](https://github.com/nitrweb/nitr/blob/master/LICENSE-APACHE).
 
 © 2024-present [Jose Quintana](https://joseluisq.net)

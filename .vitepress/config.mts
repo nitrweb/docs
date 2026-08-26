@@ -59,16 +59,16 @@ export default defineConfig({
 
     outline: { level: [2, 3], label: 'On this page' },
 
-    socialLinks: [{ icon: 'github', link: 'https://github.com/joseluisq/nitr' }],
+    socialLinks: [{ icon: 'github', link: 'https://github.com/nitrweb/nitr' }],
 
     editLink: {
-      pattern: 'https://github.com/joseluisq/nitr-docs/edit/main/src/:path',
+      pattern: 'https://github.com/nitrweb/nitr-docs/edit/main/src/:path',
       text: 'Edit this page on GitHub'
     },
 
     footer: {
       message:
-        'Dual-licensed under <a href="https://github.com/joseluisq/nitr/blob/master/LICENSE-MIT">MIT</a> / <a href="https://github.com/joseluisq/nitr/blob/master/LICENSE-APACHE">Apache-2.0</a>.',
+        'Dual-licensed under <a href="https://github.com/nitrweb/nitr/blob/master/LICENSE-MIT">MIT</a> / <a href="https://github.com/nitrweb/nitr/blob/master/LICENSE-APACHE">Apache-2.0</a>.',
       copyright:
         'Copyright © 2024-present <a href="https://joseluisq.net">Jose Quintana</a>'
     }

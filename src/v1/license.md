@@ -3,10 +3,10 @@
 Nitr is dual-licensed under either of:
 
 - **[Apache License, Version
-  2.0](https://github.com/joseluisq/nitr/blob/master/LICENSE-APACHE)** —
+  2.0](https://github.com/nitrweb/nitr/blob/master/LICENSE-APACHE)** —
   ([summary](https://choosealicense.com/licenses/apache-2.0/))
 - **[MIT
-  License](https://github.com/joseluisq/nitr/blob/master/LICENSE-MIT)** —
+  License](https://github.com/nitrweb/nitr/blob/master/LICENSE-MIT)** —
   ([summary](https://choosealicense.com/licenses/mit/))
 
 at your option.

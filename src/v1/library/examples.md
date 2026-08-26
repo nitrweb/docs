@@ -5,13 +5,13 @@ The Nitr repository carries a runnable example per subject, each a small
 its root:
 
 ```sh
-git clone https://github.com/joseluisq/nitr
+git clone https://github.com/nitrweb/nitr
 cd nitr
 cargo run --example hello
 ```
 
 They live in
-[`crates/nitr/examples/`](https://github.com/joseluisq/nitr/tree/master/crates/nitr/examples).
+[`crates/nitr/examples/`](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples).
 
 ## `hello`
 

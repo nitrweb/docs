@@ -23,7 +23,7 @@ except the last item.
 ```toml
 # Cargo.toml
 [dependencies]
-nitr = { git = "https://github.com/joseluisq/nitr", features = ["json"] }
+nitr = { git = "https://github.com/nitrweb/nitr", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 ```
 

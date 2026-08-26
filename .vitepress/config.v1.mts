@@ -126,7 +126,7 @@ export const v1: DefaultTheme.Config = {
           { text: 'Stability & Versioning', link: '/v1/stability' },
           {
             text: 'Changelog',
-            link: 'https://github.com/joseluisq/nitr/releases',
+            link: 'https://github.com/nitrweb/nitr/releases',
             target: '_blank',
             rel: 'noopener noreferrer'
           },

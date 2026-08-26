@@ -61,7 +61,7 @@ function fallbackCopy(text: string, onSuccess: () => void) {
 
             <div class="nitr-actions">
               <a class="nitr-btn nitr-btn-primary" href="/v1/quick-start">Get started</a>
-              <a class="nitr-btn nitr-btn-ghost" href="https://github.com/joseluisq/nitr" target="_blank"
+              <a class="nitr-btn nitr-btn-ghost" href="https://github.com/nitrweb/nitr" target="_blank"
                 rel="noopener">
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="currentColor">
                   <path
@@ -387,7 +387,7 @@ app:<span class="nitr-t-flag">get</span>(<span class="nitr-t-str">"/users/:id"</
 
           <div class="nitr-install-line nitr-install-no-space" role="group" aria-label="Quick install">
             <pre
-              class="install-cmd nitr-code"><span class="nitr-t-cmd">cargo</span> <span class="nitr-t-dim">install --git</span> <span class="nitr-t-str">https://github.com/joseluisq/nitr</span> <span class="nitr-t-dim">nitr-cli</span></pre>
+              class="install-cmd nitr-code"><span class="nitr-t-cmd">cargo</span> <span class="nitr-t-dim">install --git</span> <span class="nitr-t-str">https://github.com/nitrweb/nitr</span> <span class="nitr-t-dim">nitr-cli</span></pre>
             <button class="nitr-copy-btn" type="button" aria-label="Copy install command" @click="handleCopy">
               <svg class="nitr-i-copy" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
                 <rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" />
@@ -442,15 +442,15 @@ app:<span class="nitr-t-flag">get</span>(<span class="nitr-t-str">"/users/:id"</
           <a href="/v1/">Docs</a>
           <a href="/v1/api/">API</a>
           <a href="/v1/library/">Library</a>
-          <a href="https://github.com/joseluisq/nitr" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://github.com/joseluisq/nitr/releases" target="_blank" rel="noopener">Releases</a>
+          <a href="https://github.com/nitrweb/nitr" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/nitrweb/nitr/releases" target="_blank" rel="noopener">Releases</a>
         </nav>
 
         <p class="nitr-footer-meta">
           Copyright &copy; 2024-present <a href="https://joseluisq.net" target="_blank" rel="noopener">Jose
             Quintana</a> | Dual-licensed
-          <a href="https://github.com/joseluisq/nitr/blob/master/LICENSE-MIT" target="_blank" rel="noopener">MIT</a> /
-          <a href="https://github.com/joseluisq/nitr/blob/master/LICENSE-APACHE" target="_blank"
+          <a href="https://github.com/nitrweb/nitr/blob/master/LICENSE-MIT" target="_blank" rel="noopener">MIT</a> /
+          <a href="https://github.com/nitrweb/nitr/blob/master/LICENSE-APACHE" target="_blank"
             rel="noopener">Apache-2.0</a>.
         </p>
       </div>

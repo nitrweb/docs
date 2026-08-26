@@ -261,7 +261,7 @@ NITR_DATABASE_PATH=data/test.db nitr test
 ## In CI
 
 ```yaml
-- run: cargo install --git https://github.com/joseluisq/nitr nitr-cli
+- run: cargo install --git https://github.com/nitrweb/nitr nitr-cli
 - run: nitr check # configuration and scripts load
 - run: nitr migrate # schema is current
 - run: nitr test # behaviour is correct

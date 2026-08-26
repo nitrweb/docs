@@ -10,7 +10,7 @@ There is no crates.io release yet, so depend on the repository:
 ```toml
 # Cargo.toml
 [dependencies]
-nitr = { git = "https://github.com/joseluisq/nitr", features = ["json", "http", "log"] }
+nitr = { git = "https://github.com/nitrweb/nitr", features = ["json", "http", "log"] }
 tokio = { version = "1", features = ["full"] }
 
 # Optional, but you will want logs:
@@ -28,7 +28,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 Pin a revision for reproducibility:
 
 ```toml
-nitr = { git = "https://github.com/joseluisq/nitr", rev = "…", features = ["json"] }
+nitr = { git = "https://github.com/nitrweb/nitr", rev = "…", features = ["json"] }
 ```
 
 ## 2. The server

@@ -14,7 +14,7 @@ a Rust toolchain — SQLite is bundled, not linked from the system.
 Install Rust from [rustup.rs](https://rustup.rs/), then:
 
 ```sh
-git clone https://github.com/joseluisq/nitr
+git clone https://github.com/nitrweb/nitr
 cd nitr
 cargo build --release
 ```

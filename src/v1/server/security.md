@@ -150,6 +150,6 @@ listen = "127.0.0.1:3000"
 ## Reporting a vulnerability
 
 Open a [private security
-advisory](https://github.com/joseluisq/nitr/security/advisories/new)
+advisory](https://github.com/nitrweb/nitr/security/advisories/new)
 rather than a public issue. See [Report Security
 Issues](../report-security-issues) for what makes a report actionable.
