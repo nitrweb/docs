@@ -42,6 +42,24 @@ end)
 > case-insensitive, so Nitr picks one case and sticks to it rather than
 > making you guess.
 
+> [!NOTE] `req.headers` keeps one value per name
+>
+> A repeated header collapses to the last value, and a non-UTF-8 value
+> reads as `""` — indistinguishable from absent, on purpose, so every
+> header value has one type. The names where that would matter are
+> handled elsewhere: two `Authorization` headers are refused with a
+> `400` before the request reaches Lua (a collapsed credential can
+> desync from a proxy in front), and every `Cookie` header is joined
+> into `req.cookies`, because a joined cookie string is still a valid
+> one.
+
+> [!NOTE] `req.query` keeps the last value for a repeated key
+>
+> `?tag=a&tag=b` gives `req.query.tag == "b"`. A Lua table has one slot
+> per key, so the collapse is unavoidable — and `nitr.url.query_parse`
+> collapses the same way. If you need every value, split the raw string
+> in `req.uri.query` yourself.
+
 > [!NOTE] `req.remote_addr` is the peer
 >
 > Behind a proxy that is the proxy, not the client. Read
@@ -134,53 +152,200 @@ app:post("/ingest", function(req)
 end)
 ```
 
+> [!WARNING] The body is read once
+>
+> `json`, `text`, `read` and `multipart` all consume it. Two of them in
+> the same request means the second one sees nothing. `form` is the
+> exception: its result is cached.
+
 ## File uploads
 
-Multipart parts are handled **in Rust** and streamed to disk. A file
-never becomes a Lua string, so a 10 MiB upload does not touch the
-state's 8 MiB heap.
+Multipart parts are parsed **in Rust** and streamed to disk. A file
+never becomes a Lua string, so a 100 MB upload does not touch the
+state's 8 MiB heap — and because a part is streamed as it arrives, Nitr
+needs neither a spool directory nor a reaper for one.
+
+That is also why parts reach you through a callback instead of a table:
+collecting them first would mean buffering everything, which is the
+thing being avoided. The cost is that you see parts in the order the
+client sent them and cannot index them by name.
 
 ```lua
 app:post("/upload", function(req)
-    local saved = {}
+    local fields, files = {}, {}
 
     local count = req:multipart(function(part)
         if part.filename then
-            local dest = nitr.path.join("uploads", nitr.path.basename(part.filename))
-            local bytes = part:save(dest)         -- streams; returns byte count
-            table.insert(saved, { name = part.filename, bytes = bytes })
+            -- `safe_filename` is the client's name reduced to a plain
+            -- file name; `part:save` resolves it inside
+            -- `[multipart] upload_dir` either way.
+            local bytes = part:save(part.safe_filename)
+            files[#files + 1] = {
+                sent  = part.filename,       -- exactly what the client sent
+                saved = part.safe_filename,  -- what is on disk
+                bytes = bytes,
+            }
         else
-            -- a plain form field
-            nitr.log.info("field", { name = part.name, value = part:text() })
+            fields[part.name] = part:text()
         end
     end)
 
-    return nitr.json({ parts = count, files = saved })
+    return nitr.json({ parts = count, fields = fields, files = files })
 end)
+```
+
+`req:multipart(fn)` returns the number of parts it saw. It requires a
+`Content-Type` header naming a `multipart/form-data` body with a
+non-empty `boundary` parameter; anything else raises before the first
+part.
+
+### Where a saved file may land
+
+`part:save(path)` is the only filesystem **write** Lua can reach, and
+both of its inputs come from outside: the path is a string your handler
+built, and `part.filename` is a header the client chose. So Nitr does
+not take the path at face value — it resolves it inside one configured
+root:
+
+```toml
+[multipart]
+upload_dir = "uploads"
+```
+
+| Rule                                             | What happens                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------- |
+| `upload_dir` unset                               | `part:save` is **unavailable** and raises, naming the setting |
+| Path is relative                                 | Resolved under `upload_dir` (`"a.png"`, `"img/a.png"`)        |
+| Path is absolute (`/etc/cron.d/x`)               | **Refused**, not re-rooted                                    |
+| Path climbs out (`../x`, `img/../../x`)          | **Refused**                                                   |
+| Path names the root itself (`""`, `"."`)         | **Refused** — that is a directory, not a file                 |
+| Intermediate directory does not exist            | **Refused** — no implicit `mkdir -p`                          |
+| Final component is a symlink                     | **Refused** — following one would write through the root      |
+| A parent resolves outside the root via a symlink | **Refused** — the parent is canonicalized, not just joined    |
+
+There is deliberately **no default upload root**. The same call
+`[templating] dir` makes: there is no safe directory to guess, and an
+upload written somewhere nobody chose is worse than a startup error.
+Refusing rather than re-rooting is the same idea one level down — where
+a file lands always follows from what the source says, so a path that
+reads as an escape never quietly becomes something else.
+
+Missing directories are an error rather than a `create_dir_all` for the
+same reason: deciding the on-disk shape of an upload tree is your
+application's job, and materializing directories out of
+attacker-influenced strings is not a favour. If you want
+`uploads/avatars/`, create it yourself:
+
+```lua
+local dest = nitr.path.join("avatars", part.safe_filename)
+local bytes = part:save(dest)        -- `uploads/avatars/` must already exist
+```
+
+`upload_dir` must exist **and be writable at startup** — Nitr write-probes
+it, because existence is not writability and the alternative symptom is
+a `500` on a request nobody can reproduce. See
+[`[multipart]`](./configuration/file#multipart).
+
+> [!DANGER] The upload root may not sit under the handler script
+>
+> `require`'s search path is pinned to the handler script's own
+> directory, so an uploaded `.lua` file there would be a loadable
+> module — upload-to-RCE written in configuration, and in dev mode the
+> watcher might reload it without being asked. That combination
+> **refuses to boot**, naming both paths.
+
+> [!WARNING] The upload root inside `[static] dir` only warns
+>
+> It **warns** rather than refuses, because serving uploads back is a
+> real deployment shape (user avatars). But it turns every uploaded byte
+> into hosted content, which is a choice to make on purpose rather than
+> by accident.
+
+> [!NOTE] What containment does not cover
+>
+> Two residuals are documented rather than closed: a symlink swapped
+> between the check and the open, and a pre-existing hardlink pointing
+> at an inode outside the root. Both need an attacker who **already has
+> write access inside the upload root** — a local process, not an HTTP
+> client — so they are a hardening gap, not a way in.
+
+### `part.filename` and `part.safe_filename`
+
+`part.filename` is exactly what the client sent, untouched: a path, a
+traversal, control characters, an empty string. It is kept raw on
+purpose — applications legitimately record and display the name a user
+chose.
+
+`part.safe_filename` is that same name reduced to something that can
+only ever name a plain file: no path separators, no control characters,
+never empty.
+
+| Client sent           | `part.safe_filename` | Why                                                       |
+| --------------------- | -------------------- | --------------------------------------------------------- |
+| `report.pdf`          | `report.pdf`         | ordinary names are left alone                             |
+| `../../etc/passwd`    | `passwd`             | only the last segment is a name                           |
+| `C:\Windows\evil.exe` | `evil.exe`           | both separators count — the sender's OS is not ours       |
+| `/absolute/name.txt`  | `name.txt`           | same rule                                                 |
+| `a\0b\7c.txt`         | `abc.txt`            | NUL and control bytes cannot reach a path (escapes shown) |
+| `.hidden`             | `hidden`             | a leading dot hides the file                              |
+| `"name.txt. . "`      | `name.txt`           | trailing dots and spaces collide on some filesystems      |
+| `""`, `"..."`, `"/"`  | `upload`             | a fixed fallback, never an empty name                     |
+
+It is also truncated to 255 bytes (`NAME_MAX`) on a character boundary,
+never mid-glyph.
+
+Because the result contains no separator **by construction**,
+`part:save(part.safe_filename)` is safe on its own — the upload root is
+a backstop rather than the only defence. And `safe_filename` is `nil`
+exactly when `filename` is, so `if part.safe_filename then` is the same
+"is this a file?" test.
+
+> [!WARNING] A safe name is not a unique name
+>
+> Two clients uploading `report.pdf` produce the same destination, and
+> the second write truncates the first. Uniqueness is application
+> policy, not containment — decide it yourself: prefix a user id, keep
+> the name in a database row, or generate the name outright.
+
+When you do not want the client's name at all, generate one:
+
+```lua
+local name = nitr.base64.encode(nitr.crypto.random_bytes(16), { url = true })
+local bytes = part:save(name)        -- URL-safe alphabet, so a safe file name
+-- keep `part.filename` in your own records if you want to show it back
 ```
 
 ### The `part` object
 
-| Field / method      | Description                                                                      |
-| ------------------- | -------------------------------------------------------------------------------- |
-| `part.name`         | Form field name, or `nil`.                                                       |
-| `part.filename`     | Client-supplied file name, or `nil`. A `nil` filename means a plain field.       |
-| `part.content_type` | Part content type, or `nil`.                                                     |
-| `part:text()`       | A non-file field as a string, bounded by `[limits] max_field_bytes`.             |
-| `part:save(path)`   | Streams the part to `path` without entering the Lua heap; returns bytes written. |
-| `part:discard()`    | Drains and drops the part.                                                       |
+| Field / method       | Description                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| `part.name`          | Form field name (an empty string when the part sends none).                            |
+| `part.filename`      | Client-supplied file name, raw. `nil` means a plain field, not a file.                 |
+| `part.safe_filename` | `filename` reduced to a plain file name; `nil` exactly when `filename` is.             |
+| `part.content_type`  | Part content type, or `nil`. Client-supplied — do not trust it to identify the bytes.  |
+| `part:text()`        | The part as a string, bounded by `[limits] max_field_bytes`. For ordinary fields.      |
+| `part:save(path)`    | Streams the part to `path` inside `[multipart] upload_dir`; returns the bytes written. |
+| `part:discard()`     | Drains and drops the part; returns the bytes skipped.                                  |
 
-> [!DANGER] Never trust `part.filename`
+> [!TIP] A part is a stream, not a buffer
 >
-> It comes from the client and may contain `../`, absolute paths, or
-> Windows-hostile characters. Always run it through
-> [`nitr.path.basename`](../api/#nitr-path) — or better, ignore it and
-> generate your own name:
+> `text`, `save` and `discard` each consume it; a second call raises,
+> naming the field. Whatever the callback does — including nothing —
+> Nitr drains the part afterwards so the parser can reach the next one.
 >
-> ```lua
-> local name = nitr.base64.encode(nitr.crypto.random_bytes(16), { url = true })
-> part:save(nitr.path.join("uploads", name))
-> ```
+> A callback that **raises** still gets its part drained, but the error
+> then propagates out of `req:multipart` and no further part is
+> delivered. `pcall` inside the callback if you want the rest of the body
+> parsed.
+
+> [!TIP] A refused path leaves the part intact
+>
+> `part:save` resolves the path **before** it takes the field, so a
+> rejected path has consumed nothing and created nothing. You can
+> `pcall` it, then retry with `part.safe_filename` or `part:discard()`.
+> A save that fails part-way through is different: the partial file is
+> removed, so a failed upload never leaves a truncated file for the
+> application to trip over later.
 
 ### The limits that apply
 
@@ -194,9 +359,58 @@ end)
 Raising `max_file_bytes` alone is not enough — `max_body_bytes` bounds
 the entire request. Raise both.
 
+The last three surface as **ordinary Lua errors**, not a status code:
+Nitr cannot know whether an over-cap part is a client mistake or your
+protocol. They are raised from three different places, which decides
+where a `pcall` has to go:
+
+| Limit             | Raised by                                    |
+| ----------------- | -------------------------------------------- |
+| `max_form_parts`  | `req:multipart` itself, outside the callback |
+| `max_field_bytes` | `part:text()`                                |
+| `max_file_bytes`  | `part:save()`                                |
+
+So a `pcall` inside the callback catches the two per-part caps; catching
+`max_form_parts` as well means wrapping the `req:multipart` call.
+Uncaught, any of them reaches [`on_error`](./errors) as a `500`. Catch
+them if you want a `413`:
+
+```lua
+app:post("/upload", function(req)
+    local rejected
+
+    req:multipart(function(part)
+        if not part.filename then return end
+        local ok, err = pcall(function()
+            return part:save(part.safe_filename)
+        end)
+        if not ok then
+            rejected = tostring(err)
+        end
+    end)
+
+    if rejected then
+        nitr.log.warn("upload rejected", { reason = rejected })
+        return nitr.error(413, { code = "UPLOAD_TOO_LARGE" })
+    end
+    return nitr.status(204)
+end)
+```
+
+> [!WARNING] `return` inside the callback returns from the callback
+>
+> The callback's return value is discarded — it cannot answer the
+> request. Carry the decision out in a local, as above, and build the
+> response after `req:multipart` has finished.
+
+See [Defaults](./defaults).
+
 > [!NOTE] Requires the `multipart` Cargo feature
 >
 > Present in the released `nitr` binary; opt-in for the library crate.
+> The `[multipart]` config section itself parses in every build, so one
+> configuration file stays readable whatever the binary was compiled
+> with.
 
 ## Content negotiation
 
@@ -241,21 +455,27 @@ app:get("/articles/:id", function(req)
         return nitr.error(404, { code = "NOT_FOUND" })
     end
 
-    local etag = nitr.etag(tostring(article.updated_at))
+    local etag = nitr.etag(article.updated_at)
     if req:fresh(etag) then
-        return nitr.status(304)                 -- nothing else to send
+        local res = nitr.status(304)            -- nothing else to send
+        res.headers.ETag = etag
+        return res
     end
 
-    local resp = nitr.json(article)
-    resp.headers = resp.headers or {}
-    resp.headers["ETag"] = etag
-    return resp
+    local res = nitr.json(article)
+    res.headers.ETag = etag
+    return res
 end)
 ```
 
 `nitr.etag(value, weak?)` builds a well-formed entity tag from whatever
 identifies the resource — a row version, an `updated_at`, a content
-hash.
+hash. Rust compares the validators; Lua decides what identifies the
+resource, because that part is application knowledge.
+
+Helper responses (`nitr.json`, `nitr.text`, `nitr.status`, …) always
+arrive with a `headers` table already attached, so `res.headers.ETag =`
+needs no guard.
 
 > [!TIP] Static files do this for you
 >

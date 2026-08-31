@@ -3,12 +3,22 @@
 The complete reference. Every key is optional; the value shown is the
 default.
 
-> [!TIP] Two things to remember
+> [!TIP] Three things to remember
 >
-> - **Unknown keys are a startup error.** A typo fails loudly.
-> - Relative paths resolve against the **directory the config file lives
->   in**, not the working directory — so `nitr -c /srv/app/nitr.toml`
->   works from anywhere.
+> - **Unknown keys are a startup error.** A typo fails loudly. So does a
+>   key that moved between releases — `tests_dir`, `templates_dir` and
+>   the old `database = "app.db"` string are each refused with the new
+>   spelling named, rather than being silently ignored.
+> - **Relative paths resolve against the working directory**, not
+>   against the file. `nitr -c /srv/app/nitr.toml` still reads
+>   `handler_script = "scripts/handler.lua"` as `./scripts/handler.lua`,
+>   so either start the process from the application directory (what
+>   systemd's `WorkingDirectory=` is for) or write absolute paths. The
+>   one exception is the `[env]` file, which is anchored next to
+>   `nitr.toml`.
+> - `nitr check --print-config` renders the configuration **after** the
+>   file, the `NITR_*` variables and the CLI flags have been layered —
+>   the answer to "which value actually won?".
 
 ## Top level
 
@@ -23,16 +33,16 @@ trust_request_id = false
 pidfile = "/run/nitr/nitr.pid"
 ```
 
-| Key                | Type    | Default                 | Description                                                                                                                                                               |
-| ------------------ | ------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `listen`           | string  | `"127.0.0.1:3000"`      | Address the server binds to.                                                                                                                                              |
-| `handler_script`   | path    | `"scripts/handler.lua"` | The script that returns `nitr.app()`. Runs once per Lua state.                                                                                                            |
-| `config_script`    | path    | _unset_                 | Runs exactly once at startup; its return value becomes `nitr.cfg`. Without it, `nitr.cfg` is `nil`.                                                                       |
-| `dev_mode`         | bool    | `false`                 | Hot reload + error details in responses. Also set by `--dev` and `nitr dev`.                                                                                              |
-| `workers`          | integer | CPU cores               | Number of pooled Lua states — the maximum number of handlers executing at once.                                                                                           |
-| `max_streams`      | integer | `workers - 1` (min 1)   | Maximum concurrent [streaming responses](../streaming). Each holds a pooled state for its whole lifetime, so the default keeps idle streams from pinning the entire pool. |
-| `trust_request_id` | bool    | `false`                 | Accept an inbound `X-Request-ID` (well-formed, ≤ 64 ASCII chars) instead of generating one. Enable **only** behind a proxy that sets or sanitizes the header.             |
-| `pidfile`          | path    | _unset_                 | File the server writes its pid to at startup and removes at exit. This is what [`nitr reload`](../cli#reload) uses to find the process.                                   |
+| Key                | Type    | Default                 | Description                                                                                                                                                                                                                       |
+| ------------------ | ------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listen`           | string  | `"127.0.0.1:3000"`      | Address the server binds to. With `[tls] enabled = true` this same address speaks HTTPS — TLS converts the listener, it does not add one.                                                                                         |
+| `handler_script`   | path    | `"scripts/handler.lua"` | The script that returns `nitr.app()`. Loaded once per pooled Lua state.                                                                                                                                                           |
+| `config_script`    | path    | _unset_                 | Runs exactly once per (re)build, in a bootstrap state; its return value is snapshotted into every other state as `nitr.cfg`. Without it, `nitr.cfg` is `nil`.                                                                     |
+| `dev_mode`         | bool    | `false`                 | Hot reload + error details in responses. Also set by `--dev` and `nitr dev`.                                                                                                                                                      |
+| `workers`          | integer | CPU cores               | Number of pooled Lua states — the maximum number of handlers executing at once.                                                                                                                                                   |
+| `max_streams`      | integer | `workers - 1` (min 1)   | Maximum concurrent [streaming responses](../streaming). Each holds a pooled state for its whole lifetime, so the default keeps idle streams from pinning the entire pool. Beyond the cap, a streaming response is answered `503`. |
+| `trust_request_id` | bool    | `false`                 | Accept an inbound `X-Request-ID` (well-formed, ≤ 64 ASCII chars) instead of generating one. Enable **only** behind a proxy that sets or sanitizes the header.                                                                     |
+| `pidfile`          | path    | _unset_                 | File the server writes its pid to at startup and removes at exit. This is what [`nitr reload`](../cli#reload) uses to find the process.                                                                                           |
 
 > [!TIP] Sizing `workers`
 >
@@ -41,6 +51,12 @@ pidfile = "/run/nitr/nitr.pid"
 > spend most of their time waiting on `nitr.db` or `nitr.fetch`, a
 > higher number keeps the pool from being the bottleneck — measure with
 > `pool_checkout`'s `wait_ms` at debug level before changing it.
+
+> [!WARNING] `max_streams` may not exceed `workers`
+>
+> A streaming response holds a pooled state, so slots past `workers`
+> could never be used. Asking for them is a startup error rather than a
+> number that silently means something else.
 
 ## `[limits]`
 
@@ -61,24 +77,142 @@ max_field_bytes = 65536
 max_file_bytes = 10485760
 ```
 
-| Key                | Default | On violation                | Description                                                                                                                                                     |
-| ------------------ | ------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `max_body_bytes`   | 1 MiB   | `413`                       | Request body cap, **counted as the body arrives** rather than trusted from `Content-Length`.                                                                    |
-| `max_header_bytes` | 16 KiB  | connection rejected         | Request header buffer (minimum 8192).                                                                                                                           |
-| `max_uri_bytes`    | 8 KiB   | `414`                       | Request URI cap.                                                                                                                                                |
-| `max_connections`  | 1024    | listener stops accepting    | Concurrent TCP connections.                                                                                                                                     |
-| `pool_wait_ms`     | 5000    | `503` + `Retry-After`       | How long a request waits for a free Lua state before being shed. `0` waits forever.                                                                             |
-| `header_read_ms`   | 30000   | connection closed           | Deadline for the complete request headers. `0` disables.                                                                                                        |
-| `body_read_ms`     | 30000   | `408` + `Connection: close` | How long each body read may wait for the next bytes. Bounds _progress_, not total transfer: any allowed size may take as long as it keeps moving. `0` disables. |
-| `max_form_parts`   | 64      | `413`                       | Parts allowed in a `multipart/form-data` body.                                                                                                                  |
-| `max_field_bytes`  | 64 KiB  | `413`                       | Per non-file form field. These become Lua strings, so this bounds the state's heap.                                                                             |
-| `max_file_bytes`   | 10 MiB  | `413`                       | Per uploaded file. Files stream to disk in Rust and never enter the Lua heap.                                                                                   |
+| Key                | Default | On violation                   | Description                                                                                                                                                     |
+| ------------------ | ------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `max_body_bytes`   | 1 MiB   | `413`                          | Request body cap, **counted as the body arrives** rather than trusted from `Content-Length`.                                                                    |
+| `max_header_bytes` | 16 KiB  | connection rejected            | Request header buffer (minimum 8192).                                                                                                                           |
+| `max_uri_bytes`    | 8 KiB   | `414`                          | Request URI cap.                                                                                                                                                |
+| `max_connections`  | 1024    | listener stops accepting       | Concurrent TCP connections.                                                                                                                                     |
+| `pool_wait_ms`     | 5000    | `503` + `Retry-After`          | How long a request waits for a free Lua state before being shed. `0` waits forever.                                                                             |
+| `header_read_ms`   | 30000   | connection closed              | Deadline for the complete request headers. `0` disables.                                                                                                        |
+| `body_read_ms`     | 30000   | `408` + `Connection: close`    | How long each body read may wait for the next bytes. Bounds _progress_, not total transfer: any allowed size may take as long as it keeps moving. `0` disables. |
+| `max_form_parts`   | 64      | Lua error from `req:multipart` | Parts allowed in a `multipart/form-data` body.                                                                                                                  |
+| `max_field_bytes`  | 64 KiB  | Lua error from `part:text()`   | Per non-file form field. These become Lua strings, so this bounds the state's heap.                                                                             |
+| `max_file_bytes`   | 10 MiB  | Lua error from `part:save()`   | Per uploaded file. Files stream to disk in Rust and never enter the Lua heap.                                                                                   |
 
 > [!WARNING] Raising `max_file_bytes` is not enough
 >
 > `max_body_bytes` bounds the **whole request**, uploads included. Raise
 > both, or a large upload is rejected before the per-file limit is ever
 > consulted.
+
+> [!NOTE] The three multipart caps are Lua errors, not statuses
+>
+> Everything above `max_form_parts` is enforced before a request reaches
+> Lua, and answers with the status shown. The three multipart caps are
+> different: they are raised as ordinary Lua errors from inside
+> `req:multipart`, `part:text()` and `part:save()`, and nothing maps them
+> to a status — Nitr cannot know whether an over-cap part is a client
+> mistake or your protocol. Uncaught, they reach
+> [`on_error`](../errors) as a `500`; catch them if you want a `413`. See
+> [Requests → File uploads](../requests#file-uploads).
+
+> [!NOTE] Two timings are checked against `[lua] exec_timeout_ms`
+>
+> `pool_wait_ms` **may not exceed** it (both non-zero): a request that
+> waits for a state longer than any handler may run means the queue can
+> only grow, so it is a startup error. `body_read_ms` exceeding it only
+> **warns** (again, both non-zero) — a stalled buffered read
+> (`req:text()`, `req:form()`) would then surface as a handler timeout
+> blaming your code instead of the clean `408` it deserves.
+>
+> `0` means "no bound" on either key, not a smaller number, so a `0` on
+> either side of a comparison switches that check off entirely.
+
+## `[multipart]`
+
+Filesystem policy for uploads. The byte caps stay in `[limits]` with
+every other byte cap; a directory belongs here, beside `[static] dir`
+and `[templating] dir`. Needs the `multipart` Cargo feature for
+`req:multipart(...)` itself — but the section parses in every build, so
+one configuration file stays readable whatever the binary was compiled
+with.
+
+```toml
+[multipart]
+upload_dir = "uploads"
+```
+
+| Key          | Default                           | Description                                                                                                                                                           |
+| ------------ | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `upload_dir` | _unset (`part:save` unavailable)_ | Root that every `part:save(path)` resolves inside. Must exist and be **writable** at startup — checked with a real write probe, because existence is not writability. |
+
+Paths handed to `part:save` are **relative to this directory**. An
+absolute path, or one climbing out with `..`, is **refused rather than
+re-rooted**, so where a file lands always follows from what the source
+says. A missing intermediate directory is an error too: materializing
+directories out of attacker-influenced strings is not a favour.
+
+Leaving `upload_dir` unset leaves `part:save` unavailable — the same
+call `[templating] dir` makes. There is no safe directory to guess, and
+an upload written somewhere nobody chose is worse than a startup error.
+
+> [!DANGER] Never put the upload root under the handler script
+>
+> `require` is pinned to the handler script's own directory, so an
+> uploaded `.lua` file there would be a loadable module — upload-to-RCE
+> written in configuration. That combination **refuses to boot**.
+
+> [!WARNING] Inside `[static] dir` only warns
+>
+> Serving uploads back over HTTP is a real deployment shape (user
+> avatars), so it is a startup warning rather than a refusal — but it
+> turns every uploaded byte into hosted content, which has to be a
+> choice you made on purpose.
+
+> [!TIP] Build the path from `part.safe_filename`
+>
+> `part.filename` is exactly what the client sent. `part.safe_filename`
+> is that name reduced to a plain file name — no separators, no control
+> characters, never empty — so `part:save(part.safe_filename)` is safe
+> on its own. It is `nil` exactly when `filename` is, so it remains the
+> same "is this a file?" test. See [File
+> uploads](../requests#file-uploads).
+
+## `[cookies]`
+
+Defaults for the cookies **Nitr builds**: the session and CSRF cookies,
+and anything through `res.cookies:set` / `:set_signed`. A handler that
+writes the `Set-Cookie` header itself never passes the serializer, so
+that cookie's attributes are the script's own business.
+
+```toml
+[cookies]
+secure = "auto"
+```
+
+| Key      | Type   | Default  | Description                                                                                                                                                                         |
+| -------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secure` | string | `"auto"` | `"auto"` — `Secure` when `[tls] enabled = true`; `"always"` — always `Secure`, for TLS terminated in front of this process; `"never"` — never `Secure`, for plain-HTTP development. |
+
+An explicit `secure` in the caller's own options table **always wins**,
+in both directions. This setting only decides what happens when Lua says
+nothing — which is also why it covers `res.cookies:set(name, value)`
+called with no options table at all.
+
+`"always"` is not a nicety. The most common Nitr deployment is a
+loopback bind behind a terminating proxy, where `[tls] enabled = false`
+is the correct setting for _this process_ **and** the cookies must still
+be `Secure`. Nothing here can detect that proxy, so `"auto"` resolving
+to _not_ secure **warns at startup** rather than guessing, and `"never"`
+together with `[tls] enabled = true` warns as the contradiction it is.
+`"never"` on a plaintext listener is silent — you have answered the
+question — and `dev_mode = true` suppresses the warning entirely.
+
+> [!NOTE] Why `Secure` is not simply forced
+>
+> `HttpOnly` is forced on the session and CSRF cookies, and cannot be
+> un-set. `Secure` deliberately is not: a `Secure` cookie sent over
+> plain `http` is dropped by the browser without a word — a far worse
+> failure to debug than a line in the startup log.
+
+> [!TIP] The attribute table extends, it does not replace
+>
+> The session and CSRF cookies default to `HttpOnly` and
+> `SameSite=Lax`, and your options table is merged **over** those
+> defaults rather than replacing them. `same_site` stays overridable (a
+> legitimate cross-site form needs `"None"`); `http_only` does not. See
+> [Cookies & Sessions](../cookies-sessions).
 
 ## `[database]`
 
@@ -97,15 +231,15 @@ cache_size = -2000
 migrations_dir = "migrations"
 ```
 
-| Key              | Default        | Description                                                        |
-| ---------------- | -------------- | ------------------------------------------------------------------ |
-| `path`           | _required_     | The database file.                                                 |
-| `journal_mode`   | `"wal"`        | `"wal"`, `"delete"`, or `"keep"` to leave the existing mode alone. |
-| `busy_timeout`   | `5000`         | Milliseconds to wait on a lock instead of failing.                 |
-| `synchronous`    | `"normal"`     | The right pairing with WAL.                                        |
-| `foreign_keys`   | `true`         | SQLite leaves this off, which surprises everyone.                  |
-| `cache_size`     | `-2000`        | KiB per connection (negative means KiB, per SQLite's convention).  |
-| `migrations_dir` | `"migrations"` | Where `nitr migrate` looks for `.sql` files.                       |
+| Key              | Default    | Description                                                                                                                                |
+| ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `path`           | _required_ | The database file. SQLite creates the file, but **not** its directory — a missing parent is a startup error.                               |
+| `journal_mode`   | `"wal"`    | `"wal"`, `"delete"`, or `"keep"` to leave the existing mode alone (the safe choice for a database other tools also open).                  |
+| `busy_timeout`   | `5000`     | Milliseconds to wait on a lock instead of failing with `SQLITE_BUSY`.                                                                      |
+| `synchronous`    | `"normal"` | The right pairing with WAL: durable across an application crash, at risk only from power loss mid-checkpoint.                              |
+| `foreign_keys`   | `true`     | SQLite leaves this off, which surprises everyone.                                                                                          |
+| `cache_size`     | `-2000`    | KiB per connection (negative means KiB, per SQLite's convention).                                                                          |
+| `migrations_dir` | _unset_    | Where `nitr migrate` looks for `NNN_name.sql` files. Unset uses `migrations/` when that directory exists, and ignores it when it does not. |
 
 > [!WARNING] WAL changes the on-disk file set
 >
@@ -128,11 +262,11 @@ max_bytes = 33554432
 default_ttl = 300
 ```
 
-| Key           | Default | Description                                |
-| ------------- | ------- | ------------------------------------------ |
-| `max_entries` | `10000` | Maximum number of entries (LRU beyond it). |
-| `max_bytes`   | 32 MiB  | Total size ceiling.                        |
-| `default_ttl` | `300`   | Seconds; `0` means no expiry.              |
+| Key           | Default | Description                                                                                               |
+| ------------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| `max_entries` | `10000` | Maximum number of entries (LRU beyond it).                                                                |
+| `max_bytes`   | 32 MiB  | Total size ceiling for the stored values.                                                                 |
+| `default_ttl` | `300`   | Seconds an entry lives when `set` does not say; `0` means no expiry, leaving eviction to the size bounds. |
 
 Bounded and owned by Rust; entries are serialized, so no Lua value ever
 crosses between states. It is **per-process**: a restart empties it, and
@@ -152,12 +286,17 @@ min_size = 1024
 types = ["text/*", "application/json", "application/javascript"]
 ```
 
-| Key          | Default                | Description                                                                   |
-| ------------ | ---------------------- | ----------------------------------------------------------------------------- |
-| `enabled`    | `false`                | Turn on-the-fly compression on.                                               |
-| `algorithms` | `["br", "gzip"]`       | Offered best-first; the **server's** order wins over the client's preference. |
-| `min_size`   | `1024`                 | Below this, compressing costs more than it saves.                             |
-| `types`      | text types + JSON + JS | Content types worth compressing.                                              |
+| Key          | Default          | Description                                                                                                                                                |
+| ------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`    | `false`          | Turn on-the-fly compression on. Needs the `compression` Cargo feature.                                                                                     |
+| `algorithms` | `["br", "gzip"]` | Offered best-first; the **server's** order wins over the client's preference. Only `"br"` and `"gzip"` are valid names — anything else is a startup error. |
+| `min_size`   | `1024`           | Below roughly a packet, compressing costs more than it saves.                                                                                              |
+| `types`      | see below        | Content types worth compressing. A trailing `*` matches a prefix, so `"text/*"` covers every text subtype.                                                 |
+
+The default `types` list is `["text/*", "application/json",
+"application/javascript", "application/xml", "image/svg+xml"]`.
+Already-compressed types — images, video, archives — are skipped even
+when a pattern would match them.
 
 > [!NOTE] Precompressed sidecars need none of this
 >
@@ -168,7 +307,9 @@ types = ["text/*", "application/json", "application/javascript"]
 ## `[cors]`
 
 Cross-origin resource sharing, enforced in Rust: a preflight is answered
-**without reaching a Lua state**. Disabled until `origins` is set.
+**without reaching a Lua state**, and the policy is auditable in one
+place instead of spread across middleware. Disabled until `origins` is
+set.
 
 ```toml
 [cors]
@@ -180,14 +321,86 @@ credentials = false
 max_age = 86400
 ```
 
-| Key              | Default            | Description                                                                           |
-| ---------------- | ------------------ | ------------------------------------------------------------------------------------- |
-| `origins`        | _unset (disabled)_ | Allowed origins, or `["*"]` for a public API.                                         |
-| `methods`        | —                  | Allowed methods.                                                                      |
-| `headers`        | —                  | Allowed request headers.                                                              |
-| `expose_headers` | —                  | Response headers the browser may read.                                                |
-| `credentials`    | `false`            | **Cannot** be combined with `origins = ["*"]` — the server refuses to start if it is. |
-| `max_age`        | —                  | Seconds a browser may cache the preflight.                                            |
+| Key              | Default            | Description                                                                                                                                                                                                     |
+| ---------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `origins`        | _unset (disabled)_ | Allowed origins, or `["*"]` for a public API.                                                                                                                                                                   |
+| `methods`        | _unset_            | Allowed methods.                                                                                                                                                                                                |
+| `headers`        | _unset_            | Allowed request headers.                                                                                                                                                                                        |
+| `expose_headers` | _unset_            | Response headers the browser may read.                                                                                                                                                                          |
+| `credentials`    | `false`            | **Cannot** be combined with `origins = ["*"]` — browsers reject `Access-Control-Allow-Origin: *` on a credentialed request, so the server refuses to start rather than shipping a policy no browser will honor. |
+| `max_age`        | _unset_            | Seconds a browser may cache the preflight.                                                                                                                                                                      |
+
+## `[tls]`
+
+Inbound TLS termination, served by rustls over the `ring` provider.
+Needs the `tls` Cargo feature (included in `all`). Off by default, and
+deliberately never inferred from a certificate lying around: turning a
+port from plaintext to TLS is a decision an operator makes, not one a
+stray file makes for them.
+
+```toml
+[tls]
+enabled = true
+cert = "/etc/nitr/tls/fullchain.pem"
+key = "/etc/nitr/tls/privkey.pem"
+min_version = "1.2"
+handshake_ms = 10000
+```
+
+| Key            | Default                    | Description                                                                                                                          |
+| -------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled`      | `false`                    | Whether the listener speaks TLS.                                                                                                     |
+| `cert`         | _required when enabled_    | PEM holding the certificate chain: leaf first, then any intermediates a client needs.                                                |
+| `key`          | _required when enabled_    | PEM holding the matching private key: PKCS#8, PKCS#1 or SEC1.                                                                        |
+| `min_version`  | `"1.2"`                    | `"1.2"` or `"1.3"`. `"1.2"` is the floor and what a public endpoint wants; `"1.3"` is for a closed set of clients known to speak it. |
+| `handshake_ms` | `min(header_read_ms, 10s)` | Deadline for the TLS handshake itself. `0` is a **startup error**, never "unbounded".                                                |
+
+Everything checkable is checked at startup: the binary must have the
+`tls` feature, both paths must name readable files, and the pair must
+load. A listener that accepts TCP and then fails every handshake is
+indistinguishable from a network fault — and it fails _after_ a
+deployment has already shifted traffic onto it. `nitr check` catches all
+of it before a port exists.
+
+TLS 1.0 and 1.1 cannot be selected under any spelling: they are
+deprecated by RFC 8996, rustls implements neither, and accepting the
+name would promise a downgrade no build here can keep. ALPN advertises
+exactly `http/1.1`, because that is exactly what the server speaks.
+
+> [!DANGER] `enabled = true` converts the listener — it does not add one
+>
+> The address in `listen` starts speaking HTTPS and **nothing answers
+> plaintext**. There is no dual-listener mode and nothing redirects for
+> you: an operator moving a deployment from `:80` to `:443` silently
+> breaks every client, bookmark and health check that still says
+> `http://`. [TLS](../tls) has the redirect recipe — a second tiny
+> instance, built from routes rather than middleware, with the canonical
+> host taken from configuration and never from the request's `Host`
+> header.
+
+> [!TIP] Renewal is a reload, not a restart
+>
+> `SIGHUP` (or [`nitr reload`](../cli#reload)) re-reads both files and
+> swaps the acceptor in **only when the new pair validates** — a
+> half-written file keeps the old material and warns. Replace both files
+> before signalling, the way certbot's write-then-rename already does.
+
+> [!WARNING] The key path is not re-anchored by `nitr build`
+>
+> `nitr build` re-roots the scripts, templates and static files into the
+> bundle; `cert` and `key` are deliberately left alone. A private key
+> inside a copyable one-file artifact is a private key that leaks with
+> it. Keep it external, like the database. A key file readable beyond
+> its owner also earns a startup warning — the server reads it anyway,
+> because a security check whose failure mode is "the deployment does
+> not come up" gets disabled.
+
+> [!NOTE] HSTS is the handler's job
+>
+> There is deliberately no `[tls] hsts` key. HSTS is a commitment with a
+> long tail — a `max-age` mistake is cached by browsers and cannot be
+> retracted from the server side — so the number is yours to choose, in
+> one line of middleware. See [TLS](../tls).
 
 ## `[shutdown]`
 
@@ -225,12 +438,12 @@ window = 60
 trust_forwarded_for = false
 ```
 
-| Key                   | Default | Description                                                                                        |
-| --------------------- | ------- | -------------------------------------------------------------------------------------------------- |
-| `enabled`             | `false` | Turn the limiter on.                                                                               |
-| `requests`            | `100`   | Allowed requests per window and client IP.                                                         |
-| `window`              | `60`    | Window length in seconds.                                                                          |
-| `trust_forwarded_for` | `false` | Key by `X-Forwarded-For`. Only behind a proxy that sets it — otherwise a client picks its own key. |
+| Key                   | Default | Description                                                                                                                                                                                                               |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`             | `false` | Turn the limiter on.                                                                                                                                                                                                      |
+| `requests`            | `100`   | Allowed requests per window and client IP.                                                                                                                                                                                |
+| `window`              | `60`    | Window length in seconds.                                                                                                                                                                                                 |
+| `trust_forwarded_for` | `false` | Key by the first `X-Forwarded-For` entry instead of the peer address. Enable **only** behind a proxy that overwrites the header rather than appending to whatever the client sent — otherwise a client picks its own key. |
 
 Exceeding the budget answers `429` with `Retry-After`.
 
@@ -262,20 +475,20 @@ no_proxy = false
 propagate_trace_context = false
 ```
 
-| Key                       | Default | Description                                                                                           |
-| ------------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
-| `allowed_hosts`           | _unset_ | Exact-host allow-list, applied to **all hops**.                                                       |
-| `allow_private_networks`  | `false` | Permit loopback/RFC1918 targets.                                                                      |
-| `max_response_bytes`      | 8 MiB   | Cap on `resp:text()` / `resp:json()` bodies.                                                          |
-| `max_concurrent`          | `8`     | Maximum requests per `nitr.await_all(...)`.                                                           |
-| `max_per_request`         | `32`    | Total outbound calls one **inbound** request may make. `0` removes the cap.                           |
-| `connect_timeout`         | `10.0`  | Seconds to establish a connection.                                                                    |
-| `timeout`                 | `30.0`  | Default per-request budget; a per-call `timeout` option overrides it.                                 |
-| `pool_max_idle_per_host`  | `8`     | Idle connections kept per host.                                                                       |
-| `max_retries`             | `5`     | Ceiling on `retry.attempts`. Retries are opt-in per call and only ever applied to idempotent methods. |
-| `proxy`                   | _unset_ | Explicit proxy. Unset reads `HTTPS_PROXY`/`HTTP_PROXY`.                                               |
-| `no_proxy`                | `false` | Ignore the proxy environment variables entirely.                                                      |
-| `propagate_trace_context` | `false` | Forward a W3C `traceparent` derived from the inbound request id.                                      |
+| Key                       | Default | Description                                                                                                                  |
+| ------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `allowed_hosts`           | _unset_ | Exact-host allow-list, applied to **all hops**.                                                                              |
+| `allow_private_networks`  | `false` | Permit loopback/RFC1918 targets.                                                                                             |
+| `max_response_bytes`      | 8 MiB   | Cap on `resp:text()` / `resp:json()` bodies.                                                                                 |
+| `max_concurrent`          | `8`     | Maximum requests per `nitr.await_all(...)`.                                                                                  |
+| `max_per_request`         | `32`    | Total outbound calls one **inbound** request may make, including a loop issuing them one after another. `0` removes the cap. |
+| `connect_timeout`         | `10.0`  | Seconds to establish a connection.                                                                                           |
+| `timeout`                 | `30.0`  | Default per-request budget; a per-call `timeout` option overrides it.                                                        |
+| `pool_max_idle_per_host`  | `8`     | Idle connections kept per host.                                                                                              |
+| `max_retries`             | `5`     | Ceiling on `retry.attempts`. Retries are opt-in per call and only ever applied to idempotent methods.                        |
+| `proxy`                   | _unset_ | Explicit proxy. Unset reads `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY`.                                                          |
+| `no_proxy`                | `false` | Ignore the proxy environment variables entirely.                                                                             |
+| `propagate_trace_context` | `false` | Forward a W3C `traceparent` derived from the inbound request id. Pass-through only: this is not a tracing SDK.               |
 
 > [!TIP] Why DNS rebinding does not work here
 >
@@ -297,12 +510,12 @@ spa = false
 cache_control = "public, max-age=3600"
 ```
 
-| Key             | Default            | Description                                                      |
-| --------------- | ------------------ | ---------------------------------------------------------------- |
-| `dir`           | _unset (disabled)_ | Directory to serve.                                              |
-| `mount`         | `"/"`              | URL prefix.                                                      |
-| `spa`           | `false`            | Serve `index.html` for unknown paths — React/Vue/Svelte routing. |
-| `cache_control` | _unset_            | `Cache-Control` header for served files.                         |
+| Key             | Default            | Description                                                                                                                                                             |
+| --------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dir`           | _unset (disabled)_ | Directory to serve. Probed at startup: a directory that exists but cannot be read is a startup error, not a deployment that answers `404` for reasons nothing explains. |
+| `mount`         | `"/"`              | URL prefix.                                                                                                                                                             |
+| `spa`           | `false`            | Serve `index.html` for unknown paths — React/Vue/Svelte routing.                                                                                                        |
+| `cache_control` | _unset_            | `Cache-Control` header for served files.                                                                                                                                |
 
 ## `[templating]`
 
@@ -316,7 +529,9 @@ dir = "templates"
 | `dir` | _unset_ | Where [`nitr.template`](../templates) loads minijinja templates from. |
 
 Without `dir` the builtin is unavailable — there is no default location
-to guess.
+to guess, and silently rendering from the wrong directory is worse than
+saying the builtin is not configured. Listing `"template"` in
+`[std] features` without setting `dir` is a startup error.
 
 ## `[testing]`
 
@@ -340,10 +555,10 @@ file = ".env"
 allow = ["APP_", "API_TOKEN"]
 ```
 
-| Key     | Default                                | Description                                                                                                 |
-| ------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `file`  | `.env` next to `nitr.toml`, if present | The dotenv file to load. An **explicitly named** file must exist; the implicit `.env` may be absent.        |
-| `allow` | _unset_                                | Exact names, or prefixes ending in `_`. Unset lets an enabled `env` builtin read any non-`NITR_*` variable. |
+| Key     | Default                                | Description                                                                                                                                                                                                          |
+| ------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file`  | `.env` next to `nitr.toml`, if present | The dotenv file to load, resolved relative to the config file. An **explicitly named** file must exist; the implicit `.env` may be absent. `NITR_ENV_FILE` overrides it and can only come from the real environment. |
+| `allow` | _unset_                                | Exact names, or prefixes ending in `_`. Unset lets an enabled `env` builtin read any non-`NITR_*` variable.                                                                                                          |
 
 The file's values **never override** the real process environment, and
 `NITR_*` internals are always hidden from scripts. See [Environment
@@ -360,14 +575,33 @@ enabled = true
 liveness = "/healthz"
 readiness = "/readyz"
 bind = "127.0.0.1:9090"
+max_connections = 64
 ```
 
-| Key         | Default      | Description                                                                                                                |
-| ----------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`   | `true`       | Serve the probes.                                                                                                          |
-| `liveness`  | `"/healthz"` | Never touches a Lua state.                                                                                                 |
-| `readiness` | `"/readyz"`  | Flips to `503 draining` the moment a graceful drain starts, so a rolling deploy shifts traffic _before_ requests can fail. |
-| `bind`      | _unset_      | Optional separate address, to keep the probes off the public port.                                                         |
+| Key               | Default      | Description                                                                                                                                             |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`         | `true`       | Serve the probes.                                                                                                                                       |
+| `liveness`        | `"/healthz"` | "Is the process alive?" Never touches a Lua state — a probe that queued behind a saturated pool would cause the restart it exists to prevent.           |
+| `readiness`       | `"/readyz"`  | "Should it receive traffic?" Flips to `503 draining` the moment a graceful drain starts, so a rolling deploy shifts traffic _before_ requests can fail. |
+| `bind`            | _unset_      | Optional separate address, to keep the probes off the public port.                                                                                      |
+| `max_connections` | `64`         | Connection cap for that separate listener. Ignored when the probes answer on the main listener, which has its own cap.                                  |
+
+Both paths must start with `/`, and they must differ from each other:
+they answer different questions, and one path cannot answer both.
+
+> [!NOTE] Why `max_connections` is far below `[limits] max_connections`
+>
+> A prober opens one connection, not a thousand. Inheriting the main
+> listener's cap would let the probe port consume the process's whole
+> file-descriptor budget on its own — and "narrow" is not "bounded":
+> without a cap, held-open probe connections were an unmetered
+> descriptor hole.
+
+> [!TIP] The probe port stays plaintext under `[tls]`
+>
+> A prober that must complete a TLS handshake fails exactly when
+> liveness most needs to answer — during certificate trouble. TLS
+> terminates on the main listener only, and the startup line says so.
 
 ## `[log]`
 
@@ -380,7 +614,7 @@ level = "info"
 | Key      | Default                          | Description                                                                                         |
 | -------- | -------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `format` | `"text"`                         | `"json"` emits one object per line with request/error fields as real keys, ready for a log shipper. |
-| `level`  | `"info"` (`"debug"` in dev mode) | Overridden by the `RUST_LOG` environment variable.                                                  |
+| `level`  | `"info"` (`"debug"` in dev mode) | A level name or any `tracing` filter directive. The `RUST_LOG` environment variable wins over it.   |
 
 See [Logging](../logging) for the span schema and the redaction rules.
 
@@ -417,11 +651,16 @@ names:
 Two rules make mistakes loud:
 
 - **Listing a feature is strict.** `"db"` without a `[database]` section
-  fails at startup.
+  fails at startup, as does `"template"` without `[templating] dir`. An
+  unknown name fails too.
 - **A feature must also be compiled in.** The released `nitr` binary has
   all of them; a build made with `--no-default-features` does not, and
   asking for one it lacks is a startup error naming the Cargo feature to
   enable. See [Cargo features](../../library/cargo-features).
+
+Streaming uploads (`req:multipart`) and inbound TLS are Cargo features
+without a `[std]` name — they are server capabilities, not `nitr.*`
+modules.
 
 ## `[lua]`
 
@@ -445,9 +684,18 @@ exec_timeout_ms = 30000
 > They give scripts ambient filesystem and process access. Nothing in
 > `nitr.*` needs them — [`nitr.time`](../../api/#nitr-time) covers dates
 > and clocks, [`nitr.path`](../../api/#nitr-path) is lexical only — but
-> with `os` would come `os.execute`, `os.remove` and `os.getenv`. Adding
-> them to `stdlib` is possible and is a deliberate reduction of the
-> sandbox. See [Security](../security).
+> with `os` would come `os.execute`, `os.remove` and `os.getenv`, and
+> adding `io` also restores `dofile` and `loadfile`, which read and
+> execute any file the process can reach. Adding either to `stdlib` is
+> possible and is a deliberate reduction of the sandbox. See
+> [Security](../security).
+
+> [!WARNING] `"debug"` is refused, not merely discouraged
+>
+> Listing it is a **startup error**. The Lua state is built with mlua's
+> safe constructor, which cannot load the debug library at all — and it
+> would defeat `exec_timeout_ms` anyway, since `debug.sethook` replaces
+> the very instruction-count hook that stops CPU-bound loops.
 
 ## The annotated original
 

@@ -19,11 +19,14 @@ my-app/
 ├── templates/      ← minijinja templates
 ├── public/         ← static files, served by Rust
 ├── tests/          ← *.lua, run by `nitr test`
-└── data/           ← the SQLite database
+├── data/           ← the SQLite database (git-ignored)
+├── .gitignore      ← ignores data/*.db*
+└── nitr-types.lua  ← generated LuaCATS editor completions
 ```
 
 `nitr init` writes exactly this. See [Project layout](./project-layout)
-for what each piece does and which parts are optional.
+for what each piece does, which parts are optional, and what
+`nitr init --minimal` leaves out.
 
 ## The two scripts you write
 
@@ -62,12 +65,12 @@ why that distinction matters.
 
 ### Getting the application running
 
-| Page                               | What is in it                                                       |
-| ---------------------------------- | ------------------------------------------------------------------- |
-| [Project layout](./project-layout) | Every file `nitr init` creates, and why                             |
-| [CLI commands](./cli)              | `run`, `dev`, `check`, `test`, `migrate`, `init`, `build`, `reload` |
-| [Configuration](./configuration/)  | How the file, environment and flags layer                           |
-| [Server defaults](./defaults)      | Every default value in one table                                    |
+| Page                               | What is in it                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------ |
+| [Project layout](./project-layout) | Every file `nitr init` creates, and why                                              |
+| [CLI commands](./cli)              | `run`, `dev`, `check`, `test`, `migrate`, `init`, `build`, `reload`, `hash-password` |
+| [Configuration](./configuration/)  | How the file, environment and flags layer                                            |
+| [Server defaults](./defaults)      | Every default value in one table                                                     |
 
 ### Writing handlers
 
@@ -83,17 +86,19 @@ why that distinction matters.
 
 ### The standard library
 
-| Page                           | What is in it                                  |
-| ------------------------------ | ---------------------------------------------- |
-| [Database](./database)         | `nitr.db`, transactions, migrations            |
-| [Templates](./templates)       | `nitr.template` (minijinja)                    |
-| [Static files](./static-files) | Rust-side serving, SPA mode, caching           |
-| [Validation](./validation)     | `nitr.validate` schemas                        |
-| [Outbound HTTP](./fetch)       | `nitr.fetch`, concurrency, SSRF policy         |
-| [Cache](./cache)               | `nitr.cache`, and what does _not_ belong in it |
-| [Crypto & auth](./crypto-auth) | Hashing, passwords, AEAD, JWT, `Authorization` |
-| [Testing](./testing)           | `nitr test`, `describe`/`it`/`expect`          |
-| [Logging](./logging)           | Span schema, JSON output, redaction rules      |
+| Page                                  | What is in it                                         |
+| ------------------------------------- | ----------------------------------------------------- |
+| [Database](./database)                | `nitr.db`, transactions, migrations                   |
+| [Templates](./templates)              | `nitr.template` (minijinja)                           |
+| [Static files](./static-files)        | Rust-side serving, SPA mode, caching                  |
+| [Validation](./validation)            | `nitr.validate` schemas                               |
+| [Outbound HTTP](./fetch)              | `nitr.fetch`, concurrency, SSRF policy                |
+| [Cache](./cache)                      | `nitr.cache`, and what does _not_ belong in it        |
+| [Crypto & auth](./crypto-auth)        | Hashes, HMAC, random bytes, AEAD, `Authorization`     |
+| [Passwords & Basic auth](./passwords) | argon2id, `nitr hash-password`, the login timing leak |
+| [JWT](./jwt)                          | `nitr.crypto.jwt`, and the claims `verify` ignores    |
+| [Testing](./testing)                  | `nitr test`, `describe`/`it`/`expect`                 |
+| [Logging](./logging)                  | Span schema, JSON output, redaction rules             |
 
 The exhaustive per-function inventory is the [Lua API
 reference](../api/).
@@ -103,6 +108,7 @@ reference](../api/).
 | Page                                            | What is in it                                       |
 | ----------------------------------------------- | --------------------------------------------------- |
 | [Deployment](./deployment/)                     | Health probes, signals, reloads, drains             |
+| [TLS termination](./tls)                        | `[tls]`, certificate reloads, HSTS, the redirect    |
 | [Single-file deploys](./deployment/single-file) | `nitr build`                                        |
 | [systemd](./deployment/systemd)                 | A hardened unit, and the two lines people get wrong |
 | [Docker](./deployment/docker)                   | Signals, stop timeouts, Kubernetes probes           |

@@ -12,8 +12,9 @@ actually testing.
 ## `TestClient`
 
 `Server::test_client()` gives an in-process client that dispatches
-through the **real** path — router, middleware, handler, streaming
-bodies collected — without binding a port.
+through the **real** path — protection checks, router, middleware,
+handler, streaming bodies collected — without binding a port. The types
+live in `nitr::testing`.
 
 ```rust
 use nitr::{Builtins, Server};
@@ -36,6 +37,9 @@ async fn greets_by_name() -> nitr::Result {
 }
 ```
 
+`TestClient` is `Clone`, so a concurrency test can hand one to several
+tasks.
+
 ### `request(method, path_and_query, headers, body)`
 
 | Parameter        | Type                            |
@@ -45,6 +49,9 @@ async fn greets_by_name() -> nitr::Result {
 | `headers`        | `&[(String, String)]`           |
 | `body`           | `Option<Bytes>`                 |
 
+An unparseable method or path is an `Error::Config`, not a panic — so a
+malformed test request fails the assertion rather than the process.
+
 Returns a `TestResponse`:
 
 | Field / method                   | Description                                                                                             |
@@ -53,6 +60,14 @@ Returns a `TestResponse`:
 | `headers: Vec<(String, String)>` | Header pairs **in response order** — repeated names appear repeatedly, so `Set-Cookie` is fully visible |
 | `body: Bytes`                    | The collected body, streaming responses included                                                        |
 | `.header(name) -> Option<&str>`  | The first value of a case-insensitive header                                                            |
+
+> [!NOTE] What the in-process path does and does not simulate
+>
+> Everything above the socket runs for real: the rate limiter, the
+> request-id policy, CORS and response compression all apply, and every
+> response carries `X-Request-ID`. What is not real is the peer: every
+> test request arrives from `127.0.0.1:0`, so a configured
+> `[rate_limit]` counts your whole test as one client.
 
 ### Posting JSON
 
@@ -69,6 +84,9 @@ let resp = client.request(
 assert_eq!(resp.status, 201);
 assert_eq!(resp.header("content-type"), Some("application/json"));
 ```
+
+`Bytes` comes from the `bytes` crate, which the `nitr` facade does not
+re-export — add `bytes = "1"` to your `[dev-dependencies]`.
 
 ### Testing an extension module end to end
 
@@ -134,7 +152,8 @@ async fn serves_over_tcp() -> nitr::Result {
 ```
 
 The OS picks the port and nothing else can take it in between, so
-parallel tests never collide.
+parallel tests never collide. `.health_listener(...)` does the same for
+the probe port when a test needs both.
 
 ## Testing configuration
 
@@ -142,11 +161,27 @@ parallel tests never collide.
 to assert on:
 
 ```rust
-#[tokio::test]
-async fn rejects_an_unknown_key() {
-    let err = nitr::Config::from_file("tests/fixtures/bad.toml").unwrap_err();
+use std::path::Path;
+
+#[test]
+fn rejects_an_unknown_key() {
+    let err = nitr::Config::from_file(Path::new("tests/fixtures/bad.toml"))
+        .unwrap_err();
     assert!(err.to_string().contains("hander_script"));
 }
+```
+
+`Config::from_file` takes a `&Path`, and returns `Error::Config` with a
+message naming the key. The same holds for a script that cannot load: it
+never reaches a request, so the assertion belongs on `build()`.
+
+```rust
+let err = Server::builder()
+    .handler_script("tests/fixtures/broken.lua")
+    .build()
+    .await
+    .expect_err("a broken script must not build");
+assert!(err.to_string().contains("broken.lua"));
 ```
 
 ## Isolating state
@@ -170,14 +205,18 @@ thing under test.
 ## In CI
 
 ```yaml
-- run: cargo test --workspace --all-features
-- run: cargo clippy --workspace --all-targets
+- run: cargo test --all-features
+- run: cargo clippy --all-targets --all-features
 - run: cargo fmt --check
 ```
 
-If your project also ships Lua tests, run both:
+`--all-features` matters more than usual here: Nitr's optional builtins
+are Cargo features, and configuring one that was not compiled in is a
+startup error — so a test touching `nitr.db` or `nitr.fetch` fails at
+`build()` rather than passing on a smaller build. If your project also
+ships Lua tests, run both:
 
 ```yaml
-- run: cargo test
-- run: cargo run --bin my-server -- check # if you expose the subcommands
+- run: cargo test --all-features
+- run: nitr test # next to nitr.toml
 ```

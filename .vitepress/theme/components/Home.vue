@@ -226,6 +226,11 @@ app:<span class="nitr-t-flag">get</span>(<span class="nitr-t-str">"/users/:id"</
             </div>
 
             <div class="nitr-feature">
+              <h3>TLS in-process</h3>
+              <p>Terminate HTTPS with rustls — three lines of <code>[tls]</code>, no proxy
+                required.</p>
+            </div>
+            <div class="nitr-feature">
               <h3>Crypto &amp; auth</h3>
               <p>argon2id, HMAC, AEAD, JWTs that cannot accept <code>alg: none</code>.</p>
             </div>
@@ -380,14 +385,15 @@ app:<span class="nitr-t-flag">get</span>(<span class="nitr-t-str">"/users/:id"</
             <p class="nitr-kicker">Get started</p>
             <h2>An application in three commands</h2>
             <p class="nitr-sub">
-              Nitr is in <b>early development</b> and not ready for production. Install it
-              from source with a Rust toolchain.
+              Nitr is in <b>early development</b> and not ready for production. Install
+              the CLI from crates.io with a Rust toolchain; pre-built binaries are not
+              published yet.
             </p>
           </header>
 
           <div class="nitr-install-line nitr-install-no-space" role="group" aria-label="Quick install">
             <pre
-              class="install-cmd nitr-code"><span class="nitr-t-cmd">cargo</span> <span class="nitr-t-dim">install --git</span> <span class="nitr-t-str">https://github.com/nitrweb/nitr</span> <span class="nitr-t-dim">nitr-cli</span></pre>
+              class="install-cmd nitr-code"><span class="nitr-t-cmd">cargo</span> <span class="nitr-t-dim">install</span> <span class="nitr-t-str">nitr-cli</span></pre>
             <button class="nitr-copy-btn" type="button" aria-label="Copy install command" @click="handleCopy">
               <svg class="nitr-i-copy" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
                 <rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" />

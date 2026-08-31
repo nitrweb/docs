@@ -13,7 +13,7 @@ except the last item.
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | **Expose your own Rust to Lua** | [`ServerBuilder::module`](./extension-modules) mounts a table at `nitr.ext.<name>` in every state — the one thing the binary cannot do |
 | **Own the process**             | Your `main` runs; Nitr is a component, not the entry point                                                                             |
-| **Own the socket**              | Hand over an already-bound `TcpListener` for tests or socket activation                                                                |
+| **Own the socket**              | Hand over an already-bound `TcpListener` — for the traffic port, the probe port, or both                                               |
 | **Own the shutdown**            | `serve_with_shutdown()` drains on your signal, not just `SIGTERM`                                                                      |
 | **Build a distributable**       | Ship one Rust binary that contains the server and your domain code                                                                     |
 | **Use the Lua runtime alone**   | [`nitr::Runtime`](./runtime) — sandboxed Lua with no HTTP at all                                                                       |
@@ -23,7 +23,7 @@ except the last item.
 ```toml
 # Cargo.toml
 [dependencies]
-nitr = { git = "https://github.com/nitrweb/nitr", features = ["json"] }
+nitr = "0.0.0-beta.3"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -51,6 +51,11 @@ return app
 ```
 
 `cargo run`. That is the whole thing.
+
+No Cargo feature is needed for that example: `nitr.json` is one of the
+builtins compiled in unconditionally. Anything with a heavy dependency of
+its own — SQLite, minijinja, reqwest, argon2, rustls — is opt-in. See
+[Cargo features](./cargo-features).
 
 ## Adding your own Rust
 
@@ -94,6 +99,10 @@ execution budget. See [Extension modules](./extension-modules).
 | `nitr-http` | hyper server, configuration, HTTP↔Lua bridge           | Unstable pre-1.0               |
 | `nitr-cli`  | The `nitr` binary                                      | Flags follow the config policy |
 
+All five are published on crates.io at **0.0.0-beta.3**, and each has a
+rendered API reference on docs.rs — [`nitr`](https://docs.rs/nitr) is the
+one to read.
+
 **Depend on `nitr`.** The inner crates are published and usable, but
 explicitly move as fast as development needs. The [extension
 contract](./extension-modules) (`ServerBuilder::module`, `nitr_table`,
@@ -121,8 +130,14 @@ Everything except the extension modules: the same sandbox, the same
 `nitr.toml` can be handed to the builder directly:
 
 ```rust
-let cfg = nitr::Config::from_file("nitr.toml")?;
+use std::path::Path;
+
+let cfg = nitr::Config::from_file(Path::new("nitr.toml"))?;
 Server::builder().config(cfg).build().await?.serve().await
 ```
 
-Setters called after `.config(...)` override what it loaded.
+Setters called after `.config(...)` override what it loaded. That is also
+how the settings with no builder setter of their own reach the server —
+`[tls]`, `[limits]`, `[cors]`, `[rate_limit]` and the rest are fields on
+`Config`, set on the struct rather than through a method. See
+[`ServerBuilder`](./server-builder).

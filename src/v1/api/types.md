@@ -63,6 +63,16 @@ Builder for `Set-Cookie` headers on a response.
 | `:set(name, value, opts?)`                | Adds a cookie. Options: `http_only`, `secure`, `path`, `domain`, `max_age` (seconds), `same_site` (`"Strict"` / `"Lax"` / `"None"`). |
 | `:set_signed(name, value, secret, opts?)` | Adds an HMAC-signed cookie, verifiable later with `req.cookies:verify`.                                                              |
 
+> [!NOTE] `secure` has a server-resolved default
+>
+> Leave `secure` out and the `[cookies] secure` policy decides — the
+> default `"auto"` means Secure whenever [TLS](../server/tls) is enabled
+> for this process. An explicit value from Lua always wins, in both
+> directions, and the resolution also covers `:set(name, value)` called
+> with no options table at all. Every other attribute here is exactly
+> what you pass: unlike the session and CSRF cookies, these do not
+> extend a set of defaults.
+
 ## `nitr.App`
 
 The application: routes, middleware, error handling, static mounts.
@@ -86,14 +96,58 @@ Return it from the handler script. See [Routing](../server/routing).
 One part of a multipart upload, delivered to the `req:multipart`
 callback. See [Requests → File uploads](../server/requests#file-uploads).
 
-| Field / method              | Description                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------------ |
-| `name: string\|nil`         | Form field name.                                                                     |
-| `filename: string\|nil`     | Client-supplied file name. **Never trust it** — run it through `nitr.path.basename`. |
-| `content_type: string\|nil` | Part content type.                                                                   |
-| `:text() -> string`         | Reads a non-file field as a string, bounded by `[limits] max_field_bytes`.           |
-| `:save(path) -> integer`    | Streams a file part to `path` without entering the Lua heap; returns bytes written.  |
-| `:discard()`                | Drains and drops the part.                                                           |
+| Field / method               | Description                                                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `name: string`               | Form field name. A part with no name yields `""`, never `nil` — so test it with `part.name ~= ""`, not `if part.name`.              |
+| `filename: string\|nil`      | The client-supplied file name, **exactly as sent** — raw and untrusted. `nil` for an ordinary field, a string for a file.           |
+| `safe_filename: string\|nil` | The same name reduced to a plain file name: no separators, no control characters, never empty. `nil` exactly when `filename` is.    |
+| `content_type: string\|nil`  | Part content type.                                                                                                                  |
+| `:text() -> string`          | Reads a non-file field as a string, bounded by `[limits] max_field_bytes`.                                                          |
+| `:save(path) -> integer`     | Streams a file part to `path` — resolved inside `[multipart] upload_dir` — without it entering the Lua heap; returns bytes written. |
+| `:discard() -> integer`      | Drains and drops the part; returns the bytes skipped.                                                                               |
+
+> [!TIP] Prefer `safe_filename` — and keep `filename` for the record
+>
+> `filename` is attacker-controlled text: `../../etc/passwd`,
+> `C:\Windows\evil.exe`, a name full of control characters, or nothing
+> at all. It stays raw on purpose — applications legitimately record
+> what the user called their file — so `safe_filename` is a **second**
+> value, not a replacement.
+>
+> `safe_filename` is that name reduced to something that can only ever
+> name a file directly inside the upload root: the last path segment
+> (both `/` and `\` count, because the sender's OS is not yours),
+> control characters dropped, leading and trailing dots and spaces
+> trimmed, truncated to 255 bytes on a character boundary, and `upload`
+> when nothing survives.
+>
+> | Sent by the client       | `safe_filename` |
+> | ------------------------ | --------------- |
+> | `report.pdf`             | `report.pdf`    |
+> | `../../etc/passwd`       | `passwd`        |
+> | `C:\Windows\evil.exe`    | `evil.exe`      |
+> | `.hidden`                | `hidden`        |
+> | `name.txt. . `           | `name.txt`      |
+> | `..`, `/`, empty, spaces | `upload`        |
+>
+> Because the result contains no separator by construction,
+> `part:save(part.safe_filename)` is safe on its own and the upload root
+> is a backstop rather than the only defense. It is also `nil` exactly
+> when `filename` is, so `if part.safe_filename then` remains the same
+> "is this a file?" test.
+
+> [!WARNING] `part:save` needs `[multipart] upload_dir`
+>
+> Without that key the call is **unavailable** — there is no safe
+> directory to guess. Paths are **relative** to that root: an absolute
+> path, or one climbing out with `..`, is refused rather than re-rooted,
+> so where a file lands always follows from the source. Missing
+> intermediate directories are an error too, not an implicit
+> `create_dir_all`.
+>
+> A refused path is rejected **before** the part is consumed, so a
+> handler can catch the error and still `:discard()` the part or retry
+> with `safe_filename`.
 
 ## `nitr.FetchHandle`
 
@@ -137,6 +191,15 @@ directly (`session.user_id = 42`). See
 | `:save(resp)` | Serializes the session into a signed cookie on the response. An empty session **deletes** the cookie. |
 | `:clear()`    | Removes every field; `save` then writes the deletion cookie.                                          |
 
+> [!WARNING] The whole session travels in the cookie
+>
+> `save` refuses a session whose JSON exceeds 2800 bytes — chosen so the
+> signed, base64-encoded cookie stays under the ~4 KiB browsers enforce
+> — rather than emitting a cookie the browser would drop. Store a key
+> here and the rest in the database. `save` and `clear` are also
+> reserved names: a data field called either would shadow the method
+> forever after, so it is rejected instead of saved.
+
 ## `nitr.Tx`
 
 A database transaction handle inside `nitr.db:transaction`. Same query
@@ -163,5 +226,12 @@ Not a named type, but the shape every `on_error` handler and
 | `module`    | The failing module, when attributed.                                                                                             |
 | `traceback` | Bounded Lua call stack, innermost first.                                                                                         |
 | `cause`     | Bounded underlying Rust error chain.                                                                                             |
+| `pretty`    | The concise form for a console `print` — ANSI-colored on a terminal, identical to plain text otherwise.                          |
+
+> [!NOTE] `tostring(err)` stays plain
+>
+> `pretty` is the only colored field. `tostring(err)`, and concatenating
+> an error into a string, deliberately produce uncolored text — those
+> strings end up in HTTP bodies and log files.
 
 See [Errors](../server/errors#the-error-value).

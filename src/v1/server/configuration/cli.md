@@ -10,7 +10,7 @@ a deployment's configuration belongs in [`nitr.toml`](./file) or an
 
 ## Global flags
 
-Available on every command.
+Declared globally, so they are accepted on every command.
 
 | Flag                    | Description                                                                                                                                  |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -24,16 +24,28 @@ nitr --config /srv/app/nitr.toml run
 nitr -c /srv/app/nitr.toml --dev
 ```
 
+> [!NOTE] `init` and `hash-password` ignore `--config`
+>
+> Both return before the configuration is loaded — `init` is what
+> _writes_ a `nitr.toml`, and `hash-password` has to work when the one
+> on disk is broken. `--config` is accepted on them because it is a
+> global flag, and has no effect. Every other command loads and
+> validates the configuration first.
+
 ## Per-command flags
 
-| Command   | Flag                    | Description                                                                    |
-| --------- | ----------------------- | ------------------------------------------------------------------------------ |
-| `check`   | `--print-config`        | Print the effective configuration after file + env + flag layering, then exit. |
-| `test`    | `--filter <SUBSTRING>`  | Run only tests whose name or file name contains the substring.                 |
-| `migrate` | `--status`              | Report applied and pending migrations, applying nothing.                       |
-| `init`    | `[DIR]`                 | Directory to scaffold into. Default: the current directory.                    |
-| `init`    | `--minimal`             | Write the four-file version instead of the full layout.                        |
-| `build`   | `-o`, `--output <PATH>` | **Required.** Path of the single-file artifact to write.                       |
+| Command         | Flag                    | Description                                                                    |
+| --------------- | ----------------------- | ------------------------------------------------------------------------------ |
+| `check`         | `--print-config`        | Print the effective configuration after file + env + flag layering, then exit. |
+| `test`          | `--filter <SUBSTRING>`  | Run only tests whose name or file name contains the substring.                 |
+| `migrate`       | `--status`              | Report applied, pending and modified migrations, applying nothing.             |
+| `init`          | `[DIR]`                 | Directory to scaffold into. Default: the current directory.                    |
+| `init`          | `--minimal`             | Write the bare-minimum scaffold instead of the full layout.                    |
+| `build`         | `-o`, `--output <PATH>` | **Required.** Path of the single-file artifact to write.                       |
+| `hash-password` | —                       | None. The password comes from a prompt or from stdin, never from `argv`.       |
+
+`run`, `dev` and `reload` have no flags of their own either: everything
+they need is in the configuration.
 
 Full descriptions of each command are in [CLI commands](../cli).
 
@@ -41,10 +53,10 @@ Full descriptions of each command are in [CLI commands](../cli).
 
 Not flags, but the other half of the runtime control surface:
 
-| Signal               | Effect                                                                                                                                                               |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SIGHUP`             | Zero-downtime reload: rebuilds the Lua runtime pool. The process, listener and keep-alive connections survive. Also reachable as [`nitr reload`](../cli#reload).     |
-| `SIGTERM` / `SIGINT` | Graceful shutdown: stop accepting → flip `/readyz` to `503 draining` → let in-flight work finish within `[shutdown] grace` → exit. A truncated drain exits non-zero. |
+| Signal               | Effect                                                                                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SIGHUP`             | Zero-downtime reload: rebuilds the Lua runtime pool and, with TLS enabled, re-reads the certificate and key. The process, listener and keep-alive connections survive. Also reachable as [`nitr reload`](../cli#reload). |
+| `SIGTERM` / `SIGINT` | Graceful shutdown: stop accepting → flip `/readyz` to `503 draining` → let in-flight work finish within `[shutdown] grace` → exit. A truncated drain exits non-zero.                                                     |
 
 ## Worked examples
 
@@ -61,7 +73,7 @@ nitr -c /srv/app/nitr.toml run
 nitr --dev -c nitr.production.toml
 ```
 
-**Validate in CI**, no port bound, no database touched:
+**Validate in CI**, no port bound:
 
 ```sh
 nitr -c nitr.toml check
@@ -78,6 +90,27 @@ NITR_WORKERS=8 nitr check --print-config | grep workers
 
 ```sh
 nitr test --filter "rejects an empty note"
+```
+
+**Mint a credential before the application exists.** This is the one
+command that needs neither an application nor a configuration file:
+
+```sh
+printf %s "$ADMIN_PASSWORD" | nitr hash-password
+# $argon2id$v=19$m=19456,t=2,p=1$...
+```
+
+Store that string; never store the password. See
+[Passwords](../passwords).
+
+**Point a deployment at its own certificate**, keeping one `nitr.toml`
+for every environment:
+
+```sh
+NITR_TLS_ENABLED=true \
+NITR_TLS_CERT=/etc/nitr/tls/fullchain.pem \
+NITR_TLS_KEY=/etc/nitr/tls/privkey.pem \
+  nitr run
 ```
 
 **Build the deployable artifact:**

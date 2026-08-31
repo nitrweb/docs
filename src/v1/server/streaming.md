@@ -140,7 +140,7 @@ end)
 
 Suspending this way costs no execution budget and blocks nothing else.
 This is exactly what the repository's
-[`sse` example](../library/examples) does.
+[`sse` example](../examples#sse) does.
 
 ## Streaming from the database
 

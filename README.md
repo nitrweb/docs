@@ -4,7 +4,7 @@ The source of the [Nitr](https://github.com/nitrweb/nitr) documentation
 site, built with [VitePress](https://vitepress.dev/).
 
 > Nitr is a Rust web server embedding Lua for fast, efficient and safe
-> smaller dynamic backends.
+> lightweight dynamic backends.
 > See [github.com/nitrweb/nitr](https://github.com/nitrweb/nitr) for the main repository.
 
 ## Development
@@ -33,11 +33,19 @@ src/
     ├── quick-start.md
     ├── download-install.md
     ├── how-it-works.md
+    ├── examples.md            catalogue of the repo's runnable examples
     ├── building-from-source.md
     ├── stability.md
+    ├── report-security-issues.md
+    ├── contributions.md
+    ├── license.md
     ├── server/               the `nitr` binary: config + writing Lua apps
-    │   ├── configuration/
-    │   └── deployment/
+    │   ├── configuration/    the nitr.toml file, env vars, CLI flags
+    │   ├── deployment/       single-file, systemd, Docker
+    │   ├── passwords.md      argon2id hashing and Basic auth
+    │   ├── jwt.md            signing and verifying JWTs
+    │   ├── tls.md            in-process HTTPS termination
+    │   └── …                 routing, requests, responses, database, …
     ├── api/                  the `nitr.*` Lua API reference
     └── library/              the `nitr` Rust crate: embedding and extending
 
@@ -61,8 +69,9 @@ The docs are split deliberately:
 - Prose is wrapped at ~72 columns; Prettier's `proseWrap` is `preserve`,
   so existing wrapping is respected.
 - Use VitePress
-  [custom containers](https://vitepress.dev/guide/markdown#custom-containers)
-  for asides: `> [!TIP]`, `> [!NOTE]`, `> [!WARNING]`, `> [!DANGER]`.
+  [GitHub-flavored alerts](https://vitepress.dev/guide/markdown#github-flavored-alerts)
+  for asides — `> [!TIP]`, `> [!NOTE]`, `> [!WARNING]`, `> [!DANGER]` —
+  each with a short title on the same line as the marker.
 - Code blocks with Vue-style `{{ … }}` (Jinja templates) **must** be
   wrapped in a `::: v-pre` container, or the Vue compiler will try to
   evaluate them.

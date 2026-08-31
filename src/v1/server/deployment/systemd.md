@@ -96,9 +96,10 @@ ExecReload=/bin/kill -HUP $MAINPID
 ```
 
 Nitr defines `SIGHUP` as "rebuild the Lua runtime pool without dropping
-connections". The process, its listener and its keep-alive connections
-survive. `systemctl reload myapp` is therefore genuinely zero-downtime —
-which `systemctl restart` is not.
+connections" — and, with `[tls]` enabled, "re-read the certificate and
+key". The process, its listener and its keep-alive connections survive.
+`systemctl reload myapp` is therefore genuinely zero-downtime — which
+`systemctl restart` is not.
 
 ## The hardening block
 
@@ -117,7 +118,7 @@ ReadWritePaths=/srv/myapp/data /srv/myapp/uploads
 ```
 
 `CapabilityBoundingSet=` (empty) drops every capability. If you must
-bind a port below 1024 — you usually should not, put a proxy in front —
+bind a port below 1024 — with `[tls]` on, `:443` is exactly that case —
 add:
 
 ```ini
@@ -125,12 +126,112 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 ```
 
+## What changes with TLS
+
+Nothing structural. `[tls]` terminates TLS inside the same process, on
+the same listener, under the same unit — see [TLS](../tls). Three
+details are worth pinning down.
+
+### The certificate directory is read-only, on purpose
+
+`ProtectSystem=strict` makes the filesystem **read-only**, not
+unreadable, so `/etc/nitr/tls` needs no entry at all:
+
+```ini
+ReadWritePaths=/srv/myapp/data     # the database — and nothing else
+```
+
+Do **not** add the certificate directory here. Nitr only ever reads
+those two files; granting the server write access to its own private
+key buys nothing and widens what a mistake in a handler could reach.
+Only the ACME client needs to write there, and it runs as root, outside
+this unit.
+
+What the service account does need is **read** access to the files
+themselves:
+
+```sh
+install -d -m 0750 -o root -g nitr /etc/nitr/tls
+install -m 0600 -o nitr -g nitr fullchain.pem /etc/nitr/tls/
+install -m 0600 -o nitr -g nitr privkey.pem   /etc/nitr/tls/
+```
+
+> [!TIP] Nitr checks the key's mode for you
+>
+> At startup, a `[tls] key` readable beyond its owner (any group or
+> other bit set — `0640` and `0644` included) produces a warning naming
+> the file and its mode. The server reads it regardless: protecting the
+> file is the operator's job, not something a web server should refuse
+> to boot over. A private key usually wants `0600` and the service
+> user as its owner.
+
+Pointing `[tls] cert`/`key` straight at `/etc/letsencrypt/live/...`
+works too and skips the copy — but the symlinks there resolve into
+`archive/`, which certbot creates `0700 root`, so the service account
+must be given a path through it first.
+
+### `systemctl reload` is how a renewal takes effect
+
+A renewed certificate on disk changes nothing in a running process.
+`ExecReload` already sends the `SIGHUP` that does:
+
+```sh
+systemctl reload myapp
+```
+
+The reload re-reads both files and swaps the acceptor in **only when
+the new pair validates** — a half-written file keeps the old material
+and logs a warning. Established connections keep the certificate they
+handshook with. Because `ExecReload` signals `$MAINPID`, this needs no
+`pidfile`.
+
+### The certbot deploy hook
+
+Replace both files, then signal. certbot writes atomically
+(write-then-rename), so the only window in which a reload could see half
+a file is the copy itself — `install` writes in place rather than
+renaming, so it does not close that window on its own. Nitr's
+validate-then-swap covers it anyway: a half-written pair fails to
+validate, the old material stays live, and the reload logs a warning.
+
+```sh
+#!/bin/sh
+# /etc/letsencrypt/renewal-hooks/deploy/50-nitr.sh
+set -eu
+
+install -m 0600 -o nitr -g nitr \
+  "$RENEWED_LINEAGE/fullchain.pem" /etc/nitr/tls/fullchain.pem
+install -m 0600 -o nitr -g nitr \
+  "$RENEWED_LINEAGE/privkey.pem" /etc/nitr/tls/privkey.pem
+
+systemctl reload myapp
+```
+
+```sh
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/50-nitr.sh
+
+# Run it once by hand — certbot only sets RENEWED_LINEAGE itself.
+RENEWED_LINEAGE=/etc/letsencrypt/live/example.com \
+  /etc/letsencrypt/renewal-hooks/deploy/50-nitr.sh
+journalctl -u myapp -n 20
+```
+
+The reload logs the certificate count it just loaded, so the journal is
+where you confirm the hook worked — not the next renewal, ninety days
+later.
+
+> [!WARNING] Turning TLS on or off is a restart
+>
+> A reload re-reads the two **files**, never `nitr.toml`. Changing
+> `[tls] enabled`, `min_version` or `handshake_ms` needs
+> `systemctl restart`.
+
 ## Operating it
 
 ```sh
 systemctl start myapp
 systemctl stop myapp            # graceful drain, up to TimeoutStopSec
-systemctl reload myapp          # SIGHUP: zero-downtime pool rebuild
+systemctl reload myapp          # SIGHUP: pool rebuild + TLS re-read
 systemctl restart myapp         # drain, then a fresh process
 systemctl status myapp
 
@@ -149,7 +250,7 @@ format = "json"
 ```
 
 ```sh
-journalctl -u myapp -o cat | jq 'select(.status >= 500)'
+journalctl -u myapp -o cat | jq 'select(.span.status >= 500)'
 ```
 
 Output through a pipe is byte-clean — no ANSI escapes to strip.
@@ -175,9 +276,10 @@ cd /srv/myapp && sudo -u nitr nitr check && sudo -u nitr nitr migrate
 systemctl reload myapp          # or restart, if the binary itself changed
 ```
 
-`reload` suffices for changes to Lua, templates and static files.
-Replacing the `nitr` binary itself, or changing `nitr.toml`, needs a
-`restart`.
+`reload` suffices for changes to Lua sources and templates — both are
+inputs the rebuild re-reads. Static files need no signal at all: they
+are read from disk per request. Replacing the `nitr` binary itself, or
+changing `nitr.toml`, needs a `restart`.
 
 ## Multiple applications on one host
 

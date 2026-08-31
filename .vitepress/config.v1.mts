@@ -19,6 +19,7 @@ export const v1: DefaultTheme.Config = {
           { text: 'Quick Start', link: '/v1/quick-start' },
           { text: 'Download & Install', link: '/v1/download-install' },
           { text: 'How Nitr Works', link: '/v1/how-it-works' },
+          { text: 'Examples', link: '/v1/examples' },
           { text: 'Building from Source', link: '/v1/building-from-source' }
         ]
       },
@@ -75,6 +76,8 @@ export const v1: DefaultTheme.Config = {
           { text: 'Outbound HTTP', link: '/v1/server/fetch' },
           { text: 'Cache', link: '/v1/server/cache' },
           { text: 'Crypto & Auth', link: '/v1/server/crypto-auth' },
+          { text: 'Passwords & Basic Auth', link: '/v1/server/passwords' },
+          { text: 'JWT', link: '/v1/server/jwt' },
           { text: 'Testing', link: '/v1/server/testing' },
           { text: 'Logging', link: '/v1/server/logging' }
         ]
@@ -90,6 +93,7 @@ export const v1: DefaultTheme.Config = {
           },
           { text: 'systemd', link: '/v1/server/deployment/systemd' },
           { text: 'Docker', link: '/v1/server/deployment/docker' },
+          { text: 'TLS', link: '/v1/server/tls' },
           { text: 'Security & the Sandbox', link: '/v1/server/security' }
         ]
       },

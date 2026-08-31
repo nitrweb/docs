@@ -14,12 +14,15 @@
 
 **Nitr** is a [Rust](https://www.rust-lang.org/) web server that embeds
 [Lua 5.4](https://www.lua.org/) so you can write fast, efficient and safe
-smaller dynamic backends.
+lightweight dynamic backends.
 
 You write the request handling in Lua. Everything underneath — the HTTP
-layer, routing, TLS-adjacent concerns, compression, static files,
-SQLite, the outbound HTTP client, cryptography — is Rust, and it is
-already there.
+layer, routing, TLS termination, compression, static files, SQLite, the
+outbound HTTP client, cryptography — is Rust, and it is already there.
+
+The current release is **`0.0.0-beta.3`**, published on
+[crates.io](https://crates.io/crates/nitr-cli); the source lives at
+[github.com/nitrweb/nitr](https://github.com/nitrweb/nitr).
 
 > [!WARNING] Early development
 >
@@ -28,7 +31,7 @@ already there.
 > pre-1.0 a minor release may still break it. See
 > [Stability & Versioning](./stability).
 
-## An application in one file
+## A complete application
 
 ```lua
 -- app.lua
@@ -41,15 +44,23 @@ end)
 return app
 ```
 
+```toml
+# nitr.toml
+listen = "127.0.0.1:3000"
+handler_script = "app.lua"
+```
+
 ```sh
 nitr dev
 # → curl http://127.0.0.1:3000/hello/world
 #   {"hello":"world"}
 ```
 
-That is a complete Nitr application. No build step, no dependency
-manifest, no framework to install — the routing, the JSON encoder and
-the HTTP server all came with the binary.
+That is a complete Nitr application: one Lua file and the two lines of
+configuration that point at it. No build step, no dependency manifest,
+no framework to install — the routing, the JSON encoder and the HTTP
+server all came with the binary. [`nitr init`](./quick-start) writes
+both files, plus a database, tests and editor completions.
 
 ## Two ways to use Nitr
 
@@ -97,6 +108,15 @@ requests, compression, CORS preflights, multipart uploads that stream to
 disk without touching the Lua heap, 404/405 answered without entering
 Lua at all.
 
+**HTTPS without a proxy in front.** Three lines of `[tls]` terminate TLS
+in-process with rustls (the `ring` provider, a TLS 1.2 floor, ALPN
+pinned to what the server actually speaks). The certificate and key are
+read at startup, so a mismatched pair refuses to boot rather than
+failing every handshake on a port traffic already points at; a renewed
+certificate takes effect on `SIGHUP`. Fronting Nitr with a proxy is
+still perfectly good — it just is not the only way to serve HTTPS. See
+[TLS termination](./server/tls).
+
 **Editor completion for the whole surface.** `nitr init` writes
 `nitr-types.lua`, generated LuaCATS definitions covering every
 `nitr.*` API — completion, signatures and inline docs in any editor
@@ -104,11 +124,15 @@ running the Lua Language Server.
 
 ## Where to go next
 
-| I want to…                     | Go to                                    |
-| ------------------------------ | ---------------------------------------- |
-| See it running in five minutes | [Quick Start](./quick-start)             |
-| Install the binary             | [Download & Install](./download-install) |
-| Understand the execution model | [How Nitr works](./how-it-works)         |
-| Build an application           | [Server → Overview](./server/)           |
-| Look up a `nitr.*` function    | [Lua API reference](./api/)              |
-| Embed Nitr in a Rust program   | [Library → Overview](./library/)         |
+| I want to…                     | Go to                                        |
+| ------------------------------ | -------------------------------------------- |
+| See it running in five minutes | [Quick Start](./quick-start)                 |
+| Install the binary             | [Download & Install](./download-install)     |
+| Understand the execution model | [How Nitr works](./how-it-works)             |
+| Build an application           | [Server → Overview](./server/)               |
+| Serve HTTPS directly           | [TLS termination](./server/tls)              |
+| Store and check a password     | [Passwords & Basic auth](./server/passwords) |
+| Sign or verify a token         | [JWT](./server/jwt)                          |
+| Look up a `nitr.*` function    | [Lua API reference](./api/)                  |
+| Run working code               | [Examples](./examples)                       |
+| Embed Nitr in a Rust program   | [Library → Overview](./library/)             |
