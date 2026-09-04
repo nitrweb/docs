@@ -64,3 +64,64 @@
 .nitr-two-col>* {
     min-width: 0;
 }
+
+/* =====================================================================
+   Section atmosphere
+
+   Each section gets a faint wash rather than a flat fill: a wide,
+   low-opacity radial of brand colour, placed differently per section so
+   scrolling feels like moving through a space instead of past a stack
+   of boxes. Everything sits at z-index -1 inside the section's own
+   stacking context, so it never interferes with content or hover.
+   ===================================================================== */
+
+.nitr-hero,
+.nitr-section {
+    position: relative;
+    isolation: isolate;
+}
+
+.nitr-hero::before,
+.nitr-section::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+}
+
+/* Hero: light gathers behind the code window, top right. */
+.nitr-hero::before {
+    background: radial-gradient(58% 62% at 78% 26%, var(--nitr-glow) 0%, transparent 72%);
+}
+
+/* Soft sections: a wash from the top edge, so the boundary between
+   sections reads as a gradient rather than a hard line. */
+.nitr-section.nitr-alt::before {
+    background: radial-gradient(72% 100% at 50% 0%, var(--nitr-glow) 0%, transparent 68%);
+}
+
+/* Plain sections: the mirror image, gathering at the bottom, which keeps
+   consecutive sections from repeating the same shape. */
+.nitr-section:not(.nitr-alt)::before {
+    background: radial-gradient(72% 100% at 50% 100%, var(--nitr-glow-soft) 0%, transparent 68%);
+}
+
+/* Replace the flat divider with a hairline that fades out at both ends. */
+.nitr-section.nitr-alt {
+    border-block: 0;
+}
+
+.nitr-section.nitr-alt::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+            transparent,
+            var(--nitr-border) 22%,
+            var(--nitr-border) 78%,
+            transparent);
+    pointer-events: none;
+}

@@ -1,76 +1,145 @@
-/* Code window */
+/* =====================================================================
+   Code window
+
+   The chrome is dark in BOTH themes, so nothing here may take a colour
+   from the theme's text variables: in light mode `--nitr-text` is the
+   same ink as the title bar and the controls would vanish. Everything
+   reads from the fixed `--nitr-code-*` / `--nitr-syn-*` set instead.
+   ===================================================================== */
+
 .nitr-window {
     margin: 0;
     background: var(--nitr-code-bg);
     border: 1px solid var(--nitr-code-border);
-    border-radius: var(--nitr-radius);
+    border-radius: 10px;
     overflow: hidden;
+    box-shadow:
+        0 22px 48px -26px rgba(14, 12, 24, 0.7),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
+
+/* ── Title bar ────────────────────────────────────────────────────── */
 
 .nitr-window-bar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 6px 12px;
+    gap: 10px;
+    padding: 9px 12px;
     background: var(--nitr-win-header-bg);
     border-bottom: 1px solid var(--nitr-code-border);
     user-select: none;
 }
 
-.nitr-window-name {
-    font-family: var(--nitr-font-sans);
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--nitr-text-muted);
-    opacity: 0.8;
-}
-
-.nitr-window-controls {
+.nitr-window-dots {
     display: flex;
-    gap: 4px;
+    gap: 6px;
 }
 
-.nitr-win-btn {
-    background: transparent;
-    border: none;
-    color: var(--nitr-text);
-    font-size: 11px;
-    width: 24px;
-    height: 24px;
+/* Monochrome, not traffic lights: three tints of the window's own ink,
+   fading left to right. It reads as chrome instead of borrowing another
+   platform's colour language. */
+.nitr-window-dot {
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
+    background: var(--nitr-code-gutter);
 }
 
-.nitr-win-btn:hover {
-    background: var(--nitr-win-btn-hover);
+.nitr-window-dot:nth-child(1) {
+    opacity: 0.9;
 }
 
-.nitr-win-btn.nitr-win-close:hover {
-    background: var(--nitr-win-btn-close-hover);
-    color: #fff;
+.nitr-window-dot:nth-child(2) {
+    opacity: 0.6;
 }
+
+.nitr-window-dot:nth-child(3) {
+    opacity: 0.35;
+}
+
+.nitr-window-name {
+    margin-left: 2px;
+    font: 500 12.5px/1 var(--nitr-font-sans);
+    color: var(--nitr-code-fg);
+    opacity: 0.72;
+}
+
+.nitr-window-lang {
+    margin-left: auto;
+    padding: 2px 8px;
+    font: 700 0.68rem/1.6 var(--nitr-font-mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--nitr-syn-key);
+    background: rgba(187, 154, 247, 0.12);
+    border-radius: 999px;
+}
+
+/* ── Code area ────────────────────────────────────────────────────── */
 
 .nitr-code {
     margin: 0;
-    padding: 0.5rem 0.74rem;
+    padding: 10px 0;
     color: var(--nitr-code-fg);
-    font-size: 0.875rem;
+    font-size: 0.86rem;
     line-height: 1.7;
     overflow-x: auto;
     tab-size: 2;
     background: transparent;
     border: none;
     border-radius: 0;
+    scrollbar-width: thin;
+    /* Reserve room for N lines so a rotating set of samples keeps one
+       height; see CodeWindow's `minLines`. */
+    min-height: calc(var(--nitr-code-lines, 0) * 1.7em + 20px);
 }
 
-/* Syntax tokens */
+/* Install lines have no gutter, so they keep a plain inner padding. */
+.nitr-install-line .nitr-code {
+    padding: 0.5rem 0.25rem;
+}
+
+/* Numbered lines. Each line is its own block so the gutter can be a
+   CSS counter rather than a second column that has to stay in sync. */
+.nitr-code-lines {
+    display: block;
+    min-width: max-content;
+    counter-reset: line;
+}
+
+.nitr-line {
+    display: block;
+    counter-increment: line;
+    padding-right: 16px;
+    white-space: pre;
+    transition: background 0.12s ease;
+}
+
+.nitr-line::before {
+    content: counter(line);
+    display: inline-block;
+    width: 2.6em;
+    margin-right: 14px;
+    padding-right: 10px;
+    text-align: right;
+    color: var(--nitr-code-gutter);
+    user-select: none;
+}
+
+/* An empty line still needs height. */
+.nitr-line:empty::after {
+    content: "\00a0";
+}
+
+.nitr-line:hover {
+    background: var(--nitr-code-line-hl);
+}
+
+/* ── Syntax tokens ────────────────────────────────────────────────── */
+
 .nitr-t-comment {
     color: var(--nitr-syn-comment);
+    font-style: italic;
 }
 
 .nitr-t-key {
@@ -114,4 +183,31 @@
 
 .nitr-t-dim {
     color: var(--nitr-text-dim);
+}
+
+/* ── Compact variant (diagram nodes) ──────────────────────────────── */
+
+.nitr-window-compact .nitr-window-bar {
+    padding: 6px 10px;
+}
+
+.nitr-window-compact .nitr-window-dot {
+    width: 8px;
+    height: 8px;
+}
+
+.nitr-window-compact .nitr-window-name {
+    font-size: 11.5px;
+}
+
+.nitr-window-compact .nitr-code {
+    padding: 6px 0;
+    font-size: 0.76rem;
+    line-height: 1.6;
+    min-height: calc(var(--nitr-code-lines, 0) * 1.6em + 12px);
+}
+
+.nitr-window-compact .nitr-line::before {
+    width: 1.8em;
+    margin-right: 10px;
 }

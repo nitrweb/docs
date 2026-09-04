@@ -2,7 +2,7 @@
 import { h } from 'vue'
 import type { Theme } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
-import Home from './components/Home.vue'
+import Home from './components/Home/index.vue'
 import HomeNavItems from './components/HomeNavItems.vue'
 import './styles/index.css'
 

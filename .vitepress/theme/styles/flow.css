@@ -1,0 +1,446 @@
+/* =====================================================================
+   Interactive request flow (RequestFlow.vue)
+
+   A five-stage track the visitor fires requests down. The track is a
+   grid rather than an SVG so it can re-flow: horizontal on a desktop,
+   vertical on a phone, with the connectors rotating to match.
+   ===================================================================== */
+
+.nitr-rf {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/* ── Scenario picker ──────────────────────────────────────────────── */
+
+.nitr-rf-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.nitr-rf-hint {
+    margin: 0;
+    color: var(--nitr-text-muted);
+    font-size: 0.9rem;
+}
+
+.nitr-rf-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.nitr-rf-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 8px 13px;
+    font: 500 0.84rem/1.2 var(--nitr-font-mono);
+    color: var(--nitr-text);
+    background: var(--nitr-bg);
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+    cursor: pointer;
+    transition:
+        border-color 0.15s ease,
+        background 0.15s ease,
+        transform 0.15s ease;
+}
+
+.nitr-rf-chip:hover {
+    border-color: var(--nitr-accent);
+    transform: translateY(-1px);
+}
+
+.nitr-rf-chip.is-current {
+    border-color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+}
+
+.nitr-rf-method {
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    color: var(--nitr-accent);
+}
+
+.nitr-rf-path {
+    color: var(--nitr-text);
+}
+
+.nitr-rf-note {
+    font: 500 0.78rem/1.2 var(--nitr-font-sans);
+    color: var(--nitr-text-dim);
+    white-space: nowrap;
+}
+
+/* A rule, not a mid-dot: the glyph was near-invisible at this size. */
+.nitr-rf-note {
+    padding-left: 8px;
+    border-left: 1px solid var(--nitr-border);
+}
+
+/* Play / pause glyph at the head of each chip. */
+.nitr-rf-chip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-right: 1px;
+    align-self: center;
+    color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+    border-radius: 4px;
+}
+
+.nitr-rf-chip-icon svg {
+    width: 9px;
+    height: 9px;
+}
+
+.nitr-rf-chip.is-playing .nitr-rf-chip-icon {
+    color: var(--nitr-on-brand);
+    background: var(--nitr-accent);
+}
+
+/* ── The track ────────────────────────────────────────────────────── */
+
+.nitr-rf-track {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 26px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: none;
+}
+
+.nitr-rf-stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 15px 14px;
+    background: var(--nitr-bg);
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+    /* Dimmed until the request gets here. */
+    opacity: 0.55;
+    transition:
+        opacity 0.3s ease,
+        border-color 0.3s ease,
+        background 0.3s ease,
+        transform 0.3s ease;
+}
+
+.nitr-rf-stage.is-reached {
+    opacity: 1;
+}
+
+/* The stage the request is passing through right now. */
+.nitr-rf-stage.is-active {
+    border-color: var(--nitr-accent);
+    transform: translateY(-3px);
+}
+
+/* Where it was answered. */
+.nitr-rf-stage.is-stop {
+    opacity: 1;
+    border-color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+}
+
+/* Stages it never reached stay faded once the run settles. */
+.nitr-rf-stage.is-skipped {
+    opacity: 0.35;
+}
+
+.nitr-rf-stage-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nitr-rf-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 21px;
+    height: 21px;
+    font: 700 0.7rem/1 var(--nitr-font-mono);
+    /* Ink on light, white on dark — legible on the tinted chip either way. */
+    color: var(--nitr-text-strong);
+    background: var(--nitr-accent-soft);
+    border-radius: 6px;
+}
+
+.nitr-rf-stage.is-stop .nitr-rf-num {
+    color: var(--nitr-on-brand);
+    background: var(--nitr-accent);
+}
+
+.nitr-rf-title {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--nitr-text-strong);
+}
+
+.nitr-rf-lang {
+    margin-left: auto;
+    padding: 1px 7px;
+    font: 700 0.68rem/1.6 var(--nitr-font-mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+    border-radius: var(--nitr-radius);
+}
+
+.nitr-rf-sub {
+    margin: 0;
+    color: var(--nitr-text-muted);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.nitr-rf-badge {
+    align-self: flex-start;
+    margin-top: 2px;
+    padding: 2px 8px;
+    font: 700 0.74rem/1.6 var(--nitr-font-mono);
+    color: var(--nitr-on-brand);
+    background: var(--nitr-accent);
+    border-radius: var(--nitr-radius);
+}
+
+/* ── Connectors ───────────────────────────────────────────────────── */
+
+.nitr-rf-link {
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    width: 26px;
+    height: 2px;
+    margin-top: -1px;
+    background: var(--nitr-border);
+    overflow: hidden;
+}
+
+/* The travelling packet. */
+.nitr-rf-link::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 0;
+    background: var(--nitr-accent);
+    transition: width 0.4s ease;
+}
+
+.nitr-rf-link.is-flowing::after {
+    width: 100%;
+}
+
+/* Arrowhead, so direction reads even when nothing is moving. */
+.nitr-rf-link::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 6px;
+    height: 6px;
+    margin-top: -3px;
+    border-top: 2px solid var(--nitr-border);
+    border-right: 2px solid var(--nitr-border);
+    transform: rotate(45deg);
+    transform-origin: center;
+    z-index: 1;
+}
+
+.nitr-rf-link.is-flowing::before {
+    border-color: var(--nitr-accent);
+}
+
+/* ── Outcome panel ────────────────────────────────────────────────── */
+
+.nitr-rf-result {
+    min-height: 5.25rem;
+    padding: 15px 16px;
+    background: var(--nitr-bg);
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+}
+
+.nitr-rf-result-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 7px;
+}
+
+.nitr-rf-result-head strong {
+    color: var(--nitr-text-strong);
+    font-size: 0.96rem;
+}
+
+.nitr-rf-status {
+    padding: 2px 9px;
+    font: 700 0.82rem/1.5 var(--nitr-font-mono);
+    color: var(--nitr-on-brand);
+    border-radius: 6px;
+}
+
+.nitr-rf-status[data-kind="ok"] {
+    background: var(--nitr-ok);
+}
+
+.nitr-rf-status[data-kind="warn"] {
+    background: var(--nitr-accent);
+}
+
+.nitr-rf-status[data-kind="err"] {
+    background: #9f1239;
+}
+
+.nitr-rf-lua {
+    margin-left: auto;
+    padding: 2px 9px;
+    font: 600 0.76rem/1.6 var(--nitr-font-sans);
+    border-radius: var(--nitr-radius);
+    border: 1px solid var(--nitr-border);
+    color: var(--nitr-text-muted);
+}
+
+.nitr-rf-lua[data-hit="true"] {
+    color: var(--nitr-accent);
+    border-color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+}
+
+.nitr-rf-why {
+    margin: 0;
+    color: var(--nitr-text-muted);
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+
+.nitr-rf-idle {
+    color: var(--nitr-text-dim);
+}
+
+/* ── Score ────────────────────────────────────────────────────────── */
+
+.nitr-rf-score {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    color: var(--nitr-text-muted);
+    font-size: 0.85rem;
+}
+
+.nitr-rf-score b {
+    color: var(--nitr-text-strong);
+    font-family: var(--nitr-font-mono);
+}
+
+.nitr-rf-reset {
+    margin-left: auto;
+    padding: 5px 12px;
+    font: 600 0.78rem/1 var(--nitr-font-sans);
+    color: var(--nitr-text-muted);
+    background: transparent;
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.nitr-rf-reset:hover {
+    color: var(--nitr-accent);
+    border-color: var(--nitr-accent);
+}
+
+/* ── Responsive ───────────────────────────────────────────────────── */
+
+/* Landscape tablet: five across gets cramped, so wrap to a 3 + 2 grid
+   and turn the connectors off — the numbered stages carry the order. */
+@media (max-width: 1080px) {
+    .nitr-rf-track {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .nitr-rf-link {
+        display: none;
+    }
+}
+
+/* Portrait tablet and phone: one stage per row, connectors return as
+   vertical links between them. */
+@media (max-width: 720px) {
+    .nitr-rf-track {
+        grid-template-columns: 1fr;
+        gap: 22px;
+    }
+
+    .nitr-rf-link {
+        display: block;
+        top: 100%;
+        left: 50%;
+        width: 2px;
+        height: 22px;
+        margin-top: 0;
+        margin-left: -1px;
+    }
+
+    .nitr-rf-link::after {
+        inset-inline: 0;
+        width: auto;
+        height: 0;
+        transition: height 0.4s ease;
+    }
+
+    .nitr-rf-link.is-flowing::after {
+        height: 100%;
+    }
+
+    .nitr-rf-link::before {
+        top: auto;
+        right: 50%;
+        bottom: 0;
+        margin: 0 -3px 0 0;
+        transform: rotate(135deg);
+    }
+
+    .nitr-rf-chip {
+        font-size: 0.8rem;
+        padding: 7px 11px;
+    }
+
+    .nitr-rf-lua {
+        margin-left: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .nitr-rf-stage,
+    .nitr-rf-chip,
+    .nitr-rf-link::after {
+        transition: none;
+    }
+
+    .nitr-rf-stage.is-active,
+    .nitr-rf-chip:hover {
+        transform: none;
+    }
+}

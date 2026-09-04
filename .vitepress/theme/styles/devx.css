@@ -1,0 +1,398 @@
+/* =====================================================================
+   Developer experience (DevExperienceSection.vue)
+
+   A five-step stepper, a prose column, a terminal that types its
+   transcript, and a small "inner loop" strip underneath.
+   ===================================================================== */
+
+.nitr-dx {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+/* ── Stepper ──────────────────────────────────────────────────────── */
+
+.nitr-dx-steps {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.nitr-dx-step {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 13px;
+    font: 600 0.86rem/1.2 var(--nitr-font-sans);
+    color: var(--nitr-text-muted);
+    background: var(--nitr-surface);
+    border: 1px solid var(--nitr-border-soft);
+    border-radius: var(--nitr-radius);
+    cursor: pointer;
+    text-align: left;
+    transition:
+        color 0.18s ease,
+        border-color 0.18s ease,
+        background 0.18s ease,
+        transform 0.18s ease;
+}
+
+.nitr-dx-step:hover {
+    border-color: var(--nitr-accent);
+    transform: translateY(-1px);
+}
+
+.nitr-dx-step-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+    border-radius: var(--nitr-radius);
+    transition: background 0.18s ease, color 0.18s ease;
+}
+
+.nitr-dx-step-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.nitr-dx-step-num {
+    display: none;
+}
+
+.nitr-dx-step.is-active {
+    color: var(--nitr-text-strong);
+    border-color: var(--nitr-accent);
+    background: var(--nitr-bg);
+}
+
+.nitr-dx-step.is-active .nitr-dx-step-icon {
+    color: var(--nitr-on-brand);
+    background: var(--nitr-accent);
+}
+
+/* Steps already played dim slightly, so the row reads as progress. */
+.nitr-dx-step.is-done .nitr-dx-step-icon {
+    color: var(--nitr-accent);
+    background: transparent;
+    border: 1px solid var(--nitr-accent);
+}
+
+/* Progress bar along the bottom of the active step. */
+.nitr-dx-step::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--nitr-accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.25s ease;
+}
+
+.nitr-dx-step.is-active::after {
+    transform: scaleX(1);
+}
+
+/* ── Body ─────────────────────────────────────────────────────────── */
+
+.nitr-dx-body {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: clamp(22px, 4vw, 44px);
+    align-items: start;
+}
+
+.nitr-dx-text h3 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+}
+
+.nitr-dx-blurb {
+    margin: 10px 0 0;
+    color: var(--nitr-text-muted);
+    font-size: 0.98rem;
+    line-height: 1.6;
+}
+
+.nitr-dx-text .nitr-check-list {
+    margin-bottom: 0;
+}
+
+.nitr-dx-text .nitr-check-list li {
+    font-size: 0.92rem;
+    color: var(--nitr-text);
+}
+
+.nitr-dx-fade-enter-active,
+.nitr-dx-fade-leave-active {
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.nitr-dx-fade-enter-from {
+    opacity: 0;
+    transform: translateY(6px);
+}
+
+.nitr-dx-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-6px);
+}
+
+/* ── Terminal ─────────────────────────────────────────────────────── */
+
+.nitr-dx-term {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.nitr-terminal {
+    padding: 12px 14px;
+    font-size: 0.82rem;
+    line-height: 1.65;
+    /* Room for the longest transcript, measured in rows by the component
+       (blank lines count as 0.36 of one). Because it is expressed in em,
+       the reservation shrinks with the font at narrow widths instead of
+       leaving a tall empty box. */
+    min-height: calc(var(--nitr-term-rows, 14) * 1.65em + 8px);
+}
+
+.nitr-term-line {
+    display: block;
+    white-space: pre;
+    color: var(--nitr-code-fg);
+}
+
+.nitr-term-line[data-kind="cmd"] {
+    color: #fff;
+    font-weight: 600;
+}
+
+.nitr-term-line[data-kind="ok"] {
+    color: var(--nitr-syn-str);
+}
+
+.nitr-term-line[data-kind="err"] {
+    color: var(--nitr-syn-bool);
+}
+
+.nitr-term-line[data-kind="dim"] {
+    color: var(--nitr-text-dim);
+}
+
+.nitr-term-line[data-kind="blank"] {
+    height: 0.6em;
+}
+
+.nitr-term-cursor {
+    display: inline-block;
+    width: 7px;
+    height: 1em;
+    vertical-align: text-bottom;
+    background: var(--nitr-code-fg);
+    animation: nitr-blink 1s steps(2, start) infinite;
+}
+
+@keyframes nitr-blink {
+    to {
+        visibility: hidden;
+    }
+}
+
+.nitr-dx-line-enter-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.nitr-dx-line-enter-from {
+    opacity: 0;
+    transform: translateX(-4px);
+}
+
+.nitr-dx-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nitr-dx-replay {
+    padding: 5px 11px;
+    font: 600 0.8rem/1.4 var(--nitr-font-sans);
+    color: var(--nitr-text-muted);
+    background: transparent;
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.nitr-dx-replay:hover {
+    color: var(--nitr-accent);
+    border-color: var(--nitr-accent);
+}
+
+.nitr-dx-progress {
+    flex: 1;
+    height: 3px;
+    background: var(--nitr-border-soft);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.nitr-dx-progress i {
+    display: block;
+    height: 100%;
+    background: var(--nitr-accent);
+    transition: width 0.2s ease;
+}
+
+/* ── Inner loop ───────────────────────────────────────────────────── */
+
+.nitr-dx-loop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 13px 16px;
+    background: var(--nitr-surface);
+    border: 1px solid var(--nitr-border-soft);
+    border-radius: var(--nitr-radius);
+}
+
+.nitr-dx-loop-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px;
+    font: 600 0.82rem/1.2 var(--nitr-font-sans);
+    color: var(--nitr-text);
+    background: var(--nitr-bg);
+    border: 1px solid var(--nitr-border-soft);
+    border-radius: var(--nitr-radius);
+}
+
+.nitr-dx-loop-item svg {
+    width: 15px;
+    height: 15px;
+    color: var(--nitr-accent);
+}
+
+.nitr-dx-loop-item b {
+    font-family: var(--nitr-font-mono);
+    font-size: 0.74rem;
+    color: var(--nitr-accent);
+}
+
+.nitr-dx-loop-hot {
+    border-color: var(--nitr-accent);
+}
+
+/* A short line with an animated dash running along it. */
+.nitr-dx-loop-arrow {
+    position: relative;
+    width: 26px;
+    height: 2px;
+    background: var(--nitr-border);
+    overflow: hidden;
+}
+
+.nitr-dx-loop-arrow::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: -40%;
+    width: 40%;
+    background: var(--nitr-accent);
+}
+
+.nitr-motion .nitr-dx-loop-arrow::after {
+    animation: nitr-dash 1.6s linear infinite;
+}
+
+.nitr-motion .nitr-dx-loop-arrow:nth-of-type(2)::after {
+    animation-delay: 0.4s;
+}
+
+.nitr-motion .nitr-dx-loop-arrow:nth-of-type(3)::after {
+    animation-delay: 0.8s;
+}
+
+@keyframes nitr-dash {
+    to {
+        left: 100%;
+    }
+}
+
+.nitr-dx-loop-note {
+    flex-basis: 100%;
+    margin-top: 2px;
+    color: var(--nitr-text-muted);
+    font-size: 0.82rem;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+    .nitr-dx-steps {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .nitr-dx-step {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 10px;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 920px) {
+    .nitr-dx-body {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .nitr-dx-steps {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .nitr-dx-step-label {
+        font-size: 0.78rem;
+    }
+
+    .nitr-terminal {
+        font-size: 0.72rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .nitr-term-cursor,
+    .nitr-motion .nitr-dx-loop-arrow::after {
+        animation: none;
+    }
+
+    .nitr-dx-step:hover {
+        transform: none;
+    }
+
+    .nitr-dx-fade-enter-active,
+    .nitr-dx-fade-leave-active,
+    .nitr-dx-line-enter-active {
+        transition: none;
+    }
+}

@@ -15,3 +15,129 @@
     font-weight: 700;
     letter-spacing: -0.025em;
 }
+
+/* ── Example switcher ─────────────────────────────────────────────── */
+
+.nitr-hero-art {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Height is reserved by CodeWindow's `minLines` (the tallest sample's
+   line count), which scales with the font at every breakpoint — so no
+   fixed rem height is needed here, only the type size. */
+@media (min-width: 921px) {
+    .nitr-hero-art .nitr-code {
+        font-size: 0.82rem;
+    }
+}
+
+.nitr-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.nitr-tab {
+    position: relative;
+    padding: 5px 11px;
+    font: 600 0.8rem/1.4 var(--nitr-font-sans);
+    color: var(--nitr-text-muted);
+    background: transparent;
+    border: 1px solid var(--nitr-border);
+    border-radius: var(--nitr-radius);
+    cursor: pointer;
+    overflow: hidden;
+    transition:
+        color 0.15s ease,
+        border-color 0.15s ease,
+        background 0.15s ease;
+}
+
+.nitr-tab:hover {
+    color: var(--nitr-text-strong);
+    border-color: var(--nitr-accent);
+}
+
+.nitr-tab.is-active {
+    color: var(--nitr-accent);
+    border-color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+}
+
+/* A thin progress bar along the bottom of the active tab counts down
+   to the next example; it pauses with the rotation. */
+.nitr-tab::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 0;
+    background: var(--nitr-accent);
+}
+
+.nitr-motion .nitr-tab.is-active.is-counting::after {
+    animation: nitr-tab-progress var(--nitr-tab-ms, 7000ms) linear forwards;
+}
+
+.nitr-motion .nitr-tab.is-active.is-counting.is-paused::after {
+    animation-play-state: paused;
+}
+
+@keyframes nitr-tab-progress {
+    from {
+        width: 0;
+    }
+
+    to {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nitr-motion .nitr-tab.is-active.is-counting::after {
+        animation: none;
+    }
+}
+
+/* Play/pause sits beside the tabs and shares their height. */
+.nitr-tabs-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.nitr-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 27px;
+    height: 27px;
+    color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+    border: 1px solid transparent;
+    border-radius: var(--nitr-radius);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.nitr-play svg {
+    width: 11px;
+    height: 11px;
+}
+
+.nitr-play:hover {
+    border-color: var(--nitr-accent);
+    background: var(--nitr-accent);
+    color: var(--nitr-on-brand);
+}
+
+.nitr-tabs-row .nitr-tabs {
+    flex: 1;
+}

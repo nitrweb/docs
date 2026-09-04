@@ -170,6 +170,10 @@
   --nitr-accent-soft: rgba(139, 92, 246, 0.12);
   --nitr-ok: #16a34a;
 
+  /* Section atmosphere: a barely-there wash of brand colour. */
+  --nitr-glow: rgba(124, 58, 237, 0.07);
+  --nitr-glow-soft: rgba(124, 58, 237, 0.045);
+
   /* Terminal / code windows are dark in both themes */
   --nitr-code-bg: #0d0b13;
   --nitr-code-bar: #16121f;
@@ -180,13 +184,17 @@
   --nitr-win-btn-hover: #2c2439;
   --nitr-win-btn-close-hover: #9f1239;
 
-  --nitr-syn-comment: #7b7389;
-  --nitr-syn-key: #c4b5fd;
-  --nitr-syn-str: #86efac;
-  --nitr-syn-num: #fda4af;
-  --nitr-syn-bool: #f472b6;
-  --nitr-syn-cmd: #a78bfa;
-  --nitr-syn-flag: #8b5cf6;
+  /* Editor palette. The windows are dark in both themes, so this one set
+     serves both; tuned for contrast on the violet-ink background. */
+  --nitr-code-gutter: #4f4a66;
+  --nitr-code-line-hl: rgba(139, 92, 246, 0.09);
+  --nitr-syn-comment: #6f6b88;
+  --nitr-syn-key: #bb9af7;
+  --nitr-syn-str: #9ece6a;
+  --nitr-syn-num: #ff9e64;
+  --nitr-syn-bool: #f7768e;
+  --nitr-syn-cmd: #7dcfff;
+  --nitr-syn-flag: #7aa2f7;
   --nitr-syn-url: #e879f9;
 }
 
@@ -217,6 +225,9 @@ html.dark .nitr-page,
   --nitr-accent-soft: rgba(167, 139, 250, 0.14);
   --nitr-ok: #4ade80;
 
+  --nitr-glow: rgba(167, 139, 250, 0.10);
+  --nitr-glow-soft: rgba(167, 139, 250, 0.06);
+
   --nitr-code-bg: #0d0b13;
   --nitr-code-bar: #16121f;
   --nitr-code-border: #2c2439;
@@ -226,12 +237,16 @@ html.dark .nitr-page,
   --nitr-win-btn-hover: #2c2439;
   --nitr-win-btn-close-hover: #9f1239;
 
-  --nitr-syn-comment: #7b7389;
-  --nitr-syn-key: #c4b5fd;
-  --nitr-syn-str: #86efac;
-  --nitr-syn-num: #fda4af;
-  --nitr-syn-bool: #f472b6;
-  --nitr-syn-cmd: #a78bfa;
-  --nitr-syn-flag: #8b5cf6;
+  /* Editor palette. The windows are dark in both themes, so this one set
+     serves both; tuned for contrast on the violet-ink background. */
+  --nitr-code-gutter: #4f4a66;
+  --nitr-code-line-hl: rgba(139, 92, 246, 0.09);
+  --nitr-syn-comment: #6f6b88;
+  --nitr-syn-key: #bb9af7;
+  --nitr-syn-str: #9ece6a;
+  --nitr-syn-num: #ff9e64;
+  --nitr-syn-bool: #f7768e;
+  --nitr-syn-cmd: #7dcfff;
+  --nitr-syn-flag: #7aa2f7;
   --nitr-syn-url: #e879f9;
 }

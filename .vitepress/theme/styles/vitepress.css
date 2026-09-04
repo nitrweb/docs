@@ -33,3 +33,11 @@
         margin: auto;
     }
 }
+
+/* The landing page ships its own footer (SiteFooter.vue), so VitePress's
+   would repeat the licence and copyright immediately below it. Hide it
+   there only — doc pages still want it. `.nitr-page` exists on the
+   landing page and nowhere else. */
+body:has(.nitr-page) .VPFooter {
+    display: none;
+}

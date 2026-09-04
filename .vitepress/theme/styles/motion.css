@@ -1,0 +1,71 @@
+/* =====================================================================
+   Motion
+
+   Two rules govern everything here:
+
+   1. Nothing is hidden unless JavaScript is running. The reveal styles
+      are scoped under `.nitr-motion`, a class the page adds on mount —
+      so with JS off (or before hydration) the page renders fully
+      visible instead of blank.
+   2. Everything stops under `prefers-reduced-motion`. The reveal
+      collapses to "already visible"; the loops simply do not run.
+   ===================================================================== */
+
+/* ── Scroll reveal ────────────────────────────────────────────────── */
+
+.nitr-motion [data-reveal] {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+        opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    /* --i is the stagger index, set per element in the template. */
+    transition-delay: calc(var(--i, 0) * 65ms);
+    will-change: opacity, transform;
+}
+
+.nitr-motion [data-reveal].is-in {
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+}
+
+/* ── Code crossfade ───────────────────────────────────────────────── */
+
+/* When a code window's content changes (the hero example rotation),
+   the old sample slides up and out and the new one settles in from
+   just below, so the switch reads as a page turn rather than a flash. */
+.nitr-code-fade-enter-active,
+.nitr-code-fade-leave-active {
+    transition:
+        opacity 0.28s ease,
+        transform 0.28s ease;
+}
+
+.nitr-code-fade-enter-from {
+    opacity: 0;
+    transform: translateY(6px);
+}
+
+.nitr-code-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-6px);
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+
+    .nitr-motion [data-reveal],
+    .nitr-motion [data-reveal].is-in {
+        opacity: 1;
+        transform: none;
+        transition: none;
+        will-change: auto;
+    }
+
+    .nitr-code-fade-enter-active,
+    .nitr-code-fade-leave-active {
+        transition: none;
+    }
+}

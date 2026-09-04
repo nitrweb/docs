@@ -10,6 +10,10 @@
 @import "./card.css";
 @import "./install.css";
 @import "./feature.css";
+@import "./diagram.css";
+@import "./flow.css";
+@import "./devx.css";
+@import "./motion.css";
 @import "./footer.css";
 @import "./vitepress.css";
 
@@ -140,12 +144,24 @@
 
 
 
-/* Responsive */
-@media (max-width: 920px) {
-    .nitr-grid-4 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+/* =====================================================================
+   Responsive
 
+   Four steps rather than two: a 4-up card grid halving straight to 2-up
+   at 920px left an awkward stretch on landscape tablets, where the
+   cards were wide enough to look empty and the two-column sections were
+   still cramped.
+   ===================================================================== */
+
+/* Small laptops / landscape tablets: 4-up is too thin, 2-up too fat. */
+@media (max-width: 1100px) {
+    .nitr-grid-4 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+/* Portrait tablets: the split sections stack. */
+@media (max-width: 920px) {
     .nitr-hero-grid {
         grid-template-columns: 1fr;
     }
@@ -153,21 +169,45 @@
     .nitr-two-col {
         grid-template-columns: 1fr;
     }
+
+    /* In a stacked two-column section the prose must come first, even
+       where the source puts the code window first for the desktop
+       zig-zag (the "Extend" section does). */
+    .nitr-two-col > .nitr-two-col-code {
+        order: 2;
+    }
+}
+
+@media (max-width: 860px) {
+    .nitr-grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 680px) {
     .nitr-nav {
         display: none;
     }
+
+    /* Long code samples are the main horizontal-overflow risk on a
+       phone; shrink the type before letting them scroll. */
+    .nitr-code {
+        font-size: 0.8rem;
+    }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 560px) {
     .nitr-grid-4 {
         grid-template-columns: 1fr;
     }
 
     .nitr-actions .nitr-btn {
-        flex: 1;
+        flex: 1 1 auto;
+    }
+
+    .nitr-meta {
+        gap: 8px 16px;
+        font-size: 0.84rem;
     }
 
     .nitr-install-line {
@@ -183,6 +223,7 @@
     .nitr-copy-btn {
         width: 100%;
         justify-content: center;
+        margin-left: 0;
     }
 }
 
@@ -194,3 +235,41 @@
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ── Two-column sections (Configuration, Extensible) ─────────────── */
+
+/* The prose column gets the same head rhythm as every other section
+   and a small callout under its list, so the two zig-zag sections read
+   as one family rather than two ad-hoc layouts. */
+.nitr-two-col .nitr-kicker {
+    margin-bottom: 8px;
+}
+
+.nitr-two-col h2 {
+    font-size: clamp(1.5rem, 2.8vw, 2rem);
+    font-weight: 700;
+}
+
+.nitr-callout {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 0 0 22px;
+    padding: 12px 14px;
+    color: var(--nitr-text-muted);
+    font-size: 0.88rem;
+    line-height: 1.5;
+    background: var(--nitr-surface);
+    border: 1px solid var(--nitr-border-soft);
+    border-left: 3px solid var(--nitr-accent);
+    border-radius: var(--nitr-radius);
+}
+
+.nitr-callout-icon {
+    flex: none;
+    width: 17px;
+    height: 17px;
+    margin-top: 2px;
+    color: var(--nitr-accent);
+}
+

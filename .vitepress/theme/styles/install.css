@@ -31,17 +31,20 @@
     flex: none;
     padding: 8px 12px;
     font: 600 0.82rem/1 var(--nitr-font-sans);
-    color: var(--nitr-text-muted);
+    /* Sits on the always-dark code bar, so it takes the code
+       foreground rather than the theme's muted ink — which in light
+       mode would be near-black on near-black. */
+    color: var(--nitr-code-fg);
     background: var(--nitr-code-bar);
     border: 1px solid var(--nitr-code-border);
-    border-radius: 7px;
+    border-radius: var(--nitr-radius);
     cursor: pointer;
     transition: color 0.15s, border-color 0.15s;
     margin-left: auto;
 }
 
 .nitr-copy-btn:hover {
-    color: var(--nitr-text-strong);
+    color: #fff;
     border-color: var(--nitr-accent);
 }
 

@@ -1,0 +1,231 @@
+/* =====================================================================
+   Lifecycle diagram (LifecycleFlow.vue)
+
+   config.lua → app.lua → your handler, each a small code window with a
+   frequency badge above and a one-line summary below, joined by drawn
+   connectors. It is HTML rather than an SVG so it re-flows vertically on
+   a phone; only the connectors are SVG, and they rotate to follow.
+
+   Everything animates once, when the block scrolls into view: the root
+   carries `data-reveal`, and every rule below keys off `.is-in` (see
+   useReveal.ts and motion.css).
+   ===================================================================== */
+
+/* A second heading inside the same section, after a diagram. */
+.nitr-head-mid {
+    margin-block: 2.75rem 1.5rem;
+}
+
+.nitr-lc {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+}
+
+/* ── Nodes ────────────────────────────────────────────────────────── */
+
+.nitr-lc-node {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.nitr-lc-when {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    align-self: flex-start;
+    padding: 3px 9px;
+    font: 700 0.72rem/1.6 var(--nitr-font-sans);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--nitr-accent);
+    background: var(--nitr-accent-soft);
+    border-radius: var(--nitr-radius);
+}
+
+/* Frequency as a row of dots rather than a "×1" / "×∞" glyph: legible
+   at this size, and the growing run reads as "more often" on sight. */
+.nitr-lc-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 2px;
+}
+
+.nitr-lc-count i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--nitr-accent);
+}
+
+/* The "every request" run trails off instead of implying a count. */
+.nitr-lc-count.is-many i:nth-child(n + 5) {
+    opacity: 0.55;
+}
+
+.nitr-lc-count.is-many i:nth-child(n + 7) {
+    opacity: 0.28;
+}
+
+.nitr-lc-title {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--nitr-text-strong);
+}
+
+.nitr-lc-sum {
+    margin: 0;
+    color: var(--nitr-text-muted);
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+
+/* ── Connectors ───────────────────────────────────────────────────── */
+
+.nitr-lc-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Sits level with the code windows, below the badge and title. */
+    padding-top: 5.4rem;
+    color: var(--nitr-accent);
+}
+
+.nitr-lc-link svg {
+    width: 42px;
+    height: 24px;
+    overflow: visible;
+}
+
+.nitr-lc-link path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* The line draws itself; the arrowhead appears once it has arrived. */
+.nitr-lc-line {
+    stroke-dasharray: 60;
+    stroke-dashoffset: 0;
+}
+
+.nitr-lc-head {
+    opacity: 1;
+}
+
+/* ── Entrance animation ───────────────────────────────────────────── */
+
+.nitr-motion .nitr-lc .nitr-lc-node {
+    opacity: 0;
+    transform: translateY(10px);
+}
+
+.nitr-motion .nitr-lc .nitr-lc-line {
+    stroke-dashoffset: 60;
+}
+
+.nitr-motion .nitr-lc .nitr-lc-head {
+    opacity: 0;
+}
+
+.nitr-motion .nitr-lc.is-in .nitr-lc-node {
+    animation: nitr-lc-node 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.nitr-motion .nitr-lc.is-in .nitr-lc-line {
+    animation: nitr-lc-draw 0.45s ease-out both;
+}
+
+.nitr-motion .nitr-lc.is-in .nitr-lc-head {
+    animation: nitr-lc-fade 0.25s ease-out both;
+}
+
+/* Left to right: node, link, node, link, node. */
+.nitr-motion .nitr-lc.is-in .nitr-lc-2 { animation-delay: 0.55s; }
+.nitr-motion .nitr-lc.is-in .nitr-lc-3 { animation-delay: 1.1s; }
+.nitr-motion .nitr-lc.is-in .nitr-lc-l1 .nitr-lc-line { animation-delay: 0.3s; }
+.nitr-motion .nitr-lc.is-in .nitr-lc-l1 .nitr-lc-head { animation-delay: 0.7s; }
+.nitr-motion .nitr-lc.is-in .nitr-lc-l2 .nitr-lc-line { animation-delay: 0.85s; }
+.nitr-motion .nitr-lc.is-in .nitr-lc-l2 .nitr-lc-head { animation-delay: 1.25s; }
+
+@keyframes nitr-lc-node {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes nitr-lc-draw {
+    from {
+        stroke-dashoffset: 60;
+    }
+
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+@keyframes nitr-lc-fade {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* ── Responsive ───────────────────────────────────────────────────── */
+
+@media (max-width: 920px) {
+    .nitr-lc {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .nitr-lc-link {
+        padding-top: 0;
+    }
+
+    .nitr-lc-link svg {
+        transform: rotate(90deg);
+        width: 42px;
+        height: 24px;
+        margin-block: 8px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .nitr-motion .nitr-lc .nitr-lc-node,
+    .nitr-motion .nitr-lc.is-in .nitr-lc-node {
+        opacity: 1;
+        transform: none;
+        animation: none;
+    }
+
+    .nitr-motion .nitr-lc .nitr-lc-line,
+    .nitr-motion .nitr-lc.is-in .nitr-lc-line {
+        stroke-dashoffset: 0;
+        animation: none;
+    }
+
+    .nitr-motion .nitr-lc .nitr-lc-head,
+    .nitr-motion .nitr-lc.is-in .nitr-lc-head {
+        opacity: 1;
+        animation: none;
+    }
+}

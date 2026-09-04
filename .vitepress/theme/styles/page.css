@@ -49,3 +49,30 @@
     outline-offset: 2px;
     border-radius: 4px;
 }
+
+/* =====================================================================
+   Inline code in prose
+
+   One rule for every paragraph, list item and heading on the landing
+   page, so a CLI command reads the same wherever it appears. Scoped to
+   text elements, which is what keeps it away from the code windows —
+   those are `pre > code` and match none of these.
+   ===================================================================== */
+
+.nitr-page :is(p, li, h3, span) > code,
+.nitr-page :is(p, li, h3) code {
+    padding: 1px 6px;
+    font-family: var(--nitr-font-mono);
+    font-size: 0.86em;
+    color: var(--nitr-text);
+    background: var(--nitr-surface-2);
+    border: 1px solid var(--nitr-border-soft);
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+/* Inside an already-tinted callout, sit on the page background so the
+   token stays distinguishable from its container. */
+.nitr-page .nitr-callout code {
+    background: var(--nitr-bg);
+}
