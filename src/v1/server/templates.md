@@ -55,6 +55,14 @@ The name is relative to `[templating] dir`, subdirectories included:
 nitr.template:render("emails/welcome.j2", { user = user })
 ```
 
+> [!WARNING] `render` yields — call it from a handler
+>
+> Loading a template reads a file and rendering is CPU work, so both run
+> off the async worker. That makes `render` **asynchronous**, like the
+> argon2 password calls: it works in a handler or middleware, and fails
+> with an explanatory error at the top level of a handler script, which
+> runs outside the async executor.
+
 ## Template syntax
 
 Standard Jinja2. The essentials:
@@ -170,6 +178,29 @@ The `safe` filter **disables that protection**:
 >
 > A rendered Markdown document you sanitised, yes. A raw field from a
 > form, or a database row that originated in one, never.
+
+### The one way escaping turns off by itself
+
+Escaping follows the **template's name**. Everything escapes, except a
+name whose extension — after stripping a trailing `.j2`, `.jinja` or
+`.jinja2` — is one of `.txt`, `.text`, `.md`, `.csv`, `.json`, `.yaml`,
+`.yml` or `.toml`. Those render verbatim, because HTML-escaping a CSV
+column or a JSON string is not an improvement.
+
+| Template name    | Auto-escaping |
+| ---------------- | ------------- |
+| `page.j2`        | on            |
+| `page.html.j2`   | on            |
+| `emails/body.j2` | on            |
+| `mail.txt.j2`    | **off**       |
+| `export.csv`     | **off**       |
+| `payload.json`   | **off**       |
+
+So a template that emits HTML must not be named `.txt.j2` for the sake
+of an editor's syntax highlighting — and a template rendering into an
+email body, a CSV or a JSON document should be, so that quoting is not
+mangled. Escape a value explicitly with `| e` where a plain-text
+template genuinely needs it.
 
 ## Passing data
 

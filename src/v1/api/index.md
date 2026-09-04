@@ -79,6 +79,15 @@ codec:
 | `nitr.json:encode(value) -> string` | Encodes a value as JSON.               |
 | `nitr.json:decode(s) -> any`        | Decodes JSON; errors on invalid input. |
 
+> [!NOTE] A string that is not UTF-8 is refused, not re-shaped
+>
+> JSON strings are text. A Lua string holding raw bytes —
+> `nitr.crypto.random_bytes(16)`, a binary column — **raises** rather
+> than encoding as an array of byte values, as a key or as a value.
+> Encode it first with [`nitr.base64`](#nitr-base64). The same rule
+> covers every path that serializes a Lua value: JSON responses,
+> `nitr.cache`, sessions, JWT claims, SSE data and `fetch` bodies.
+
 ### `nitr.text`
 
 `nitr.text(body, status?) -> nitr.Response` — _(std feature: `http`)_
@@ -129,7 +138,9 @@ version, an `updated_at` — to pair with
 `nitr.sse(fn) -> nitr.Response` — _(std feature: `http`)_
 
 A Server-Sent Events stream: `fn(send)` calls `send(event, data)`; table
-data is JSON-encoded. See [Streaming & SSE](../server/streaming).
+data is JSON-encoded. An event **name** containing a line break raises —
+it would frame a second event. See
+[Streaming & SSE](../server/streaming).
 
 ---
 
@@ -213,10 +224,10 @@ _(std feature: `crypto`)_ — HMAC JWTs (HS256 / HS384 / HS512).
 Asymmetric algorithms are deliberately absent, and so is `alg: none`.
 See [JWT](../server/jwt).
 
-|                                                                       |                                                                                                              |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `nitr.crypto.jwt.sign(claims, key, opts?) -> string`                  | Signs a token. `opts` takes `alg` (default `"HS256"`).                                                       |
-| `nitr.crypto.jwt.verify(token, key, opts) -> table\|nil, string\|nil` | The claims, or `nil` plus a short reason. `opts` **requires** `algorithms`; `leeway` in seconds is optional. |
+|                                                                       |                                                                                                                                              |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nitr.crypto.jwt.sign(claims, key, opts?) -> string`                  | Signs a token. `opts` takes `alg` (default `"HS256"`).                                                                                       |
+| `nitr.crypto.jwt.verify(token, key, opts) -> table\|nil, string\|nil` | The claims, or `nil` plus a short reason. `opts` **requires** `algorithms`; `leeway` in seconds is optional and must be a finite number ≥ 0. |
 
 > [!WARNING] What `verify` does **not** check
 >
@@ -291,6 +302,15 @@ Here `cookie` is the **name** and `cookie_opts` the attributes.
 [`nitr.session`](#nitr-session) below spells the pair the other way
 round — the two asides under it cover both.
 
+> [!NOTE] A browser-flagged cross-site request is refused before the token
+>
+> An unsafe request carrying `Sec-Fetch-Site: cross-site` is rejected
+> without looking at the token at all — a double-submit token proves the
+> sender could read _a_ cookie, not that the cookie was yours. The one
+> exception is `cookie_opts.same_site = "None"`, which is the setting
+> that _means_ to accept cross-site posts. Clients too old to send the
+> header fall back to the token alone.
+
 ### `nitr.session`
 
 `nitr.session(req, opts) -> nitr.Session` — _(std feature: `http`)_
@@ -342,14 +362,29 @@ lives in the cookie, so there is no store to provision. See
 _(std feature: `db`)_ — SQLite (`[database] path`): WAL, busy timeout,
 foreign keys on. See [Database](../server/database).
 
-|                                                     |                                                                                                            |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `nitr.db:execute(sql, params?) -> integer`          | Runs a statement; returns the affected row count.                                                          |
-| `nitr.db:query(sql, params?) -> table[]`            | All rows, each a column→value table.                                                                       |
-| `nitr.db:query_row(sql, params?) -> table\|nil`     | The first row, or `nil`.                                                                                   |
-| `nitr.db:query_one(sql, params?) -> any`            | The first column of the first row.                                                                         |
-| `nitr.db:transaction(fn) -> any`                    | Runs `fn(tx)` atomically; rolls back on error. Nestable via savepoints. Use `tx`, not the outer `nitr.db`. |
-| `nitr.db:query_async(sql, params?, kind?) -> table` | An unsent query, to run alongside fetches in `nitr.await_all`.                                             |
+|                                                     |                                                                                                                                 |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `nitr.db:execute(sql, params?) -> integer`          | Runs a statement; returns the affected row count.                                                                               |
+| `nitr.db:query(sql, params?) -> table[]`            | All rows, each a column→value table. A result larger than `[database] max_rows` **raises** rather than truncating.              |
+| `nitr.db:query_row(sql, params?) -> table\|nil`     | The first row as a column→value table, or `nil` when the query returns no rows.                                                 |
+| `nitr.db:query_one(sql, params?) -> table`          | The row of a query that must return **exactly one** — also a column→value table. Raises when it returns none, or more than one. |
+| `nitr.db:transaction(fn) -> any`                    | Runs `fn(tx)` atomically; rolls back on error. Nestable via savepoints. Use `tx`, not the outer `nitr.db`.                      |
+| `nitr.db:query_async(sql, params?, kind?) -> table` | An unsent query, to run alongside fetches in `nitr.await_all`.                                                                  |
+
+> [!WARNING] `query_one` returns a **row**, not a scalar
+>
+> A single-column query still answers a table, so read the column by
+> name — and alias an expression, which SQLite would otherwise name
+> after its own text:
+>
+> ```lua
+> local row = nitr.db:query_one("SELECT count(*) AS n FROM users")
+> local count = row.n
+> ```
+>
+> Use it where "exactly one row" is the invariant you want enforced.
+> Where "none" is an ordinary answer, use `query_row` and test for
+> `nil`.
 
 ### `nitr.cache`
 
@@ -357,14 +392,26 @@ _(std feature: `cache`)_ — The bounded TTL + LRU cache shared by every
 state. Entries are plain data; per-process, so **not** a session store.
 See [Cache](../server/cache).
 
-|                                            |                                                            |
-| ------------------------------------------ | ---------------------------------------------------------- |
-| `nitr.cache:get(key) -> any`               | The cached value, or `nil`.                                |
-| `nitr.cache:set(key, value, ttl?)`         | Stores a value; `ttl` in seconds.                          |
-| `nitr.cache:delete(key)`                   | Removes a key.                                             |
-| `nitr.cache:clear()`                       | Empties the cache.                                         |
-| `nitr.cache:remember(key, ttl, fn) -> any` | The cached value, or `fn()`'s result, stored and returned. |
-| `nitr.cache:stats() -> table`              | Hit / miss / entry counters.                               |
+|                                              |                                                                                                      |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `nitr.cache:get(key) -> any`                 | The cached value, or `nil`.                                                                          |
+| `nitr.cache:set(key, value, opts?)`          | Stores a value. `opts` is a **table**: `{ ttl = seconds }`.                                          |
+| `nitr.cache:delete(key) -> boolean`          | Removes a key; answers whether it was there.                                                         |
+| `nitr.cache:clear()`                         | Empties the cache.                                                                                   |
+| `nitr.cache:remember(key, opts?, fn) -> any` | The cached value, or `fn()`'s result, stored and returned. Call it `(key, fn)` or `(key, opts, fn)`. |
+| `nitr.cache:stats() -> table`                | Hit / miss / entry counters.                                                                         |
+
+> [!WARNING] The TTL travels in a table, not as a bare number
+>
+> ```lua
+> nitr.cache:set("user:42", user, { ttl = 600 })          -- ✅
+> nitr.cache:remember("user:42", { ttl = 600 }, load)     -- ✅
+> nitr.cache:remember("user:42", load)                    -- ✅ [cache] default_ttl
+> ```
+>
+> A bare integer in either position raises. Keys are bounded to 1024
+> bytes, and a key counts toward `[cache] max_bytes` alongside its value
+> — hash a long, request-derived key before using it.
 
 ### `nitr.validate`
 
@@ -389,19 +436,42 @@ An outbound HTTP request — SSRF-guarded, redirect-checked. Options:
 
 ### `nitr.await_all`
 
-`nitr.await_all(handles) -> table` — _(std feature: `fetch`)_
+`nitr.await_all(...) -> ...` — _(std feature: `fetch`)_
 
-Runs fetch handles (and `db:query_async` handles) concurrently; returns
-their results in order.
+Runs fetch handles (and `db:query_async` handles) concurrently. Handles
+are passed as **separate arguments** and the results come back as
+**multiple values**, in the same order:
+
+```lua
+local profile, stats = nitr.await_all(
+    nitr.fetch("GET", profile_url),
+    nitr.fetch("GET", stats_url)
+)
+```
+
+Capped by `[fetch] max_concurrent`.
 
 ### `nitr.template`
 
 _(std feature: `template`)_ — The minijinja template engine, loading
 from `[templating] dir`. See [Templates](../server/templates).
 
-|                                               |                     |
-| --------------------------------------------- | ------------------- |
-| `nitr.template:render(name, data?) -> string` | Renders a template. |
+|                                               |                                                                                          |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `nitr.template:render(name, data?) -> string` | **Async.** Renders a template. HTML auto-escaping is on unless the name says plain text. |
+
+> [!NOTE] Auto-escaping follows the template's name
+>
+> Every template escapes by default. The exception is a name whose
+> extension — after stripping a trailing `.j2`, `.jinja` or `.jinja2` —
+> is `.txt`, `.text`, `.md`, `.csv`, `.json`, `.yaml`, `.yml` or
+> `.toml`; those render verbatim, because escaping HTML into a CSV is
+> not an improvement. So `mail.txt.j2` does **not** escape, and
+> `page.j2` does.
+>
+> `render` also loads and renders off the async worker, which makes it
+> **yielding**: call it from a handler or middleware, never from a
+> script's top level.
 
 ---
 
@@ -470,12 +540,12 @@ filtered by `[env] allow`, and `NITR_*` internals are never visible.
 Getters only: no setter, no enumeration. See
 [Environment variables](../server/configuration/env#the-nitr-env-builtin).
 
-|                                                  |                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------------------- |
-| `nitr.env.get(name, default?) -> string\|nil`    | Reads one variable.                                                       |
-| `nitr.env.has(name) -> boolean`                  | Whether it is set **and readable**; a policy-hidden name reports `false`. |
-| `nitr.env.number(name, default?) -> number\|nil` | Reads and parses a number; unset or unparseable answers the default.      |
-| `nitr.env.bool(name, default?) -> boolean\|nil`  | Reads a flag: `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`, any case. |
+|                                                  |                                                                                                                                             |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nitr.env.get(name, default?) -> string\|nil`    | Reads one variable.                                                                                                                         |
+| `nitr.env.has(name) -> boolean`                  | Whether it is set **and readable**; a policy-hidden name reports `false`.                                                                   |
+| `nitr.env.number(name, default?) -> number\|nil` | Reads and parses a number; unset or unparseable answers the default.                                                                        |
+| `nitr.env.bool(name, default?) -> boolean\|nil`  | Reads a flag: `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`, any case. An **empty** value is `false`; anything else answers the default. |
 
 ---
 

@@ -290,7 +290,7 @@ return function(app)
                  VALUES (?, ?, ?, ?, ?)",
                 { data.title, data.body, data.status or "draft", req.user, nitr.time.now() }
             )
-            local article_id = tx:query_one("SELECT last_insert_rowid()")
+            local article_id = tx:query_one("SELECT last_insert_rowid() AS id").id
             for _, tag in ipairs(data.tags or {}) do
                 tx:execute(
                     "INSERT INTO article_tags (article_id, tag) VALUES (?, ?)",

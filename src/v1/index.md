@@ -20,7 +20,7 @@ You write the request handling in Lua. Everything underneath — the HTTP
 layer, routing, TLS termination, compression, static files, SQLite, the
 outbound HTTP client, cryptography — is Rust, and it is already there.
 
-The current release is **`0.0.0-beta.3`**, published on
+The current release is **`0.0.0-beta.4`**, published on
 [crates.io](https://crates.io/crates/nitr-cli); the source lives at
 [github.com/nitrweb/nitr](https://github.com/nitrweb/nitr).
 
@@ -93,9 +93,12 @@ there is no global interpreter. See [How Nitr works](./how-it-works).
 **Safe by default, not by discipline.** Every script runs with `io` and
 `os` excluded from the standard library, an 8 MiB memory ceiling, a
 30-second execution budget enforced by an instruction-count hook (so
-`while true do end` is stopped, not merely discouraged), and `require`
-confined to the scripts directory. See [Security & the
-sandbox](./server/security).
+`while true do end` is stopped, not merely discouraged — and `pcall`
+cannot swallow the deadline), `require` confined to the scripts
+directory, and every chunk compiled from source, never from bytecode.
+Templates escape by default, static mounts hide dotfiles, and a
+`nitr.toml` that would serve its own scripts refuses to boot. See
+[Security & the sandbox](./server/security).
 
 **One namespace, no collisions.** Everything Nitr gives Lua lives under
 the global `nitr` table — `nitr.json`, `nitr.db`, `nitr.crypto`. Nitr
@@ -111,9 +114,10 @@ Lua at all.
 **HTTPS without a proxy in front.** Three lines of `[tls]` terminate TLS
 in-process with rustls (the `ring` provider, a TLS 1.2 floor, ALPN
 pinned to what the server actually speaks). The certificate and key are
-read at startup, so a mismatched pair refuses to boot rather than
-failing every handshake on a port traffic already points at; a renewed
-certificate takes effect on `SIGHUP`. Fronting Nitr with a proxy is
+validated before the port exists, so a mismatched pair refuses to boot
+rather than failing every handshake on a port traffic already points at;
+a renewal takes effect on `SIGHUP`, which re-reads both files and swaps
+them in only when the new pair validates. Fronting Nitr with a proxy is
 still perfectly good — it just is not the only way to serve HTTPS. See
 [TLS termination](./server/tls).
 

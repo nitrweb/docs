@@ -10,16 +10,16 @@ dependencies it actually uses.
 
 ## The features
 
-| Feature       | Enables                               | Heaviest dependency            |
-| ------------- | ------------------------------------- | ------------------------------ |
-| `fetch`       | `nitr.fetch`, `nitr.await_all`        | `reqwest`                      |
-| `db`          | `nitr.db`, migrations, `nitr migrate` | `rusqlite` (bundles SQLite)    |
-| `template`    | `nitr.template`                       | `minijinja`                    |
-| `crypto`      | `nitr.crypto`, `nitr.auth`            | `argon2`                       |
-| `compression` | on-the-fly brotli/gzip responses      | `brotli`, `flate2`             |
-| `multipart`   | `req:multipart(fn)` file uploads      | `multer`                       |
-| `tls`         | inbound TLS termination (`[tls]`)     | `rustls` (the `ring` provider) |
-| `all`         | every feature above                   | —                              |
+| Feature       | Enables                               | Heaviest dependency              |
+| ------------- | ------------------------------------- | -------------------------------- |
+| `fetch`       | `nitr.fetch`, `nitr.await_all`        | `reqwest` (over `rustls`/`ring`) |
+| `db`          | `nitr.db`, migrations, `nitr migrate` | `rusqlite` (bundles SQLite)      |
+| `template`    | `nitr.template`                       | `minijinja`                      |
+| `crypto`      | `nitr.crypto`, `nitr.auth`            | `argon2`                         |
+| `compression` | on-the-fly brotli/gzip responses      | `brotli`, `flate2`               |
+| `multipart`   | `req:multipart(fn)` file uploads      | `multer`                         |
+| `tls`         | inbound TLS termination (`[tls]`)     | `rustls` (the `ring` provider)   |
+| `all`         | every feature above                   | —                                |
 
 `all` is exactly those seven. There is no `default` set: a plain
 `cargo add nitr` compiles the minimal server.
@@ -32,7 +32,7 @@ cargo add nitr --features all               # everything
 
 ```toml
 # Cargo.toml
-nitr = { version = "0.0.0-beta.3", features = ["db", "template"] }
+nitr = { version = "0.0.0-beta.4", features = ["db", "template"] }
 ```
 
 To track unreleased work, swap the version for a pinned git revision —
@@ -64,7 +64,7 @@ _and_ **enabled at runtime**:
 
 ```toml
 # Cargo.toml — compiled in
-nitr = { version = "0.0.0-beta.3", features = ["db"] }
+nitr = { version = "0.0.0-beta.4", features = ["db"] }
 ```
 
 ```toml
@@ -145,22 +145,22 @@ Pick features by what your Lua actually calls:
 
 ```toml
 # A JSON API over SQLite — no outbound HTTP, no templates, no argon2
-nitr = { version = "0.0.0-beta.3", features = ["db"] }
+nitr = { version = "0.0.0-beta.4", features = ["db"] }
 ```
 
 ```toml
 # A server-rendered site with sessions
-nitr = { version = "0.0.0-beta.3", features = ["db", "template", "crypto", "compression"] }
+nitr = { version = "0.0.0-beta.4", features = ["db", "template", "crypto", "compression"] }
 ```
 
 ```toml
 # A pure aggregator: fan out to upstreams, return JSON
-nitr = { version = "0.0.0-beta.3", features = ["fetch"] }
+nitr = { version = "0.0.0-beta.4", features = ["fetch"] }
 ```
 
 ```toml
 # The same aggregator, terminating HTTPS itself instead of behind a proxy
-nitr = { version = "0.0.0-beta.3", features = ["fetch", "tls"] }
+nitr = { version = "0.0.0-beta.4", features = ["fetch", "tls"] }
 ```
 
 The heavy ones are `fetch` (reqwest is over half of the full dependency

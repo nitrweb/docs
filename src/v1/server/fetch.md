@@ -35,19 +35,26 @@ local handle = nitr.fetch("POST", "https://api.example.com/items", {
     headers = { ["Authorization"] = "Bearer " .. nitr.cfg.api_token },
     query   = { include = "details" },       -- appended, encoded for you
     json    = { name = "widget", qty = 3 },  -- encodes and sets Content-Type
-    timeout = 5,                             -- seconds, overrides [fetch] timeout
+    timeout = 5,                             -- seconds, capped by [fetch] timeout
     retry   = { attempts = 3, backoff = 0.5 },
 })
 ```
 
-| Option    | Meaning                                             |
-| --------- | --------------------------------------------------- |
-| `headers` | Request headers                                     |
-| `query`   | Query parameters, encoded and appended              |
-| `json`    | Table body, JSON-encoded, with the content type set |
-| `body`    | Raw string body                                     |
-| `timeout` | Seconds for this call, overriding `[fetch] timeout` |
-| `retry`   | `{ attempts, backoff }` — see [Retries](#retries)   |
+| Option    | Meaning                                                                   |
+| --------- | ------------------------------------------------------------------------- |
+| `headers` | Request headers                                                           |
+| `query`   | Query parameters, encoded and appended                                    |
+| `json`    | Table body, JSON-encoded, with the content type set                       |
+| `body`    | Raw string body                                                           |
+| `timeout` | Seconds for this call. May **shorten** `[fetch] timeout`, never extend it |
+| `retry`   | `{ attempts, backoff }` — see [Retries](#retries)                         |
+
+> [!NOTE] A per-call `timeout` is a ceiling you can lower, not raise
+>
+> `[fetch] timeout` is the operator's budget, so a script asking for
+> more gets the configured value instead. `math.huge` and other
+> non-finite values are refused outright rather than becoming an
+> unbounded wait.
 
 ### The response
 
@@ -62,21 +69,23 @@ local handle = nitr.fetch("POST", "https://api.example.com/items", {
 
 ## Running requests concurrently
 
-`nitr.await_all` runs several handles at once and returns their results
-**in order**:
+`nitr.await_all` runs several handles at once. Handles go in as
+**separate arguments**, and the results come back as **multiple values**
+in the same order:
 
 ```lua
 app:get("/dashboard/:id", function(req)
-    local results = nitr.await_all({
-        nitr.fetch("GET", "https://api.example.com/users/" .. req.params.id),
-        nitr.fetch("GET", "https://api.example.com/orders?user=" .. req.params.id),
-        nitr.fetch("GET", "https://billing.example.com/balance/" .. req.params.id),
-    })
+    local id = req.params.id
+    local user, orders, balance = nitr.await_all(
+        nitr.fetch("GET", "https://api.example.com/users/" .. id),
+        nitr.fetch("GET", "https://api.example.com/orders?user=" .. id),
+        nitr.fetch("GET", "https://billing.example.com/balance/" .. id)
+    )
 
     return nitr.json({
-        user    = results[1]:json(),
-        orders  = results[2]:json(),
-        balance = results[3]:json(),
+        user    = user:json(),
+        orders  = orders:json(),
+        balance = balance:json(),
     })
 end)
 ```
@@ -84,19 +93,26 @@ end)
 Three 200 ms calls take 200 ms, not 600 ms. Concurrency is capped by
 `[fetch] max_concurrent` (default 8).
 
+> [!WARNING] Not a table of handles
+>
+> `nitr.await_all({ h1, h2 })` passes **one** argument — a table — and
+> is not the call this function takes. Spread the handles:
+> `nitr.await_all(h1, h2)`. Lua's multiple-return rules apply on the way
+> back too, so capture the results into named locals rather than
+> wrapping the call in a table constructor mid-expression.
+
 ### Mixing in a database query
 
 `nitr.db:query_async` produces a handle `await_all` also accepts, so a
 query and an upstream call overlap instead of running in series:
 
 ```lua
-local results = nitr.await_all({
+local user, upstream = nitr.await_all(
     nitr.db:query_async("SELECT * FROM users WHERE id = ?", { id }, "query_row"),
-    nitr.fetch("GET", "https://api.example.com/profile/" .. id),
-})
+    nitr.fetch("GET", "https://api.example.com/profile/" .. id)
+)
 
-local user    = results[1]
-local profile = results[2]:json()
+local profile = upstream:json()
 ```
 
 ## Retries
@@ -122,8 +138,9 @@ nitr.fetch("GET", url, { retry = { attempts = 3, backoff = 0.5 } }):send()
 
 ## The SSRF policy
 
-By default, requests to loopback, private, link-local and CGNAT
-addresses are **refused**, and every redirect hop is re-checked.
+By default, requests to loopback, private, link-local, CGNAT, multicast,
+reserved and benchmarking addresses are **refused**, and every redirect
+hop is re-checked.
 
 ```toml
 [fetch]
@@ -131,12 +148,26 @@ allowed_hosts = ["api.example.com"]   # exact-host allow-list, all hops
 allow_private_networks = false        # permit loopback/RFC1918 targets
 ```
 
+The IPv6 side is judged by what an address actually reaches, not by its
+spelling: the v4-mapped, v4-compatible, NAT64 (`64:ff9b::/96`) and 6to4
+(`2002::/16`) forms are unwrapped and the **embedded** IPv4 address is
+checked, so `64:ff9b::a9fe:a9fe` is refused for the same reason
+`169.254.169.254` is.
+
 > [!TIP] Why DNS rebinding does not work here
 >
 > The hostname is resolved **once**, inside the resolver the connector
 > itself uses. A DNS server cannot answer a public address to the policy
 > check and a private one to the connect — there is only one resolution,
 > and the connection uses it.
+
+> [!NOTE] Credentials do not survive a cross-origin redirect
+>
+> Redirects are followed one hop at a time so each can be policy-checked
+> — which means a hop to a different scheme, host or port drops
+> `Authorization`, `Cookie` and `Proxy-Authorization` before it is sent.
+> An upstream with an open redirect cannot hand your bearer token to
+> whatever it points at.
 
 When a URL comes from user input, add an allow-list. That turns "not
 obviously internal" into "one of these three hosts":
@@ -154,7 +185,7 @@ allowed_hosts = ["api.stripe.com", "hooks.slack.com"]
 | `max_concurrent`         | 8       | Requests per `nitr.await_all(...)`                                         |
 | `max_response_bytes`     | 8 MiB   | `resp:text()` / `resp:json()` bodies                                       |
 | `connect_timeout`        | 10 s    | Establishing a connection                                                  |
-| `timeout`                | 30 s    | Per request, unless overridden per call                                    |
+| `timeout`                | 30 s    | Per request. A per-call `timeout` may lower it, never raise it             |
 | `pool_max_idle_per_host` | 8       | Idle connections kept                                                      |
 
 `max_per_request` is the one to think about: it is what stops a loop
@@ -190,10 +221,30 @@ lifetime. See [Streaming](./streaming#the-cost-a-stream-holds-a-lua-state).
 ```toml
 [fetch]
 proxy = "http://proxy.internal:3128"
+allowed_hosts = ["api.example.com"]    # required — see below
 no_proxy = false                       # true ignores the env vars entirely
 ```
 
-Unset, `HTTPS_PROXY` and `HTTP_PROXY` from the environment are used.
+Unset, `HTTPS_PROXY`, `HTTP_PROXY` and `ALL_PROXY` from the environment
+are used.
+
+> [!DANGER] A proxy needs an explicit trust decision, or the server will not start
+>
+> Behind a proxy, the **proxy** resolves the target — so the guarded
+> resolver that makes the SSRF policy hold against DNS rebinding never
+> runs. With `fetch` enabled and a proxy in play (from `[fetch] proxy`
+> **or** from `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` in the
+> environment), startup fails unless you say which way you want it:
+>
+> - `[fetch] allowed_hosts` — the hosts scripts may reach, checked
+>   without depending on DNS at all;
+> - `allow_private_networks = true` — "this proxy is trusted to reach
+>   anything";
+> - `no_proxy = true` — ignore the environment entirely.
+>
+> The failure names which of the three sources introduced the proxy, so
+> an inherited `HTTPS_PROXY` in a CI image is diagnosable rather than
+> mysterious.
 
 ## Tracing
 
@@ -246,7 +297,7 @@ An upstream call you make on every request is an upstream call you make
 too often:
 
 ```lua
-local rates = nitr.cache:remember("fx:rates", 300, function()
+local rates = nitr.cache:remember("fx:rates", { ttl = 300 }, function()
     return nitr.fetch("GET", "https://api.example.com/rates"):send():json()
 end)
 ```

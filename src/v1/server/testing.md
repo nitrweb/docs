@@ -22,6 +22,9 @@ dir = "tests"      # the default
 Every `*.lua` file in that directory is a test file. `nitr.test` is
 available **only** in test files.
 
+Tests also get their own SQLite file rather than the configured one —
+see [Tests and the database](#tests-and-the-database).
+
 ## Writing a test
 
 ```lua
@@ -81,9 +84,9 @@ skipped by a failure.
 
 > [!TIP] Reset state, do not share it
 >
-> Tests run in one process against one database. `before_each` deleting
-> the rows a test depends on is what keeps them independent and
-> order-insensitive.
+> Tests run in one process against one database — a throwaway one, not
+> the configured one. `before_each` deleting the rows a test depends on
+> is what keeps them independent and order-insensitive.
 
 ## Making requests
 
@@ -250,22 +253,41 @@ end)
 
 ## Tests and the database
 
-Tests run against the database in your configuration. Point `nitr test`
-at a throwaway one so a run cannot touch real data:
+**`nitr test` never uses `[database] path`.** A `before_each` is
+typically `DELETE FROM ...`, and the machine where you run the tests is
+the machine whose `nitr.toml` names the real database — so the runner
+substitutes its own file and applies `[database] migrations_dir` to it
+before the first test runs. Nothing to remember, and nothing to
+override in CI.
 
-```sh
-NITR_DATABASE_PATH=data/test.db nitr migrate
-NITR_DATABASE_PATH=data/test.db nitr test
+Unset, that file is created privately for the run and removed
+afterwards, sidecars included. Name one when you want to inspect it
+after a failure:
+
+```toml
+[testing]
+dir = "tests"
+database = "data/test.db"      # kept between runs; still never [database] path
 ```
+
+That file is migrated on every run too, so it stays current without a
+separate `nitr migrate`.
+
+> [!TIP] A named test database is not emptied between runs
+>
+> Only the private per-run file disappears. Keep `before_each` doing the
+> resetting either way — that is what makes tests order-insensitive.
 
 ## In CI
 
 ```yaml
 - run: cargo install --git https://github.com/nitrweb/nitr nitr-cli
 - run: nitr check # configuration and scripts load
-- run: nitr migrate # schema is current
+- run: nitr migrate # the real schema is current
 - run: nitr test # behaviour is correct
 ```
 
 `nitr check` first is worth the second it costs: a configuration error
 fails with a clear message rather than as a puzzling test failure.
+`nitr migrate` is about your actual database — the test run migrates its
+own.

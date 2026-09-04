@@ -87,7 +87,7 @@ carries.
 >
 > The `nitr` facade re-exports `Error` and `Result`, but not
 > `ErrorInfo`, `message_token` or `source_snippet`. A program that names
-> them adds `nitr-core = "0.0.0-beta.3"` and writes
+> them adds `nitr-core = "0.0.0-beta.4"` and writes
 > `nitr_core::ErrorInfo`. That crate is
 > [explicitly unstable pre-1.0](../stability); most embedders never need
 > the type, because the same fields reach Lua as a plain table.

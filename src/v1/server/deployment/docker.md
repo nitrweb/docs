@@ -58,7 +58,7 @@ The original lives at
 >
 > `cargo install nitr-cli` pulls the published crate and installs a
 > binary named `nitr`. Pin it in a real pipeline —
-> `cargo install nitr-cli --version 0.0.0-beta.3` — so an image rebuild
+> `cargo install nitr-cli --version 0.0.0-beta.4` — so an image rebuild
 > is reproducible instead of tracking whatever is newest. Building from
 > a checkout is one line: `COPY . .` then
 > `cargo install --path crates/nitr-cli`.
@@ -363,3 +363,19 @@ only thing Nitr legitimately writes — the same assumption the [systemd
 unit](./systemd#the-hardening-block) makes. Binding `:443` under
 `--cap-drop ALL` needs `--cap-add NET_BIND_SERVICE`, or a published
 port that maps `443` on the host to an unprivileged port inside.
+
+> [!NOTE] A bundled artifact wants a cache directory
+>
+> A [`nitr build`](./single-file) artifact unpacks itself into
+> `$XDG_CACHE_HOME/nitr/apps`, else `~/.cache/nitr/apps`. A container
+> user with no writable home has neither, so the bundle re-extracts into
+> a fresh private directory under `/tmp` on every start and warns on
+> stderr — correct, but not reused. Point it somewhere persistent to get
+> the reuse back:
+>
+> ```dockerfile
+> ENV XDG_CACHE_HOME=/app/cache
+> ```
+>
+> with `/app/cache` on a writable volume or tmpfs. A plain
+> `nitr` binary running loose Lua files needs none of this.

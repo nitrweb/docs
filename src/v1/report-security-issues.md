@@ -89,13 +89,14 @@ bugs, not something an application should be able to trigger.
 
 ### TLS
 
-`[tls]` is new in `0.0.0-beta.3`, and the whole path is in scope:
+`[tls]` arrived in `0.0.0-beta.3`, and the whole path is in scope:
 
-- The certificate and key PEM the server reads **at startup** from
-  whatever an ACME client or a mounted secret wrote: a crash, a hang, or
-  a mismatched pair that boots instead of refusing. That file is what
-  the `tls_pem` fuzz target drives, so an input which defeats it is
-  exactly the kind of report we want.
+- The certificate and key PEM the server reads **at startup, and again
+  on every reload**, from whatever an ACME client or a mounted secret
+  wrote: a crash, a hang, or a mismatched pair that is accepted instead
+  of refused — including a half-written pair a `SIGHUP` picks up
+  mid-renewal. That file is what the `tls-pem` fuzz target drives, so an
+  input which defeats it is exactly the kind of report we want.
 - A handshake that escapes its `handshake_ms` deadline, or one that can
   stall the accept loop rather than costing the single connection it
   runs in.

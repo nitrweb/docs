@@ -34,8 +34,8 @@ table with a closed set of fields:
 
 ### `err.kind`
 
-A **closed set**. Lua code cannot forge a kind, so branching on it is
-stable in a way matching on message text never is.
+A **closed set**, so branching on it is stable in a way matching on
+message text never is.
 
 | `err.kind`  | Meaning                                                                                 |
 | ----------- | --------------------------------------------------------------------------------------- |
@@ -50,6 +50,15 @@ stable in a way matching on message text never is.
 >
 > Messages are diagnostics and may be reworded at any time. `kind` is
 > part of the [stability promise](../stability).
+
+> [!WARNING] `kind` is a classification, not a provenance claim
+>
+> `"nitr"` and `"timeout"` are recognized by the **shape of the
+> message**, so a script that raises `"nitr.db: ..."` or the execution
+> budget's own wording verbatim lands in those kinds too. That is fine
+> for logging, for an error page, and for deciding which status to
+> answer — it is what the field is for. It is **not** a fact about who
+> raised the error, so no security decision may rest on it.
 
 ## `on_error` handlers
 

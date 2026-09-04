@@ -227,12 +227,12 @@ The parsers an attacker fully controls are fuzzed with
 
 | Area            | Targets                                                                        |
 | --------------- | ------------------------------------------------------------------------------ |
-| Cookies         | `cookie_verify`, `cookie_header`                                               |
-| Negotiation     | `accept_negotiation`, `accept_encoding`, `conditional_headers`, `range_header` |
-| Paths and URLs  | `path_lexical`, `static_resolve`, `upload_resolve`, `url_lexical`              |
-| Bodies          | `multipart`, `json_lua`                                                        |
-| Auth and crypto | `basic_auth`, `jwt_verify`, `tls_pem`                                          |
-| Validation      | `validate_formats`                                                             |
+| Cookies         | `cookie-verify`, `cookie-header`                                               |
+| Negotiation     | `accept-negotiation`, `accept-encoding`, `conditional-headers`, `range-header` |
+| Paths and URLs  | `path-lexical`, `static-resolve`, `upload-resolve`, `url-lexical`              |
+| Bodies          | `multipart`, `json-lua`                                                        |
+| Auth and crypto | `basic-auth`, `jwt-verify`, `tls-pem`                                          |
+| Validation      | `validate-formats`                                                             |
 
 ```sh
 cargo install cargo-fuzz          # plus a nightly toolchain

@@ -27,7 +27,7 @@ Options:
   -h, --help           Print help
 
 Signals:
-  SIGHUP           Zero-downtime reload: rebuilds the Lua runtime pool
+  SIGHUP           Zero-downtime reload: rebuilds the Lua runtime pool and re-reads TLS certificates
 ```
 
 ## Global options
@@ -74,6 +74,26 @@ Starts the server. This is the default when no command is given.
   non-zero.
 - On `SIGHUP` it rebuilds the Lua pool without dropping connections —
   and, with [`[tls] enabled`](./tls), re-reads the certificate and key.
+
+> [!NOTE] A live pidfile stops a second instance
+>
+> The pidfile is created exclusively, never written through an existing
+> path. If one is already there and names a **running** process, startup
+> fails with that pid and a suggestion — stop it, or point `pidfile`
+> somewhere else. A file left by a crash or an OOM kill names nothing
+> alive and is replaced. That also closes the pre-planted-symlink case,
+> where a plain write would have replaced a live instance's file and
+> then deleted it on exit.
+
+> [!NOTE] A reload no longer blocks the accept loop
+>
+> Rebuilding the pool constructs one Lua state per worker and awaits the
+> configuration script — seconds, on a large pool. That now runs on its
+> own task, so connections keep being accepted and `SIGTERM` is still
+> answered while it happens. A reload asked for **during** a rebuild is
+> not dropped: the task runs once more when the current one finishes,
+> because that rebuild read the scripts before your second request
+> arrived.
 
 ## `dev`
 
@@ -170,6 +190,15 @@ the real middleware chain — nothing is mocked.
 the substring. The command exits non-zero if any test fails, so it drops
 straight into CI. See [Testing](./testing).
 
+> [!TIP] It never runs against `[database] path`
+>
+> Tests get their own SQLite file: `[testing] database` when you name
+> one, otherwise a private file created for the run and deleted (with
+> its `-wal`/`-shm` sidecars) when it ends. Either way the migrations
+> run against it first, so a test sees the schema. A `before_each` that
+> says `DELETE FROM notes` cannot empty the database your `nitr.toml`
+> points at.
+
 ## `migrate`
 
 ```sh
@@ -232,8 +261,9 @@ the configuration script, `[templating] dir`, `[static] dir` and the
 migrations directory. The result is one executable that no longer
 depends on the directory it was built in.
 
-- `dev_mode` is forced off: there are no source files to watch, only a
-  temporary extraction.
+- `dev_mode` is forced off: there are no source files to watch, only an
+  extraction under the user's private cache
+  (`$XDG_CACHE_HOME/nitr/apps`, else `~/.cache/nitr/apps`).
 - The **database stays external**, resolving against the working
   directory as always. State does not belong inside an immutable
   artifact — and neither do `[multipart] upload_dir` (uploads outlive
@@ -265,6 +295,16 @@ no way to find the server and says so. Needs Unix signals, so it is
 unavailable on Windows.
 
 Equivalent to `kill -HUP <pid>`, and to systemd's `ExecReload`.
+
+> [!NOTE] It checks what it is about to signal
+>
+> A pid can be reused after a crash left the file behind, so `reload`
+> refuses pids that cannot be a server (`0`, `1`, its own) and — where
+> the kernel says what runs under a pid — refuses one that does not look
+> like a nitr process. Signalling a stranger's process with `SIGHUP` is
+> not a small mistake. If the server is a
+> [`nitr build`](#build) artifact, run `reload` from **that** artifact;
+> if nothing is running any more, remove the stale pidfile.
 
 ## `hash-password`
 
@@ -317,10 +357,12 @@ prompt covers the interactive case and a pipe covers the scripted one.
 
 At the prompt the value is asked twice: a typo becomes a credential
 nobody can ever use, and the only symptom is a login that always fails.
-The prompt goes to **stderr**, not through the logger — it is
-interactive UI, so it must appear whatever the log level is, must not be
-timestamped or shipped to a collector, and must stay out of the stdout
-the caller is capturing.
+A mismatch is re-asked rather than fatal — three attempts, then the
+command gives up and hashes nothing, so a hash is only ever printed for
+a password typed identically twice. The prompt goes to **stderr**, not
+through the logger — it is interactive UI, so it must appear whatever
+the log level is, must not be timestamped or shipped to a collector, and
+must stay out of the stdout the caller is capturing.
 
 When piping, only **one trailing line ending** is removed (`\n`, with
 its optional `\r`). A password may legitimately end in a space or a tab,

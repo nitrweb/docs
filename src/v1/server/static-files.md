@@ -12,14 +12,16 @@ dir = "public"
 mount = "/"
 spa = false
 cache_control = "public, max-age=3600"
+dotfiles = false
 ```
 
-| Key             | Default            | Meaning                              |
-| --------------- | ------------------ | ------------------------------------ |
-| `dir`           | _unset (disabled)_ | Directory to serve                   |
-| `mount`         | `"/"`              | URL prefix                           |
-| `spa`           | `false`            | Serve `index.html` for unknown paths |
-| `cache_control` | _unset_            | `Cache-Control` for served files     |
+| Key             | Default            | Meaning                                                        |
+| --------------- | ------------------ | -------------------------------------------------------------- |
+| `dir`           | _unset (disabled)_ | Directory to serve                                             |
+| `mount`         | `"/"`              | URL prefix                                                     |
+| `spa`           | `false`            | Serve `index.html` for unknown paths                           |
+| `cache_control` | _unset_            | `Cache-Control` for served files                               |
+| `dotfiles`      | `false`            | Serve `.`-prefixed names (`.well-known/` is served either way) |
 
 ```
 public/
@@ -50,10 +52,11 @@ app:static("/uploads", "data/uploads", {
 return app
 ```
 
-| Option          | Meaning                                               |
-| --------------- | ----------------------------------------------------- |
-| `spa`           | Serve `index.html` for paths that do not match a file |
-| `cache_control` | The `Cache-Control` header for this mount             |
+| Option          | Meaning                                                        |
+| --------------- | -------------------------------------------------------------- |
+| `spa`           | Serve `index.html` for paths that do not match a file          |
+| `cache_control` | The `Cache-Control` header for this mount                      |
+| `dotfiles`      | Serve `.`-prefixed names (`.well-known/` is served either way) |
 
 ## What you get without asking
 
@@ -65,6 +68,7 @@ return app
 | `304 Not Modified`     | For `If-None-Match` / `If-Modified-Since`                                                                                           |
 | Range requests         | `206 Partial Content`, `416`, and `If-Range` — video seeking works                                                                  |
 | Traversal protection   | Percent-decode → component whitelist → canonicalize-prefix check, symlinks included. Both this and `nitr.path.normalize` are fuzzed |
+| Dotfiles hidden        | A `.`-prefixed path component answers `404` before the filesystem is touched, unless `dotfiles = true`. `.well-known/` is exempt    |
 | Precompressed sidecars | `app.js.br` or `app.js.gz` next to `app.js` is served automatically                                                                 |
 | `HEAD`                 | Answered with headers only                                                                                                          |
 
@@ -150,16 +154,41 @@ checked against a component whitelist, then canonicalized and verified
 to still be inside the mount — symlinks included. `../` cannot escape,
 and the code is fuzzed.
 
-**Only what is in the directory is served.** There is no directory
-listing and no dotfile special-casing: if a file is in the mounted
-directory, it is public. Do not put `.env`, `.git` or backups there.
+**Dotfiles are hidden by default.** A request whose path has any
+`.`-prefixed component answers `404` before the filesystem is consulted
+— `.env`, `.git/`, `.htpasswd` and their kind are exactly what lands in
+a served directory by accident, and nothing a browser needs starts with
+a dot. `.well-known/` is the one exception, always served, because ACME
+challenges and `security.txt` live there.
+
+```toml
+[static]
+dir = "public"
+dotfiles = true      # only if you genuinely serve one
+```
+
+**Everything else in the directory is public.** There is no directory
+listing, but there is also no other filter: a non-dotted file in the
+mounted directory is reachable.
 
 ```
 public/
 ├── index.html      ✅
-├── .env            ❌ this is public — move it out
-└── backup.sql      ❌ so is this
+├── .env            🚫 404 — but move it out anyway
+└── backup.sql      ❌ this is public
 ```
+
+> [!TIP] The hidden dotfile is a backstop, not a place to keep secrets
+>
+> `dotfiles = false` stops a leak you did not notice; it does not make
+> the served directory a safe home for credentials. One
+> `dotfiles = true` for a legitimate file exposes every other dotfile
+> beside it.
+
+**A `[static] dir` that encloses your scripts or templates refuses to
+boot.** `dir = "."` with `mount = "/"` would answer `GET /app.lua` and
+`GET /nitr.toml`; that combination is a startup error naming both paths,
+rather than a deployment that serves its own source.
 
 ## Serving a file from a handler
 

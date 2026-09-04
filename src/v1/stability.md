@@ -7,7 +7,7 @@ surface is allowed to change.
 
 > [!WARNING] Pre-1.0
 >
-> Nitr is at `0.0.0-beta.3`. While the version is `0.x`, **a minor bump
+> Nitr is at `0.0.0-beta.4`. While the version is `0.x`, **a minor bump
 > may break anything below**. The rules on this page describe the
 > _shape_ of the promise that hardens at 1.0, so you can tell which
 > parts are meant to be depended on and which are meant to move.
@@ -33,8 +33,203 @@ first release.
 ## Breaking changes before the first release
 
 `CHANGELOG.md` starts at the first release, so until then the breaking
-changes to the `nitr.*` Lua API are recorded here. Each one names what
-broke, what you see when you hit it, and what to write instead.
+changes to the `nitr.*` Lua API are recorded here, **newest first**. Each
+one names what broke, what you see when you hit it, and what to write
+instead.
+
+### Templates HTML-escape by default, and `render` is asynchronous
+
+**What changed.** Auto-escaping used to follow minijinja's own rule,
+which escapes only `.html`, `.htm` and `.xml` — so `hello.j2`, the name
+the scaffold and every example use, rendered `{{ name }}` verbatim. The
+default is now the other way round: **everything escapes**, unless the
+name (after stripping a trailing `.j2`, `.jinja` or `.jinja2`) ends in a
+plain-text extension — `.txt`, `.text`, `.md`, `.csv`, `.json`, `.yaml`,
+`.yml`, `.toml`.
+
+`render` also moved its file read and its rendering off the async
+worker, which makes it a **yielding** builtin.
+
+**What breaks.** A template that was emitting HTML it built itself and
+relying on the absence of escaping now shows markup as text — add
+`| safe` where you meant it. And a template producing a non-HTML format
+under a `.j2` name is now escaped: rename it `report.csv.j2`,
+`mail.txt.j2`. In the other direction, an HTML template named `.txt.j2`
+for an editor's benefit silently loses its escaping, which is worth a
+grep.
+
+Because `render` yields, calling it at a script's **top level** now
+fails the same way the argon2 functions do — with an error naming the
+builtin, not the VM's `attempt to yield from outside a coroutine`. Move
+it into a handler.
+
+See [Templates](./server/templates#escaping-read-this-one).
+
+### Static mounts hide dotfiles
+
+**What changed.** A request whose path has any `.`-prefixed component
+answers `404` before the filesystem is touched. `.well-known/` is
+exempt.
+
+**What breaks.** A deployment that deliberately served a dotfile from
+`[static] dir` or `app:static(...)`. Set `dotfiles = true` on that mount
+— and check what else is beside it, because the flag is per-mount, not
+per-file.
+
+### `nitr test` never uses the configured database
+
+**What changed.** The runner substitutes its own SQLite file:
+`[testing] database` when you set one, otherwise a private file created
+for the run and deleted afterwards. Either way the migrations run
+against it first.
+
+**What breaks.** A workflow that pointed `NITR_DATABASE_PATH` at a
+throwaway database before `nitr test` — now unnecessary, and ignored.
+A test suite that expected to read rows seeded into the configured
+database sees an empty, migrated schema instead; seed from
+`before_each`. See [Testing](./server/testing#tests-and-the-database).
+
+### `nitr.db:query` is bounded, and `query_row` answers `nil`
+
+**What changed.** A `query` returning more than `[database] max_rows`
+(default 10 000) raises instead of materializing the result. And
+`query_row` on a query that matches nothing now returns `nil`, which is
+what it always documented — it used to raise instead
+(`query_row failed (stmt …): Query returned no rows`).
+
+**What breaks.** A `pcall` around `query_row` written to catch the empty
+case still works, but the plain `if not row then` form now works too and
+is the shape to use. An unbounded `SELECT *` over a large table becomes
+an error; page it, or raise `max_rows` deliberately.
+
+`query_one` is unchanged in behaviour but was **documented wrongly**
+before: it returns the whole row as a column→value table and raises
+unless the query returns exactly one, so
+`tx:query_one("SELECT last_insert_rowid()")` was never a number. Write
+`tx:query_one("SELECT last_insert_rowid() AS id").id`.
+
+### Cookie names and values must be legal cookie text
+
+**What changed.** `res.cookies:set` (and everything built on it)
+enforces RFC 6265's grammar and raises otherwise: the name is a token,
+and the value may not contain control characters, whitespace, `"`, `,`,
+`;` or `\`. `path` and `domain` may not contain `;`.
+
+**What breaks.** A handler passing a value straight from a request —
+`res.cookies:set("lang", req.query.lang)` — which is exactly the shape
+that could otherwise append `; Domain=…; SameSite=None` to its own
+`Set-Cookie` header. Encode first with `nitr.base64.encode`, or use
+`:set_signed`, whose payload is already base64.
+
+### Strings that are not UTF-8 are refused by the JSON serializers
+
+**What changed.** `nitr.json:encode`, JSON responses, `nitr.cache`,
+sessions, JWT claims, SSE data and `fetch` bodies raise on a Lua string
+holding raw bytes, instead of emitting an array of byte values.
+
+**What breaks.** The bug this closes: a session field set to
+`nitr.crypto.random_bytes(16)` used to save without complaint and come
+back on the next request as a table of sixteen integers. Encode binary
+with `nitr.base64.encode` before it reaches any of those.
+
+### A per-call `fetch` timeout can only lower the configured one
+
+**What changed.** `[fetch] timeout` is a ceiling. A per-call
+`{ timeout = ... }` above it takes the configured value instead of
+extending it, and a non-finite value (`math.huge`, `NaN`) is refused
+rather than becoming an unbounded wait.
+
+**What breaks.** A handler that raised its own timeout past the
+operator's budget. Raise `[fetch] timeout` if that was intended.
+
+### The rate limiter keys by the last `X-Forwarded-For` entry
+
+**What changed.** With `trust_forwarded_for = true` the budget keys by
+the **last** entry of the **last** `X-Forwarded-For` header line — the
+address the nearest proxy appended — rather than the first. IPv6 clients
+are keyed by their /64.
+
+**What breaks.** Nothing behind a proxy that overwrites the header. It
+**fixes** the append case, which every mainstream proxy does by default
+and where the old rule let a client mint a fresh budget per request with
+one header. With more than one hop the budget now keys by the nearest
+hop's client.
+
+### An outbound proxy needs an explicit `fetch` trust decision
+
+**What changed.** With `"fetch"` in `[std] features` and a proxy in play
+— `[fetch] proxy`, or `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` in the
+environment — the server refuses to start unless one of
+`allowed_hosts`, `allow_private_networks = true` or `no_proxy = true` is
+set. A proxy resolves the target itself, so the guarded resolver that
+makes the SSRF policy hold cannot run.
+
+**What breaks.** A deployment that inherited a proxy variable from its
+image or CI environment now fails at boot with a message naming which
+source introduced it.
+
+### Sessions carry their expiry, and `_exp` is reserved
+
+**What changed.** With a `max_age`, `session:save` writes the expiry
+inside the signed payload and enforces it on load: a cookie presented
+past it starts an empty session. `_exp` joins `save` and `clear` as a
+reserved field name.
+
+**What breaks.** A session that stored a field called `_exp`. Rename it.
+
+### CSRF refuses browser-flagged cross-site requests
+
+**What changed.** An unsafe request carrying
+`Sec-Fetch-Site: cross-site` is rejected before the token is compared,
+unless `cookie_opts.same_site = "None"`.
+
+**What breaks.** A genuine cross-site form post that was passing on the
+token alone. Set `cookie_opts = { same_site = "None" }`, which is what
+that configuration already means.
+
+### Lua bytecode cannot be loaded
+
+**What changed.** Every chunk the runtime compiles is text only — the
+handler and config scripts, `require`d modules, test files, and `load`
+whatever mode it is handed. `string.dump` and `package.searchpath` are
+removed, and `require` resolves through a searcher that owns the script
+directory rather than reading `package.path`.
+
+**What breaks.** A precompiled `.lua` artifact, or a script calling
+`load(chunk, name, "b")` or `string.dump`. Lua 5.4 does not verify
+bytecode, so a hand-patched chunk is arbitrary memory access inside the
+process — past every bound the sandbox enforces.
+
+### New startup refusals
+
+Each of these was previously a deployment that came up and did the wrong
+thing:
+
+- `[static] dir` enclosing the handler script's directory or
+  `[templating] dir` — it would serve `app.lua` and `nitr.toml`.
+- `[multipart] upload_dir` inside `[templating] dir` — an upload could
+  replace a template.
+- `workers` above 4096, or either `max_connections` above 1 048 576 —
+  previously a panic after the port was already bound.
+- A `pidfile` that already names a **running** process: the server
+  refuses to start as a second instance. A stale file from a crash is
+  replaced as before. `nitr reload` likewise refuses to signal a pid
+  that cannot be, or does not look like, a nitr server.
+
+### A bundled artifact extracts into the user's cache
+
+**What changed.** `nitr build` artifacts unpack into
+`$XDG_CACHE_HOME/nitr/apps` (else `~/.cache/nitr/apps`, mode `0700`)
+instead of the shared temp directory. The old path was computable by
+anyone who could read the executable, so on a shared `/tmp` another
+local user could pre-create it and have the next start run their
+application.
+
+**What breaks.** A unit with `ProtectHome=true`, or a container user
+with no `HOME`, has no cache directory: the bundle re-extracts into a
+fresh private temporary directory on every start and warns on stderr.
+Give the service a cache directory to keep the reuse — see
+[Single-file deploys](./server/deployment/single-file).
 
 ### The three argon2 entry points are asynchronous
 
@@ -163,16 +358,16 @@ nitr-core → nitr-std → nitr-http → nitr → nitr-cli
   ordinary version requirement is enough:
 
   ```sh
-  cargo install nitr-cli --version 0.0.0-beta.3
+  cargo install nitr-cli --version 0.0.0-beta.4
   ```
 
   ```toml
   # Cargo.toml
-  nitr = { version = "0.0.0-beta.3", features = ["db"] }
+  nitr = { version = "0.0.0-beta.4", features = ["db"] }
   ```
 
   That requirement is a caret, so it will also accept a later
-  `0.0.0-beta.N`. Write `"=0.0.0-beta.3"` for an exact pin, and commit
+  `0.0.0-beta.N`. Write `"=0.0.0-beta.4"` for an exact pin, and commit
   `Cargo.lock` in an application either way — the lockfile, not the
   requirement, is what makes two builds identical.
 

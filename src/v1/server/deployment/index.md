@@ -122,6 +122,11 @@ certificate re-read still rebuilds the pool, and a failed pool rebuild
 still swaps in a good certificate. On either failure the old material
 stays and the failure is logged.
 
+The rebuild runs on its own task, so the listener keeps accepting and
+`SIGTERM` keeps being answered while it happens — and a second `SIGHUP`
+arriving mid-rebuild queues one more pass rather than being dropped,
+since the rebuild in flight read the scripts before that signal.
+
 ### What a reload does not re-read
 
 `nitr.toml` itself is never re-read, so everything compiled from it at
@@ -145,6 +150,13 @@ pidfile = "/run/nitr/nitr.pid"
 The pidfile is written only once the build succeeded and removed at
 exit — including the error path — so a crashed server never leaves a
 stale pid behind for `reload` to signal.
+
+It is also created **exclusively**, never written through an existing
+path. A file already there naming a live process refuses the boot as a
+second instance; one left by a crash or an OOM kill names nothing alive
+and is replaced. `nitr reload` checks the other direction, refusing to
+signal a pid that cannot be, or does not look like, a nitr server —
+because a reused pid means `SIGHUP` would land on a stranger's process.
 
 ## TLS
 

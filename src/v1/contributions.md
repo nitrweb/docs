@@ -97,8 +97,8 @@ certificate/key PEM the server reads at startup.
 
 The expectation is stricter than "does not crash": **targets assert
 behaviour** — round-trips, idempotence, tamper rejection, and the bounds
-a caller depends on. `static_resolve` and `upload_resolve` assert that
-every path returned lies inside the canonicalized root; `range_header`
+a caller depends on. `static-resolve` and `upload-resolve` assert that
+every path returned lies inside the canonicalized root; `range-header`
 asserts an accepted byte range lies inside the representation. A target
 that only checks for panics leaves the invariant untested.
 

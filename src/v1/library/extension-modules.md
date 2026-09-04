@@ -26,7 +26,7 @@ crate, and its `Lua` will not be the one the builder expects:
 
 ```toml
 [dependencies]
-nitr = "0.0.0-beta.3"
+nitr = "0.0.0-beta.4"
 mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send"] }
 ```
 

@@ -73,6 +73,20 @@ Builder for `Set-Cookie` headers on a response.
 > what you pass: unlike the session and CSRF cookies, these do not
 > extend a set of defaults.
 
+> [!WARNING] The name and value must be legal cookie text
+>
+> `:set` enforces RFC 6265's grammar and **raises** on anything else:
+> the name is a token, and the value may not contain whitespace,
+> quotes, commas, semicolons or backslashes. `path` and `domain` may not
+> contain `;`.
+>
+> That matters because a value taken straight from a request —
+> `res.cookies:set("lang", req.query.lang)` — could otherwise carry
+> `en; Domain=.example.com; SameSite=None` into the header and rewrite
+> the cookie's own attributes. Encode anything unconstrained first
+> (`nitr.base64.encode`), or use `:set_signed`, whose payload is already
+> base64.
+
 ## `nitr.App`
 
 The application: routes, middleware, error handling, static mounts.
@@ -89,7 +103,16 @@ Return it from the handler script. See [Routing](../server/routing).
 | `:options(path, ...)`        | Registers an OPTIONS route. Without one, OPTIONS answers `204` with `Allow`.                                                                                |
 | `:use(mw)`                   | Adds app-wide middleware: a factory `fn(next) -> fn(req)`. **Must be called before any route.**                                                             |
 | `:on_error(handler)`         | Sets the app-wide error handler: `fn(err, req)`, where `err` is the [structured error](../server/errors#the-error-value).                                   |
-| `:static(mount, dir, opts?)` | Mounts a static directory, served in Rust. Options: `{ spa = boolean, cache_control = string }`.                                                            |
+| `:static(mount, dir, opts?)` | Mounts a static directory, served in Rust. Options: `{ spa = boolean, cache_control = string, dotfiles = boolean }`.                                        |
+
+> [!NOTE] Dotfiles are hidden unless you ask for them
+>
+> A path with any `.`-prefixed component answers `404` before the
+> filesystem is touched — `.env`, `.git/`, `.htpasswd` and their kind
+> are exactly what lands in a served directory by accident.
+> `dotfiles = true` (or `[static] dotfiles = true`) turns that off for
+> a mount. `.well-known/` is served either way, because ACME and
+> friends need it.
 
 ## `nitr.Part`
 
@@ -196,9 +219,16 @@ directly (`session.user_id = 42`). See
 > `save` refuses a session whose JSON exceeds 2800 bytes — chosen so the
 > signed, base64-encoded cookie stays under the ~4 KiB browsers enforce
 > — rather than emitting a cookie the browser would drop. Store a key
-> here and the rest in the database. `save` and `clear` are also
-> reserved names: a data field called either would shadow the method
-> forever after, so it is rejected instead of saved.
+> here and the rest in the database. `save`, `clear` and `_exp` are also
+> reserved names: the first two would shadow the methods, and `_exp`
+> carries the expiry (see below), so each is rejected instead of saved.
+
+> [!NOTE] `max_age` is enforced on the server too
+>
+> With a `max_age`, `save` writes the expiry **inside** the signed
+> payload, and a cookie presented past it starts an empty session — as
+> if it had not been sent. `Max-Age` alone is advice to a browser, and
+> an attacker replaying a captured cookie is not using one.
 
 ## `nitr.Tx`
 
@@ -212,21 +242,32 @@ API as [`nitr.db`](./index#nitr-db) — `execute`, `query`, `query_row`,
 > than silently joining it. See
 > [Database → Transactions](../server/database#transactions).
 
+> [!WARNING] A `tx` is only valid inside its own block
+>
+> Stashing the handle somewhere and using it after `transaction(...)`
+> has returned **raises**: the transaction it belonged to is over, and a
+> statement there would land outside every guarantee the block gave you.
+> The same holds for a `tx:query_async` handle awaited after the block —
+> and, in the other direction, for a `nitr.db:query_async` handle
+> awaited _inside_ one, which would join or roll back the live
+> transaction. Build the handle from `tx` when you mean to run it in the
+> transaction.
+
 ## The error table
 
 Not a named type, but the shape every `on_error` handler and
 `nitr.errinfo` produces:
 
-| Field       | Description                                                                                                                      |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `kind`      | One of `"lua"`, `"nitr"`, `"module"`, `"timeout"`, `"memory"`, `"panic"`. A **closed set** — branch on this, never on `message`. |
-| `message`   | The failure message.                                                                                                             |
-| `source`    | The failing chunk, when known.                                                                                                   |
-| `line`      | The failing line, when known.                                                                                                    |
-| `module`    | The failing module, when attributed.                                                                                             |
-| `traceback` | Bounded Lua call stack, innermost first.                                                                                         |
-| `cause`     | Bounded underlying Rust error chain.                                                                                             |
-| `pretty`    | The concise form for a console `print` — ANSI-colored on a terminal, identical to plain text otherwise.                          |
+| Field       | Description                                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kind`      | One of `"lua"`, `"nitr"`, `"module"`, `"timeout"`, `"memory"`, `"panic"`. A **closed set** — branch on this, never on `message`. It is a classification, not a provenance claim: no security decision should rest on it. |
+| `message`   | The failure message.                                                                                                                                                                                                     |
+| `source`    | The failing chunk, when known.                                                                                                                                                                                           |
+| `line`      | The failing line, when known.                                                                                                                                                                                            |
+| `module`    | The failing module, when attributed.                                                                                                                                                                                     |
+| `traceback` | Bounded Lua call stack, innermost first.                                                                                                                                                                                 |
+| `cause`     | Bounded underlying Rust error chain.                                                                                                                                                                                     |
+| `pretty`    | The concise form for a console `print` — ANSI-colored on a terminal, identical to plain text otherwise.                                                                                                                  |
 
 > [!NOTE] `tostring(err)` stays plain
 >

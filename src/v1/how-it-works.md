@@ -64,11 +64,11 @@ handler then reads it as `nitr.cfg`.
 >
 > The top level of a script is not a handler, so a builtin that _yields_
 > cannot run there. That includes the argon2 password functions
-> (`nitr.crypto.password_hash` and friends), which do their work on the
-> blocking pool. Mint hashes with
-> [`nitr hash-password`](./server/passwords) and store the result;
-> hashing at boot fails with an explanatory error rather than silently
-> working.
+> (`nitr.crypto.password_hash` and friends) and
+> `nitr.template:render`, which do their work off the async worker. Mint
+> hashes with [`nitr hash-password`](./server/passwords) and store the
+> result; hashing at boot fails with an explanatory error rather than
+> silently working.
 
 ### `app.lua`
 
@@ -116,10 +116,11 @@ Consequences worth internalising:
   use [`nitr.cache`](./server/cache) (bounded, shared, plain data) or
   [`nitr.db`](./server/database).
 - **Blocking is contagious within a state.** Nitr keeps blocking work
-  off the async threads for you — `nitr.db` queries and argon2 hashing
-  run on a blocking pool, `nitr.fetch` is async, and [streaming
-  responses](./server/streaming) hold their state for the stream's
-  lifetime (which is why `max_streams` defaults to `workers - 1`).
+  off the async threads for you — `nitr.db` queries, argon2 hashing and
+  template rendering run on a blocking pool, `nitr.fetch` is async, and
+  [streaming responses](./server/streaming) hold their state for the
+  stream's lifetime (which is why `max_streams` defaults to
+  `workers - 1`).
 
 ## What never runs Lua
 

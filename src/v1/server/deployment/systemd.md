@@ -97,9 +97,10 @@ ExecReload=/bin/kill -HUP $MAINPID
 
 Nitr defines `SIGHUP` as "rebuild the Lua runtime pool without dropping
 connections" — and, with `[tls]` enabled, "re-read the certificate and
-key". The process, its listener and its keep-alive connections survive.
-`systemctl reload myapp` is therefore genuinely zero-downtime — which
-`systemctl restart` is not.
+key". The process, its listener and its keep-alive connections survive,
+and the rebuild runs on its own task, so the listener keeps accepting
+throughout. `systemctl reload myapp` is therefore genuinely
+zero-downtime — which `systemctl restart` is not.
 
 ## The hardening block
 
@@ -116,6 +117,22 @@ uploads:
 ```ini
 ReadWritePaths=/srv/myapp/data /srv/myapp/uploads
 ```
+
+> [!NOTE] A bundled artifact wants a cache directory
+>
+> A [`nitr build`](./single-file) artifact unpacks itself into
+> `$XDG_CACHE_HOME/nitr/apps`, else `~/.cache/nitr/apps`. With
+> `ProtectHome=true` there is no home to use, so the bundle re-extracts
+> into a fresh private temporary directory on every start and logs a
+> warning saying where. To keep the reuse, hand systemd the job:
+>
+> ```ini
+> CacheDirectory=nitr
+> Environment=XDG_CACHE_HOME=/var/cache
+> ```
+>
+> systemd creates `/var/cache/nitr` owned by the service user. A plain
+> `nitr` binary running loose Lua files needs neither line.
 
 `CapabilityBoundingSet=` (empty) drops every capability. If you must
 bind a port below 1024 — with `[tls]` on, `:443` is exactly that case —

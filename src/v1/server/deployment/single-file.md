@@ -88,14 +88,35 @@ from a shipped artifact.
 
 **Application paths resolve inside the bundle.** The handler and config
 scripts, templates, static files and migrations all come from a
-content-addressed temporary extraction directory, reused across starts
-of the same artifact.
+content-addressed extraction directory, reused across starts of the same
+artifact.
+
+**Extraction goes into the user's private cache**, not the shared temp
+directory: `$XDG_CACHE_HOME/nitr/apps` if that names an absolute path,
+otherwise `$HOME/.cache/nitr/apps`, created mode `0700` (and re-tightened
+if it already existed with looser bits).
+
+> [!DANGER] Why not `/tmp`
+>
+> The old location was `$TMPDIR/nitr-app-<key>`, and the key is
+> computable by anyone who can read the executable. On a shared temp
+> directory another local user could create that exact path first —
+> marker file, their own `nitr.toml`, their own `app.lua` — and the next
+> start would run **their** application as the operator. Reuse is only
+> safe inside a directory that user owns and nobody else can enter.
+
+**Without a writable cache directory, extraction is per-run.** A unit
+with `ProtectHome=true`, or a container user with no `HOME`, has
+nowhere private to reuse — so the bundle unpacks into a fresh private
+directory on every start, and a warning on stderr says where. Correct,
+just not reused; the cost is one extraction per start.
 
 **Extraction is atomic.** The archive unpacks into a staging directory
 and is renamed into place, so a crash mid-extract cannot leave a
-half-populated directory that a later run trusts. Every entry is
-validated first: no `..`, no absolute names, no symlinks — a tampered
-bundle refuses to run rather than running partially.
+half-populated directory that a later run trusts. Staging directories an
+earlier run left behind are swept on the next successful extraction.
+Every entry is validated first: no `..`, no absolute names, no symlinks
+— a tampered bundle refuses to run rather than running partially.
 
 ## Requirements
 
@@ -152,9 +173,11 @@ archived, so tests run at build time, from the source tree.
 ## Operational notes
 
 **Startup extracts once per version.** The extraction directory is
-content-addressed, so restarting the same artifact reuses it — a restart
-is not slower than a normal one. Two instances starting at once race
-harmlessly: the loser discards its staging copy.
+content-addressed inside the user's private cache, so restarting the
+same artifact reuses it — a restart is not slower than a normal one.
+Two instances starting at once race harmlessly: the loser discards its
+staging copy. Where no cache directory is available the artifact
+re-extracts per start and says so.
 
 **Rollback is copying the previous file back.** Keep the last few
 artifacts; nothing else has to be reverted, except a migration, which
@@ -189,10 +212,22 @@ ReadWritePaths=/srv/myapp/data
 correctly. Everything else is identical to the [standard
 unit](./systemd).
 
-> [!NOTE] `PrivateTmp` and the extraction directory
+> [!NOTE] `ProtectHome` and the extraction directory
 >
-> The bundle extracts under the system temp directory (`TMPDIR`, else
-> `/tmp`). With the reference unit's `PrivateTmp=true`, the service gets
-> a fresh private `/tmp` per start, so every restart re-extracts instead
-> of reusing the content-addressed directory. That is a few milliseconds,
-> not a fault — keep the isolation unless you have measured otherwise.
+> The bundle extracts into the running user's private cache
+> (`$XDG_CACHE_HOME/nitr/apps`, else `~/.cache/nitr/apps`). The
+> reference unit sets `ProtectHome=true`, which hides `/home` — so
+> unless you give the service a cache directory of its own, every
+> restart re-extracts into a fresh private temporary directory and logs
+> a warning saying so. That is a few milliseconds, not a fault; keep the
+> isolation unless you have measured otherwise.
+>
+> To keep both, hand systemd the job:
+>
+> ```ini
+> CacheDirectory=nitr
+> Environment=XDG_CACHE_HOME=/var/cache
+> ```
+>
+> systemd creates `/var/cache/nitr` owned by the service user, and the
+> extraction lands under it and is reused across restarts.

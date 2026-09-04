@@ -29,15 +29,40 @@ for _, u in ipairs(users) do
     print(u.id, u.name)
 end
 
--- The first row, or nil
+-- The first row, or nil when there are none
 local user = nitr.db:query_row("SELECT * FROM users WHERE id = ?", { 42 })
 
--- The first column of the first row
-local count = nitr.db:query_one("SELECT count(*) FROM users")
+-- The one row a query must return: raises on none, and on more than one
+local total = nitr.db:query_one("SELECT count(*) AS n FROM users").n
 
 -- A statement: returns the affected row count
 local n = nitr.db:execute("UPDATE users SET active = 0 WHERE last_seen < ?", { cutoff })
 ```
+
+> [!WARNING] `query_one` returns a row, not a scalar
+>
+> It is "exactly one row" — not "the first column". The result is a
+> column→value table like `query_row`'s, and it **raises** when the
+> query returns no rows or more than one. So a single-column query
+> still needs the column read out, and an expression needs an alias,
+> because SQLite otherwise names the column after the expression text:
+>
+> ```lua
+> local row = nitr.db:query_one("SELECT count(*) AS n FROM users")
+> local count = row.n
+> ```
+>
+> Reach for it when "exactly one" is the invariant you want enforced —
+> a lookup by primary key that must exist. Where "none" is a normal
+> answer, `query_row` and `if not row then` is the shape.
+
+> [!NOTE] `query` will not hand you an unbounded result
+>
+> Every row is materialized in memory and then copied into the Lua
+> state, so a result larger than `[database] max_rows` (10 000 by
+> default) **raises** rather than being silently truncated — a
+> truncation would be a wrong answer that looks like a right one. Page
+> with `LIMIT`/`OFFSET`, or raise the setting if you mean it.
 
 ## Parameters
 
@@ -73,7 +98,7 @@ nitr.db:execute(
 ```lua
 local id = nitr.db:transaction(function(tx)
     tx:execute("INSERT INTO orders (user_id, total) VALUES (?, ?)", { user_id, total })
-    local order_id = tx:query_one("SELECT last_insert_rowid()")
+    local order_id = tx:query_one("SELECT last_insert_rowid() AS id").id
 
     for _, item in ipairs(items) do
         tx:execute(
@@ -106,20 +131,32 @@ returns becomes the value of `transaction(...)`.
 Transactions nest via savepoints, so a helper that opens its own
 transaction composes correctly inside a larger one.
 
+> [!WARNING] The `tx` handle dies with its block
+>
+> Stashing `tx` in an upvalue and using it after `transaction(...)`
+> returned raises: that transaction is over, and the statement would run
+> outside every guarantee the block gave. A `tx:query_async` handle
+> awaited after the block raises for the same reason — and a
+> `nitr.db:query_async` handle awaited _inside_ one is refused too,
+> since running it would join or roll back the live transaction. Build
+> the handle from `tx` when it belongs to the transaction.
+
 ## Concurrent queries
 
 `query_async` returns an unsent query that `nitr.await_all` can run
 alongside a `fetch` — turning a series of waits into one:
 
 ```lua
-local results = nitr.await_all({
+local user, profile = nitr.await_all(
     nitr.db:query_async("SELECT * FROM users WHERE id = ?", { id }, "query_row"),
-    nitr.fetch("GET", "https://api.example.com/profile/" .. id),
-})
+    nitr.fetch("GET", "https://api.example.com/profile/" .. id)
+)
 
-local user    = results[1]
-local profile = results[2]:json()
+local body = profile:json()
 ```
+
+Handles go in as separate arguments and the results come back as
+multiple values, in the same order.
 
 The optional third argument is the shape you want back —
 `"query"`, `"query_row"`, `"query_one"` or `"execute"` — matching the
@@ -199,6 +236,7 @@ busy_timeout = 5000       # ms to wait on a lock instead of failing
 synchronous = "normal"    # the right pairing with WAL
 foreign_keys = true       # SQLite leaves this off, which surprises everyone
 cache_size = -2000        # KiB per connection
+max_rows = 10000          # most rows one query may return (an error past it)
 migrations_dir = "migrations"
 ```
 
@@ -275,11 +313,11 @@ mount a Postgres or Redis client as `nitr.ext.pg` from Rust.
 
 ## Quick reference
 
-| Method                                     | Returns                                        |
-| ------------------------------------------ | ---------------------------------------------- |
-| `nitr.db:query(sql, params?)`              | All rows, each a column→value table            |
-| `nitr.db:query_row(sql, params?)`          | The first row, or `nil`                        |
-| `nitr.db:query_one(sql, params?)`          | The first column of the first row              |
-| `nitr.db:execute(sql, params?)`            | Affected row count                             |
-| `nitr.db:transaction(fn)`                  | Whatever `fn(tx)` returns; rolls back on error |
-| `nitr.db:query_async(sql, params?, kind?)` | An unsent handle for `nitr.await_all`          |
+| Method                                     | Returns                                                     |
+| ------------------------------------------ | ----------------------------------------------------------- |
+| `nitr.db:query(sql, params?)`              | All rows, each a column→value table; raises past `max_rows` |
+| `nitr.db:query_row(sql, params?)`          | The first row, or `nil` when there are none                 |
+| `nitr.db:query_one(sql, params?)`          | The one row; raises on none, and on more than one           |
+| `nitr.db:execute(sql, params?)`            | Affected row count                                          |
+| `nitr.db:transaction(fn)`                  | Whatever `fn(tx)` returns; rolls back on error              |
+| `nitr.db:query_async(sql, params?, kind?)` | An unsent handle for `nitr.await_all`                       |

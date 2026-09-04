@@ -248,7 +248,16 @@ reach.
 > execution budget would quietly stop being a budget.
 
 `exec_timeout_ms` is enforced twice: an instruction-count hook stops
-`while true do end`, and an outer async timeout stops slow I/O.
+`while true do end`, and an outer async timeout stops slow I/O. The
+budget error is also re-raised by `pcall`, `xpcall` and
+`coroutine.resume`, so a loop that catches it cannot keep running past
+the deadline.
+
+Every chunk the runtime compiles is **text only** — handler and config
+scripts, `require`d modules, test files, and `load` whatever mode it is
+given — and `string.dump` and `package.searchpath` are removed. Lua 5.4
+does not verify bytecode, so accepting a binary chunk would put the
+sandbox's own defenses out of reach.
 
 ## Standard library (`[std]`)
 
@@ -272,14 +281,15 @@ enable.
 Applied whenever a `[database]` section exists. `path` is the only
 required key.
 
-| Setting          | Default                              | Notes                                |
-| ---------------- | ------------------------------------ | ------------------------------------ |
-| `journal_mode`   | `wal`                                | or `delete`; `keep` keeps as-is      |
-| `busy_timeout`   | 5000 ms                              | wait on a lock instead of failing    |
-| `synchronous`    | `normal`                             | the right pairing with WAL           |
-| `foreign_keys`   | `true`                               | SQLite leaves this off by default    |
-| `cache_size`     | `-2000` (KiB per connection)         | negative values are KiB              |
-| `migrations_dir` | unset — `migrations/` when it exists | ignored when the directory is absent |
+| Setting          | Default                              | Notes                                               |
+| ---------------- | ------------------------------------ | --------------------------------------------------- |
+| `journal_mode`   | `wal`                                | or `delete`; `keep` keeps as-is                     |
+| `busy_timeout`   | 5000 ms                              | wait on a lock instead of failing                   |
+| `synchronous`    | `normal`                             | the right pairing with WAL                          |
+| `foreign_keys`   | `true`                               | SQLite leaves this off by default                   |
+| `cache_size`     | `-2000` (KiB per connection)         | negative values are KiB                             |
+| `max_rows`       | 10000                                | most rows one `query` may return; past it it raises |
+| `migrations_dir` | unset — `migrations/` when it exists | ignored when the directory is absent                |
 
 WAL is the pragma that matters most: with one connection per pooled
 state, SQLite's default rollback journal serializes every writer and
@@ -297,8 +307,9 @@ fails fast on contention.
 | Setting       | Default                 |
 | ------------- | ----------------------- |
 | `max_entries` | 10000                   |
-| `max_bytes`   | 32 MiB                  |
+| `max_bytes`   | 32 MiB (keys included)  |
 | `default_ttl` | 300 s (`0` = no expiry) |
+| key length    | 1024 bytes, enforced    |
 
 The cache is per-process: a restart empties it, and two Nitr processes
 have two independent caches. Sessions and exact counters do not belong
@@ -328,23 +339,24 @@ connect. See [Outbound HTTP](./fetch).
 
 ## HTTP behaviour
 
-| Setting                              | Default                              |
-| ------------------------------------ | ------------------------------------ |
-| `[compression] enabled`              | `false`                              |
-| `[compression] algorithms`           | `br`, `gzip` (server order wins)     |
-| `[compression] min_size`             | 1024 bytes                           |
-| `[compression] types`                | `text/*`, JSON, JavaScript, XML, SVG |
-| precompressed `.br` / `.gz` sidecars | always served when present           |
-| `[cors]`                             | disabled until `origins` is set      |
-| `[cors] credentials`                 | `false`                              |
-| `[rate_limit] enabled`               | `false`                              |
-| `[rate_limit] requests`              | 100 per window                       |
-| `[rate_limit] window`                | 60 s                                 |
-| `[rate_limit] trust_forwarded_for`   | `false`                              |
-| `[static]`                           | disabled until `dir` is set          |
-| `[static] mount`                     | `/`                                  |
-| `[static] spa`                       | `false`                              |
-| `[static] cache_control`             | unset                                |
+| Setting                              | Default                                |
+| ------------------------------------ | -------------------------------------- |
+| `[compression] enabled`              | `false`                                |
+| `[compression] algorithms`           | `br`, `gzip` (server order wins)       |
+| `[compression] min_size`             | 1024 bytes                             |
+| `[compression] types`                | `text/*`, JSON, JavaScript, XML, SVG   |
+| precompressed `.br` / `.gz` sidecars | always served when present             |
+| `[cors]`                             | disabled until `origins` is set        |
+| `[cors] credentials`                 | `false`                                |
+| `[rate_limit] enabled`               | `false`                                |
+| `[rate_limit] requests`              | 100 per window                         |
+| `[rate_limit] window`                | 60 s                                   |
+| `[rate_limit] trust_forwarded_for`   | `false` (keys by the **last** entry)   |
+| `[static]`                           | disabled until `dir` is set            |
+| `[static] mount`                     | `/`                                    |
+| `[static] spa`                       | `false`                                |
+| `[static] cache_control`             | unset                                  |
+| `[static] dotfiles`                  | `false` (`.well-known/` always served) |
 
 Compression is off because it turns a CPU-cheap server into a
 CPU-spending one, and that should be a decision rather than a surprise.
@@ -402,11 +414,16 @@ byte-clean plain text. See [Logging](./logging).
 
 ## Test runner and environment
 
-| Setting         | Default                                  |
-| --------------- | ---------------------------------------- |
-| `[testing] dir` | `tests`                                  |
-| `[env] file`    | `.env` next to `nitr.toml`, when present |
-| `[env] allow`   | unset — any non-`NITR_*` variable        |
+| Setting              | Default                                      |
+| -------------------- | -------------------------------------------- |
+| `[testing] dir`      | `tests`                                      |
+| `[testing] database` | unset — a private file per run, then removed |
+| `[env] file`         | `.env` next to `nitr.toml`, when present     |
+| `[env] allow`        | unset — any non-`NITR_*` variable            |
+
+`nitr test` never runs against `[database] path`: it substitutes the
+file above and applies the migrations to it first. See
+[Testing](./testing#tests-and-the-database).
 
 An env file's values never override the real process environment, and
 `NITR_*` internals are hidden from scripts either way. An explicitly
@@ -424,6 +441,12 @@ Things that are simply on, with no key to enable them:
 - Static responses answer conditional requests (`ETag`,
   `Last-Modified`, `304`) and range requests (`206` / `416`, honouring
   `If-Range`).
+- Static mounts answer `404` for any `.`-prefixed path component, so a
+  stray `.env` or `.git/` is not served; `.well-known/` is exempt and
+  `dotfiles = true` opts a mount out.
+- Templates HTML-escape by default, whatever the file is called —
+  except names ending in a plain-text extension (`.txt`, `.md`, `.csv`,
+  `.json`, `.yaml`, `.toml`), before an optional `.j2`.
 - A request id per request (UUIDv7), echoed as `X-Request-ID`.
 - Binary-safe request and response bodies.
 - Multi-value response headers, `Set-Cookie` included.
@@ -432,6 +455,12 @@ Things that are simply on, with no key to enable them:
 - Session and CSRF cookies carry `HttpOnly`, `SameSite=Lax` and
   `path = "/"`; a caller's table extends those rather than replacing
   them, and `http_only` cannot be un-set.
+- Every cookie Nitr builds is checked against RFC 6265's grammar, so a
+  value taken from a request cannot smuggle attributes into its own
+  `Set-Cookie` header.
+- The CSRF middleware refuses an unsafe request a browser marked
+  `Sec-Fetch-Site: cross-site` before it compares the token — unless the
+  token cookie is deliberately `SameSite=None`.
 - Every uploaded part carries `part.safe_filename` beside the raw
   `part.filename` — the client's name reduced to a plain file name, so
   `part:save(part.safe_filename)` is safe on its own.

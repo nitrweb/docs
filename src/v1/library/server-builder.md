@@ -281,11 +281,11 @@ it. Read `pool()`, `is_ready()` or `test_client()` before that.
 
 ### The signal contract
 
-| Signal    | Meaning                                              |
-| --------- | ---------------------------------------------------- |
-| `SIGTERM` | Graceful shutdown — what containers and systemd send |
-| `SIGINT`  | Graceful shutdown (ctrl-c)                           |
-| `SIGHUP`  | Reload the runtime pool, keeping connections alive   |
+| Signal    | Meaning                                                                         |
+| --------- | ------------------------------------------------------------------------------- |
+| `SIGTERM` | Graceful shutdown — what containers and systemd send                            |
+| `SIGINT`  | Graceful shutdown (ctrl-c)                                                      |
+| `SIGHUP`  | Reload the runtime pool and re-read the TLS material, keeping connections alive |
 
 On Windows only ctrl-c is available; the others are not wired.
 
@@ -295,6 +295,14 @@ On Windows only ctrl-c is available; the others are not wired.
 configuration script — and swaps it in atomically. In-flight requests
 finish on the old pool, which is dropped when its last guard returns. On
 any error the old pool stays.
+
+The rebuild runs on **its own task**, not in the accept loop: it
+constructs one Lua state per worker and awaits the configuration script,
+which is seconds on a large pool, and connections keep being accepted
+and `SIGTERM` keeps being answered throughout. A reload requested while
+one is running is not dropped — the task runs once more when it
+finishes, because the rebuild in flight read the scripts before the
+second request arrived.
 
 With `[tls]` enabled the certificate and key are re-read too, and the two
 halves are independent: a failed TLS re-read keeps the old acceptor while

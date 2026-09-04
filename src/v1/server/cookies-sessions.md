@@ -55,6 +55,28 @@ exception of `secure`. On a raw `res.cookies:set` there is no implicit
 `HttpOnly` and no implicit `SameSite`; those defaults exist only for the
 session and CSRF cookies, which Nitr owns end to end.
 
+> [!DANGER] The name and value must be legal cookie text, or `set` raises
+>
+> `Set-Cookie` is a `;`-separated list of attributes, so a value taken
+> from a request would otherwise be able to append its own:
+>
+> ```lua
+> -- ?lang=en;%20Domain=.example.com;%20SameSite=None
+> resp.cookies:set("lang", req.query.lang)   -- ❌ raises, and always did
+>                                            --    have to be encoded
+> ```
+>
+> RFC 6265's grammar is enforced instead of hoped for. The **name** must
+> be a token: printable ASCII without whitespace or
+> `()<>@,;:\"/[]?={}`. The **value** may not contain control
+> characters, whitespace, `"`, `,`, `;` or `\`. `path` and `domain` may
+> not contain `;` either. Anything else raises rather than producing a
+> header with attributes you did not write.
+>
+> Encode anything unconstrained before it goes in —
+> `nitr.base64.encode(value)`, or `:set_signed`, whose payload is
+> already base64.
+
 > [!TIP] Sensible defaults for an auth cookie
 >
 > ```lua
@@ -278,6 +300,16 @@ end)
 `max_age = 0` is applied the same way, on purpose: a caller's `max_age`
 must not be able to keep a cleared session alive.
 
+> [!NOTE] `max_age` is enforced on the server, not only by the browser
+>
+> With a `max_age`, `save` writes the expiry **inside** the signed
+> payload as well. A cookie presented after it has passed starts an
+> **empty** session — exactly as if it had not been sent — so a captured
+> cookie stops working when the session it carries ages out.
+> `Max-Age` on its own is advice to a browser, and a client replaying a
+> stolen cookie takes none. This is the closest thing a stateless
+> session has to expiry, and it is a reason to set `max_age`.
+
 > [!WARNING] `cookie` means something different here than in `nitr.csrf`
 >
 > On a session it is the attribute **table**; on `nitr.csrf` the same
@@ -290,12 +322,17 @@ Fields are plain Lua assignments, and the table is serialized to JSON
 on `save`. That imposes four rules, each of which reports itself rather
 than producing a cookie the browser will quietly drop:
 
-| Rule                                  | What happens otherwise                         |
-| ------------------------------------- | ---------------------------------------------- |
-| Values must be JSON-serializable      | `save` raises; a function is the usual culprit |
-| Serialized session ≤ 2800 bytes       | `save` raises and names the actual size        |
-| `save` and `clear` are reserved names | `save` raises: they are the methods            |
-| Tables nested at most 128 levels deep | `save` raises before the size is even measured |
+| Rule                                          | What happens otherwise                                          |
+| --------------------------------------------- | --------------------------------------------------------------- |
+| Values must be JSON-serializable              | `save` raises; a function is the usual culprit                  |
+| Strings must be UTF-8 text                    | `save` raises; encode raw bytes with `nitr.base64.encode` first |
+| Serialized session ≤ 2800 bytes               | `save` raises and names the actual size                         |
+| `save`, `clear` and `_exp` are reserved names | `save` raises: the first two are the methods, `_exp` the expiry |
+| Tables nested at most 128 levels deep         | `save` raises before the size is even measured                  |
+
+The UTF-8 rule catches a real trap: a field set to
+`nitr.crypto.random_bytes(16)` used to come back on the next request as
+a table of sixteen integers, with nothing reported at save time.
 
 The 2800-byte ceiling is chosen so the signed, base64-encoded cookie
 stays under the ~4 KiB browsers enforce per cookie. If you are near it,
@@ -307,18 +344,20 @@ a JSON object — an older secret sharing the name, or tooling — starts an
 
 ### What a stateless session means
 
-|     |                                                                                                                        |
-| --- | ---------------------------------------------------------------------------------------------------------------------- |
-| ✅  | No store to run, no state to replicate. Any process can validate any session.                                          |
-| ✅  | Survives restarts and scales horizontally for free.                                                                    |
-| ⚠️  | **Keep it small.** Every request carries it. An id and a role, not a shopping cart.                                    |
-| ⚠️  | The client can **read** it. Signed, not encrypted.                                                                     |
-| ❌  | **Cannot be invalidated server-side** before the cookie expires. Rotating the secret invalidates _everything_ at once. |
+|     |                                                                                                                       |
+| --- | --------------------------------------------------------------------------------------------------------------------- |
+| ✅  | No store to run, no state to replicate. Any process can validate any session.                                         |
+| ✅  | Survives restarts and scales horizontally for free.                                                                   |
+| ⚠️  | **Keep it small.** Every request carries it. An id and a role, not a shopping cart.                                   |
+| ⚠️  | The client can **read** it. Signed, not encrypted.                                                                    |
+| ⚠️  | A `max_age` **does** expire it server-side (the expiry rides in the signed payload), but nothing can revoke it early. |
+| ❌  | **Cannot be invalidated server-side** before that expiry. Rotating the secret invalidates _everything_ at once.       |
 
 That last row is a real limitation, documented rather than hidden — see
-[Known weaknesses](./security#known-weaknesses). If you need
-per-session revocation, store a session id in the cookie and the
-session's validity in [`nitr.db`](./database).
+[Known weaknesses](./security#known-weaknesses). Setting `max_age`
+bounds how long a stolen cookie is worth stealing; if you need
+per-session revocation on demand, store a session id in the cookie and
+the session's validity in [`nitr.db`](./database).
 
 > [!WARNING] `nitr.cache` is not a session store
 >
@@ -430,6 +469,8 @@ nitr.session(req, { secret = s, name = "my_session" })
 - Only **unsafe methods** are verified. `GET`, `HEAD`, `OPTIONS` and
   `TRACE` pass through untouched, per RFC 9110's definition of safe;
   everything else — `POST`, `PUT`, `PATCH`, `DELETE` — is checked.
+- An unsafe request the browser marked `Sec-Fetch-Site: cross-site` is
+  **refused before the token is looked at** — see below.
 - The request must echo the cookie's token in the header, **or** in the
   form field of an `application/x-www-form-urlencoded` body.
 - Comparison is constant-time.
@@ -455,6 +496,34 @@ nitr.session(req, { secret = s, name = "my_session" })
 > A freshly issued token cannot match: the client has not seen it yet.
 > The cookie is issued on whatever goes out — including the `403` — so
 > a client that lost its cookie succeeds on retry.
+
+### Cross-site requests are refused before the token
+
+A double-submit token proves the sender could read _a_ cookie — not that
+the cookie was yours. A sibling subdomain, or plain HTTP where the
+cookie is not `Secure`, can plant one it obtained itself. Browsers state
+the answer to that question directly: a request a third-party site
+initiated carries `Sec-Fetch-Site: cross-site`.
+
+So an unsafe request with that header is rejected outright, before the
+token comparison. The single exception is `cookie_opts.same_site =
+"None"` — the setting whose whole meaning is "accept cross-site posts" —
+which turns the check off, because refusing would contradict it:
+
+```lua
+-- Refuses browser-flagged cross-site requests (the default).
+app:use(nitr.csrf({ secret = nitr.cfg.csrf_secret }))
+
+-- A genuine cross-site form: the token alone is the check.
+app:use(nitr.csrf({
+    secret      = nitr.cfg.csrf_secret,
+    cookie_opts = { same_site = "None" },
+}))
+```
+
+Clients too old to send `Sec-Fetch-Site` fall back to the token alone,
+so this is a defense that has been added, not one anything now depends
+on.
 
 ## Where secrets come from
 

@@ -177,14 +177,19 @@ the deadline fires, which is why the deadline is never optional.
 > waits on different protocol phases, and a streaming deployment that
 > relaxes the first says nothing about the second.
 
-## Startup: read once, validated once
+## Startup: validated before a port exists
 
-The certificate and the key are read **exactly once, before a port
-exists**. A half-configured or mismatched pair is therefore a startup
-failure naming the file, not a listener that accepts TCP and then fails
-every handshake — which, from the outside, is indistinguishable from a
-network fault, and which surfaces only _after_ a deployment has already
-shifted traffic onto the port.
+The certificate and the key are read **before the listener binds**, and
+validated together. A half-configured or mismatched pair is therefore a
+startup failure naming the file, not a listener that accepts TCP and
+then fails every handshake — which, from the outside, is
+indistinguishable from a network fault, and which surfaces only _after_
+a deployment has already shifted traffic onto the port.
+
+The same load runs again on every
+[reload](#certificate-renewal), with the same validation and the same
+refusal to accept a broken pair — so what follows is as much about
+`SIGHUP` as it is about boot.
 
 `nitr check` performs a real build, so it catches every one of these
 before the artifact goes anywhere:
@@ -214,7 +219,7 @@ the handshake_ is a boot refusal instead.
 > disabled. Protecting the file is the operator's job — `0600` or
 > `0400`.
 
-The PEM parser is fuzzed (`tls_pem`) rather than merely tested, because
+The PEM parser is fuzzed (`tls-pem`) rather than merely tested, because
 those bytes are written by an ACME client or a mounted secret — not by
 you — and a parser that only ever saw well-formed input is a parser
 that has not been checked.
@@ -226,12 +231,14 @@ same paths so a failed boot stays diagnosable. Treat the rendered
 config and the startup log as belonging to the same trust domain as
 `nitr.toml` itself.
 
-> [!NOTE] What "read once" means for the key in memory
+> [!NOTE] What happens to the key in memory
 >
-> The PEM buffer read from disk is wiped when loading returns. The DER
-> copy rustls keeps lives as long as the acceptor and is **not**
-> wipeable. That narrows the window in which a core dump yields the
-> key; it does not close it.
+> The PEM buffer read from disk is wiped when loading returns — on the
+> reload path as well as at boot. The DER copy rustls keeps lives as
+> long as the acceptor and is **not** wipeable; a reload replaces the
+> acceptor, so the previous copy is dropped rather than wiped. That
+> narrows the window in which a core dump yields the key; it does not
+> close it.
 
 ## What the handshake offers
 

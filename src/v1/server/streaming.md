@@ -82,6 +82,29 @@ On the browser side:
 > browser reconnects on its own. Use it for progress, notifications and
 > live counters. Nitr does not implement WebSockets.
 
+### Framing is not something data can break out of
+
+The event-stream grammar ends a line at `\r\n`, `\n` **or a bare `\r`**,
+and each is a place a value could otherwise start a field of its own.
+So:
+
+- **String data is split on all three**, one `data:` line per line, and
+  the client reassembles them with `\n` between. Multi-line data works
+  as written; a `\r` smuggled in from a request cannot begin a `retry:`
+  or `event:` line.
+- **An event name containing a line break raises.** A name is one line
+  by definition, so this is an error at the `send` rather than a second
+  event on the wire.
+
+```lua
+send("log", request_line)          -- ✅ any line breaks become data: lines
+send(user_supplied_name, payload)  -- ❌ raises if the name has \r or \n
+```
+
+Table data goes through the JSON encoder, which has no line breaks to
+worry about — but does refuse a string that is not UTF-8, so encode raw
+bytes with `nitr.base64.encode` first.
+
 ## The cost: a stream holds a Lua state
 
 This is the single most important thing to understand about streaming in

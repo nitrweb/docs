@@ -121,9 +121,10 @@ The returned table becomes `nitr.cfg` in every handler.
 > This chunk runs outside the async executor, so a builtin that yields
 > cannot run in it. That covers the argon2 password functions
 > (`nitr.crypto.password_hash`, `password_verify`,
-> `password_verify_dummy`), which do their work on the blocking pool.
-> Mint hashes with [`nitr hash-password`](./passwords) and store the
-> result instead of hashing at boot.
+> `password_verify_dummy`) and `nitr.template:render`, all of which do
+> their work off the async worker. Mint hashes with
+> [`nitr hash-password`](./passwords) and store the result instead of
+> hashing at boot; render templates from a handler.
 
 Use it for: one-off schema setup, precomputed lookup tables, values
 derived from the environment, anything expensive you want to pay for

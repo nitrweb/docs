@@ -97,6 +97,7 @@ const STAGES: Stage[] = [
     points: [
       '<code>describe</code> / <code>it</code> / <code>expect</code>, with <code>before_each</code> and <code>after_each</code> per file.',
       'A failure names the assertion, both values, and the <code>file:line</code>.',
+      'Never your configured database: tests get a migrated, throwaway one, so a <code>DELETE FROM</code> in <code>before_each</code> is safe.',
       '<code>--filter</code> runs one test while you iterate.'
     ],
     lines: [
@@ -143,7 +144,7 @@ const STAGES: Stage[] = [
     points: [
       'Config, Lua, templates, static files and migrations travel together.',
       '<code>dev_mode</code> is forced off in the artifact — no tracebacks leak from a shipped build.',
-      '<code>SIGHUP</code> or <code>nitr reload</code> rebuilds the pool with zero downtime.'
+      '<code>SIGHUP</code> or <code>nitr reload</code> rebuilds the pool and re-reads TLS certificates, with zero downtime.'
     ],
     lines: [
       { kind: 'cmd', text: 'nitr build --output myapp' },

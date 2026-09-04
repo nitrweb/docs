@@ -211,7 +211,7 @@ app:post("/api/articles", require_auth, function(req)
             "INSERT INTO articles (title, body, author, created_at) VALUES (?, ?, ?, ?)",
             { data.title, data.body, req.user, nitr.time.now() }
         )
-        return tx:query_one("SELECT last_insert_rowid()")
+        return tx:query_one("SELECT last_insert_rowid() AS id").id
     end)
 
     local resp = nitr.json({ id = id, title = data.title }, 201)

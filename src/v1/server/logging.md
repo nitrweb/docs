@@ -146,6 +146,19 @@ closed:
 > nitr.log.info("login", { user_id = user.id })          -- ✅
 > ```
 
+> [!NOTE] A message cannot forge a log line
+>
+> The message you pass is often request data, and the text subscriber
+> writes it out verbatim — so control characters in it are escaped
+> before it is emitted: a `\n` in a request path cannot append a
+> plausible-looking second line, and a `\r` or an ANSI escape cannot
+> overwrite or recolour one on a terminal. Tabs survive, being
+> formatting rather than line structure. The JSON format escapes on its
+> own, so both agree.
+>
+> This covers the message. **Field values are still yours** — see the
+> warning above.
+
 ## Error logging
 
 A handler failure is logged **before** your `on_error` runs, structured,

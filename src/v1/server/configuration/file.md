@@ -58,6 +58,14 @@ pidfile = "/run/nitr/nitr.pid"
 > could never be used. Asking for them is a startup error rather than a
 > number that silently means something else.
 
+> [!NOTE] The counts that size real objects have ceilings
+>
+> `workers` is capped at 4096 (each is a full Lua VM with its own memory
+> budget) and `[limits] max_connections` / `[health] max_connections` at
+> 1 048 576. A stray zero — `max_connections = 10000000000` — is a
+> startup error naming the maximum, instead of a process that binds the
+> port and then dies building the connection semaphore.
+
 ## `[limits]`
 
 Request-size and connection limits, all enforced **before** a request
@@ -153,6 +161,12 @@ an upload written somewhere nobody chose is worse than a startup error.
 > uploaded `.lua` file there would be a loadable module — upload-to-RCE
 > written in configuration. That combination **refuses to boot**.
 
+> [!DANGER] Nor inside `[templating] dir`
+>
+> An upload whose name matches a template would replace it, which is
+> stored script injection through the renderer. That combination refuses
+> to boot too, for the same reason.
+
 > [!WARNING] Inside `[static] dir` only warns
 >
 > Serving uploads back over HTTP is a real deployment shape (user
@@ -228,6 +242,7 @@ busy_timeout = 5000
 synchronous = "normal"
 foreign_keys = true
 cache_size = -2000
+max_rows = 10000
 migrations_dir = "migrations"
 ```
 
@@ -239,7 +254,17 @@ migrations_dir = "migrations"
 | `synchronous`    | `"normal"` | The right pairing with WAL: durable across an application crash, at risk only from power loss mid-checkpoint.                              |
 | `foreign_keys`   | `true`     | SQLite leaves this off, which surprises everyone.                                                                                          |
 | `cache_size`     | `-2000`    | KiB per connection (negative means KiB, per SQLite's convention).                                                                          |
+| `max_rows`       | `10000`    | Most rows one `nitr.db:query` may return. Past it the query **raises**, naming this setting.                                               |
 | `migrations_dir` | _unset_    | Where `nitr migrate` looks for `NNN_name.sql` files. Unset uses `migrations/` when that directory exists, and ignores it when it does not. |
+
+> [!NOTE] `max_rows` errors rather than truncating
+>
+> Every row is materialized in memory on the blocking thread and then
+> copied into the Lua state, so an unbounded `SELECT *` — or an
+> attacker-chosen `LIMIT` a handler interpolated — is a memory
+> amplifier. A truncated result would be a wrong answer that looks like
+> a right one, so the query fails instead. Page with `LIMIT`/`OFFSET`,
+> or raise the ceiling deliberately.
 
 > [!WARNING] WAL changes the on-disk file set
 >
@@ -262,11 +287,14 @@ max_bytes = 33554432
 default_ttl = 300
 ```
 
-| Key           | Default | Description                                                                                               |
-| ------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| `max_entries` | `10000` | Maximum number of entries (LRU beyond it).                                                                |
-| `max_bytes`   | 32 MiB  | Total size ceiling for the stored values.                                                                 |
-| `default_ttl` | `300`   | Seconds an entry lives when `set` does not say; `0` means no expiry, leaving eviction to the size bounds. |
+| Key           | Default | Description                                                                                                        |
+| ------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `max_entries` | `10000` | Maximum number of entries (LRU beyond it).                                                                         |
+| `max_bytes`   | 32 MiB  | Total size ceiling for the stored entries — **keys included**, so a long request-derived key costs what it weighs. |
+| `default_ttl` | `300`   | Seconds an entry lives when `set` does not say; `0` means no expiry, leaving eviction to the size bounds.          |
+
+Keys themselves are bounded to 1024 bytes; a longer one raises rather
+than being stored. Hash the varying part when it comes from a request.
 
 Bounded and owned by Rust; entries are serialized, so no Lua value ever
 crosses between states. It is **per-process**: a restart empties it, and
@@ -304,6 +332,13 @@ when a pattern would match them.
 > regardless of this section and regardless of the `compression` Cargo
 > feature — serving an already-compressed file needs no encoder.
 
+> [!TIP] `Cache-Control: no-transform` opts one response out
+>
+> A response that sets it is left alone — that header is the
+> application saying the bytes _are_ the representation, which is what a
+> signed payload or a byte-exact download needs. Set it from the handler
+> where re-encoding would be wrong.
+
 ## `[cors]`
 
 Cross-origin resource sharing, enforced in Rust: a preflight is answered
@@ -324,7 +359,7 @@ max_age = 86400
 | Key              | Default            | Description                                                                                                                                                                                                     |
 | ---------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `origins`        | _unset (disabled)_ | Allowed origins, or `["*"]` for a public API.                                                                                                                                                                   |
-| `methods`        | _unset_            | Allowed methods.                                                                                                                                                                                                |
+| `methods`        | _unset_            | Allowed methods. Matched case-insensitively, so `["post"]` approves a browser's `POST`.                                                                                                                         |
 | `headers`        | _unset_            | Allowed request headers.                                                                                                                                                                                        |
 | `expose_headers` | _unset_            | Response headers the browser may read.                                                                                                                                                                          |
 | `credentials`    | `false`            | **Cannot** be combined with `origins = ["*"]` — browsers reject `Access-Control-Allow-Origin: *` on a credentialed request, so the server refuses to start rather than shipping a policy no browser will honor. |
@@ -438,14 +473,36 @@ window = 60
 trust_forwarded_for = false
 ```
 
-| Key                   | Default | Description                                                                                                                                                                                                               |
-| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`             | `false` | Turn the limiter on.                                                                                                                                                                                                      |
-| `requests`            | `100`   | Allowed requests per window and client IP.                                                                                                                                                                                |
-| `window`              | `60`    | Window length in seconds.                                                                                                                                                                                                 |
-| `trust_forwarded_for` | `false` | Key by the first `X-Forwarded-For` entry instead of the peer address. Enable **only** behind a proxy that overwrites the header rather than appending to whatever the client sent — otherwise a client picks its own key. |
+| Key                   | Default | Description                                                                                                                                              |
+| --------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`             | `false` | Turn the limiter on.                                                                                                                                     |
+| `requests`            | `100`   | Allowed requests per window and client.                                                                                                                  |
+| `window`              | `60`    | Window length in seconds.                                                                                                                                |
+| `trust_forwarded_for` | `false` | Key by the **last** `X-Forwarded-For` entry — the one the proxy in front appended — instead of the peer address. Enable **only** behind a trusted proxy. |
 
 Exceeding the budget answers `429` with `Retry-After`.
+
+> [!NOTE] The **last** `X-Forwarded-For` entry is the proxy's word
+>
+> The first entry is whatever the client wrote, so keying by it would
+> let one header buy a fresh budget per request. The last one is the
+> address the nearest proxy accepted the connection from — which is the
+> right key whether that proxy overwrites the header or (as nginx,
+> Caddy, Traefik and HAProxy do by default) appends to what arrived.
+> Where a proxy adds a whole new header _line_ instead of extending the
+> first, the last line is the one read. With more than one hop the
+> budget keys by the nearest hop's client, not the origin client.
+>
+> A header that does not parse falls back to the peer address, and the
+> setting is still only safe behind a proxy that actually sets it: on a
+> directly-exposed listener, `true` lets any client choose its own key.
+
+> [!NOTE] IPv6 clients are keyed by their /64
+>
+> A single subscriber routinely holds 2^64 addresses, so per-address
+> budgets would be free to evade. The whole /64 shares one budget;
+> IPv4 is keyed as itself, and a v4-mapped address (`::ffff:a.b.c.d`)
+> is unwrapped first.
 
 > [!NOTE] It is a fixed window
 >
@@ -483,7 +540,7 @@ propagate_trace_context = false
 | `max_concurrent`          | `8`     | Maximum requests per `nitr.await_all(...)`.                                                                                  |
 | `max_per_request`         | `32`    | Total outbound calls one **inbound** request may make, including a loop issuing them one after another. `0` removes the cap. |
 | `connect_timeout`         | `10.0`  | Seconds to establish a connection.                                                                                           |
-| `timeout`                 | `30.0`  | Default per-request budget; a per-call `timeout` option overrides it.                                                        |
+| `timeout`                 | `30.0`  | Per-request budget, and a **ceiling**: a per-call `timeout` option may lower it, never raise it.                             |
 | `pool_max_idle_per_host`  | `8`     | Idle connections kept per host.                                                                                              |
 | `max_retries`             | `5`     | Ceiling on `retry.attempts`. Retries are opt-in per call and only ever applied to idempotent methods.                        |
 | `proxy`                   | _unset_ | Explicit proxy. Unset reads `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY`.                                                          |
@@ -495,6 +552,19 @@ propagate_trace_context = false
 > A hostname is resolved **once**, inside the resolver the connector
 > itself uses. A DNS server cannot answer one address to the policy
 > check and a different one to the connect.
+
+> [!DANGER] A proxy plus `fetch` needs an explicit trust decision
+>
+> Behind a proxy the **proxy** resolves the target, so the guarded
+> resolver above never runs and only the pre-flight name check does. So
+> with `"fetch"` in `[std] features` and a proxy in play — `proxy` set
+> here, **or** `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` present in the
+> environment — the server refuses to start unless one of these says
+> what you meant: `allowed_hosts` (targets that do not depend on DNS at
+> all), `allow_private_networks = true` (the proxy is trusted to reach
+> anything), or `no_proxy = true` (ignore the environment). The message
+> names which source introduced the proxy, so an inherited variable in a
+> CI image is diagnosable.
 
 ## `[static]`
 
@@ -508,6 +578,7 @@ dir = "public"
 mount = "/"
 spa = false
 cache_control = "public, max-age=3600"
+dotfiles = false
 ```
 
 | Key             | Default            | Description                                                                                                                                                             |
@@ -516,6 +587,23 @@ cache_control = "public, max-age=3600"
 | `mount`         | `"/"`              | URL prefix.                                                                                                                                                             |
 | `spa`           | `false`            | Serve `index.html` for unknown paths — React/Vue/Svelte routing.                                                                                                        |
 | `cache_control` | _unset_            | `Cache-Control` header for served files.                                                                                                                                |
+| `dotfiles`      | `false`            | Serve files and directories whose name starts with `.`. `.well-known/` is served regardless.                                                                            |
+
+> [!NOTE] Dotfiles are hidden by default
+>
+> A request path with any `.`-prefixed component answers `404` before
+> the filesystem is touched. `.env`, `.git/` and `.htpasswd` are exactly
+> what ends up in a served directory by accident, and nothing a browser
+> asks for begins with a dot — except `.well-known/`, which is exempt so
+> ACME challenges and `security.txt` still work.
+
+> [!DANGER] `dir` may not enclose your scripts or your templates
+>
+> `dir = "."` with `mount = "/"` answers `GET /app.lua` and
+> `GET /nitr.toml`: the application served as static content. A `dir`
+> that contains the handler script's directory or `[templating] dir`
+> is a **startup error** naming both paths. Point it at a directory
+> holding public assets only.
 
 ## `[templating]`
 
@@ -538,11 +626,23 @@ saying the builtin is not configured. Listing `"template"` in
 ```toml
 [testing]
 dir = "tests"
+database = "test.db"
 ```
 
-| Key   | Default   | Description                                |
-| ----- | --------- | ------------------------------------------ |
-| `dir` | `"tests"` | Where `nitr test` discovers `*.lua` files. |
+| Key        | Default                          | Description                                                                                                      |
+| ---------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `dir`      | `"tests"`                        | Where `nitr test` discovers `*.lua` files.                                                                       |
+| `database` | _unset (a private file per run)_ | The SQLite file tests run against when a `[database]` section exists. Never `[database] path`, whatever it says. |
+
+> [!WARNING] `nitr test` never touches the configured database
+>
+> A test's `before_each` is typically `DELETE FROM ...`, and a
+> `nitr.toml` naming the live database is exactly the file a developer
+> runs `nitr test` beside. So the runner substitutes its own path: the
+> one in `[testing] database`, or — when that is unset — a fresh private
+> file it creates and removes when the run ends. Either way it applies
+> `[database] migrations_dir` first, so tests see the schema rather than
+> an empty file.
 
 ## `[env]`
 
@@ -696,6 +796,19 @@ exec_timeout_ms = 30000
 > safe constructor, which cannot load the debug library at all — and it
 > would defeat `exec_timeout_ms` anyway, since `debug.sethook` replaces
 > the very instruction-count hook that stops CPU-bound loops.
+
+> [!NOTE] What `"package"` gives you, and what it does not
+>
+> `require` resolves `a.b` to `<script dir>/a/b.lua` or
+> `<script dir>/a/b/init.lua` through a searcher that owns the directory
+> itself — it never consults `package.path`, so reassigning that string
+> widens nothing, and module names must be dotted identifiers.
+> `package.loadlib` and `package.searchpath` are removed, `package.cpath`
+> is empty, and every chunk the runtime compiles is **text only**:
+> precompiled Lua bytecode is refused wherever it could appear, `load`
+> ignores a `"b"`/`"bt"` mode, and `string.dump` is gone. Lua 5.4 does
+> not verify bytecode, and a hand-patched chunk is arbitrary memory
+> access inside the process.
 
 ## The annotated original
 

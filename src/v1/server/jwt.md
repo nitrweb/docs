@@ -96,10 +96,10 @@ nitr.crypto.jwt.verify(token, key, opts) -> table|nil, string|nil
 Two return values, and they are exclusive: **claims and no reason**, or
 **`nil` and a reason**.
 
-| Option       | Type       | Notes                                                         |
-| ------------ | ---------- | ------------------------------------------------------------- |
-| `algorithms` | `string[]` | **Required.** The allow-list. Omitting it is an error.        |
-| `leeway`     | `number?`  | Clock skew in seconds, applied to `exp` and `nbf`. Default 0. |
+| Option       | Type       | Notes                                                                                                              |
+| ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `algorithms` | `string[]` | **Required.** The allow-list. Omitting it is an error.                                                             |
+| `leeway`     | `number?`  | Clock skew in seconds, applied to `exp` and `nbf`. Default 0. Must be a **finite number ≥ 0**, or `verify` raises. |
 
 ```lua
 local claims, reason = nitr.crypto.jwt.verify(token, nitr.cfg.jwt_secret, {
@@ -114,15 +114,21 @@ end
 
 The reason is one of exactly seven strings:
 
-| Reason                  | Meaning                                                   |
-| ----------------------- | --------------------------------------------------------- |
-| `malformed token`       | Not three dot-separated segments.                         |
-| `malformed header`      | The first segment is not base64url-encoded JSON.          |
-| `algorithm not allowed` | The header's `alg` is not in your allow-list.             |
-| `invalid signature`     | Wrong key, or a changed byte in the payload or signature. |
-| `malformed claims`      | The second segment is not base64url-encoded JSON.         |
-| `token expired`         | `exp` is in the past, beyond `leeway`.                    |
-| `token not yet valid`   | `nbf` is in the future, beyond `leeway`.                  |
+| Reason                  | Meaning                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `malformed token`       | Not three dot-separated segments.                                                                     |
+| `malformed header`      | The first segment is not base64url-encoded JSON.                                                      |
+| `algorithm not allowed` | The header's `alg` is not in your allow-list.                                                         |
+| `invalid signature`     | Wrong key, or a changed byte in the payload or signature.                                             |
+| `malformed claims`      | The second segment is not base64url-encoded JSON — or it carries an `exp`/`nbf` that is not a number. |
+| `token expired`         | `exp` is in the past, beyond `leeway`.                                                                |
+| `token not yet valid`   | `nbf` is in the future, beyond `leeway`.                                                              |
+
+> [!NOTE] A non-numeric `exp` is malformed, not absent
+>
+> RFC 7519 requires a NumericDate, so `"exp": "soon"` is rejected rather
+> than read as "this token has no expiry" — which would verify a token
+> its issuer meant to expire.
 
 > [!WARNING] The reason belongs in your log, not in the response
 >
@@ -132,15 +138,18 @@ The reason is one of exactly seven strings:
 
 > [!NOTE] `verify` does not raise on hostile input
 >
-> Given a well-formed allow-list, no sequence of bytes in `token` makes
+> Given well-formed options — an `algorithms` allow-list and, if you
+> pass one, a finite `leeway` ≥ 0 — no sequence of bytes in `token` makes
 > `verify` throw — garbage, an empty string, a truncated token and an
 > `alg: none` header all come back as `nil` plus a reason. That property
-> is fuzzed (`jwt_verify`, one of the repository's fuzz targets),
+> is fuzzed (`jwt-verify`, one of the repository's fuzz targets),
 > because a raised error would become a `500` where a `401` was meant.
 > You do not need `pcall` around it.
 >
-> It _does_ raise for a broken **call**: a missing `algorithms` list, or
-> a list naming an algorithm it does not implement.
+> It _does_ raise for a broken **call**: a missing `algorithms` list, a
+> list naming an algorithm it does not implement, or a `leeway` that is
+> negative or not finite — `math.huge` would make both time comparisons
+> vacuous and silently switch expiry off, so it is refused instead.
 
 ## The allow-list is the point
 
@@ -475,15 +484,15 @@ session cookie may have been the answer.
 
 ## Quick reference
 
-| Entry                                      | Description                                                       |
-| ------------------------------------------ | ----------------------------------------------------------------- |
-| `nitr.crypto.jwt.sign(claims, key, opts?)` | Signs a token. `opts.alg` is the only option; default `HS256`.    |
-| `nitr.crypto.jwt.verify(token, key, opts)` | `table\|nil, string\|nil` — claims, or `nil` plus a reason.       |
-| `opts.algorithms`                          | Required allow-list; `HS256`, `HS384`, `HS512`, compared exactly. |
-| `opts.leeway`                              | Clock skew in seconds for `exp`/`nbf`. Default `0`.               |
-| `nitr.auth.bearer(req)`                    | The bearer token, or `nil`.                                       |
-| `nitr.crypto.constant_time_eq(a, b)`       | Timing-safe comparison; returns early on a length mismatch.       |
-| `nitr.time.now()`                          | Unix seconds, for building an `exp`.                              |
+| Entry                                      | Description                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------- |
+| `nitr.crypto.jwt.sign(claims, key, opts?)` | Signs a token. `opts.alg` is the only option; default `HS256`.      |
+| `nitr.crypto.jwt.verify(token, key, opts)` | `table\|nil, string\|nil` — claims, or `nil` plus a reason.         |
+| `opts.algorithms`                          | Required allow-list; `HS256`, `HS384`, `HS512`, compared exactly.   |
+| `opts.leeway`                              | Clock skew in seconds for `exp`/`nbf`. Default `0`; finite and ≥ 0. |
+| `nitr.auth.bearer(req)`                    | The bearer token, or `nil`.                                         |
+| `nitr.crypto.constant_time_eq(a, b)`       | Timing-safe comparison; returns early on a length mismatch.         |
+| `nitr.time.now()`                          | Unix seconds, for building an `exp`.                                |
 
 ## Related
 

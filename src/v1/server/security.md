@@ -9,24 +9,28 @@ is more useful than a reassuring one.
 
 ## What the sandbox defends against
 
-| Threat                                                   | Defense                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CPU exhaustion** (`while true do end`)                 | A per-request execution budget enforced by an instruction-count hook installed globally on the state — user coroutines inherit it — plus an async timeout for slow I/O. Both cover Lua execution and awaited I/O only: a long _synchronous_ Rust call made on a script's behalf executes no Lua instruction and never yields, so those calls carry their own bounds instead — argon2's cost parameters are capped before any hashing starts, and the serializer pre-walk is bounded by node count as well as depth.                                                                             |
-| **Memory exhaustion**                                    | A per-state Lua memory limit (8 MiB by default). A state that hits it is poisoned, dropped and rebuilt; it never serves another request.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| **Filesystem / process access from Lua**                 | `io` and `os` are excluded from the stdlib by default, and `dofile`/`loadfile` are removed with them — they gate the same ambient authority. Nothing in `nitr.*` needs either: `nitr.time` covers dates, `nitr.path` is lexical only. Native modules cannot be loaded in _any_ configuration — `package.loadlib` is removed and `package.cpath` emptied in every state that has `package` at all — and `require`'s search path is pinned to the handler script's directory. `collectgarbage` is removed too: it is a heap oracle, and the memory limit is the allocator's, not the collector's. |
-| **A filesystem _write_ from Lua**                        | There is exactly one, `part:save(path)` for multipart uploads, and it is confined to `[multipart] upload_dir`. Unset, `part:save` is unavailable rather than unconstrained. See [Uploads are the one thing Lua can write](#uploads-are-the-one-thing-lua-can-write).                                                                                                                                                                                                                                                                                                                            |
-| **Request-smuggling-sized inputs**                       | Rust-enforced limits _before_ Lua runs: URI, headers, body (counted as it arrives, not trusted from `Content-Length`), form parts, field and file sizes, connection cap, per-IP rate limit.                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **SSRF from `nitr.fetch`**                               | Private, loopback, link-local and CGNAT ranges refused by default. The filtering happens **inside the resolver the connector uses**, so DNS rebinding does not bypass it; every redirect hop is re-checked; a per-request outbound budget caps the blast radius.                                                                                                                                                                                                                                                                                                                                |
-| **Path traversal out of static mounts and upload roots** | Percent-decode → component whitelist → canonicalize-prefix check, symlinks included. Uploads run the same lexical rule against `[multipart] upload_dir` — one shared implementation, not two that drift — differing only where they must: no percent-decoding (a Lua string is not a URL), and the _parent_ is canonicalized because the target file does not exist yet. `nitr.path.normalize` cannot be climbed with `..`. All three are fuzzed.                                                                                                                                               |
-| **Cross-state data leakage**                             | Pooled states share nothing Lua-visible. The shared cache and the config snapshot carry plain serialized data only — never live Lua values.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **Serializer blow-ups from script-built values**         | One guard ahead of every Lua-value-to-serializer site (`nitr.json`, JSON responses, cache, sessions, JWT claims, SSE data, `nitr.etag`, error bodies, `fetch` bodies, template contexts, log fields): at most 128 levels deep and 1,000,000 node visits. Depth stops a stack overflow; the node budget stops a shared-subtree DAG that is shallow but exponential to walk, which neither execution budget could interrupt. Both are ordinary catchable Lua errors.                                                                                                                              |
-| **Forged cookies, sessions and tokens**                  | HMAC-SHA256 signatures with constant-time verification, and the cookie name bound into the MAC. JWT verification requires an explicit algorithm allow-list and structurally cannot accept `alg: none`.                                                                                                                                                                                                                                                                                                                                                                                          |
-| **Cookies read by page scripts, or sent in the clear**   | `HttpOnly` and `SameSite=Lax` are defaults on the session and CSRF cookies, and a caller's options table **extends** them rather than replacing them — `http_only` cannot be un-set. `Secure` follows [`[cookies] secure`](./cookies-sessions#secure-comes-from-configuration) for every cookie Nitr builds, and a configuration resolving to _not_ secure warns at startup. A handler that writes the `Set-Cookie` header itself bypasses all of it.                                                                                                                                           |
-| **Traffic readable or modifiable on the wire**           | `[tls]` terminates TLS in this process — rustls over the `ring` provider, TLS 1.2 as the floor, ALPN pinned to what the server speaks — or a proxy terminates it in front. See [TLS](./tls).                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Password hashing turned into a CPU/memory amplifier**  | Argon2 hashes its whole input, so `password_hash`/`password_verify` cap the password at 1 KiB _before_ any work, and refuse a **stored** hash whose recorded cost exceeds 256 MiB / t=8 / p=8 — those parameters come from the row, not from the server. All three argon2 entry points offload to the blocking pool, so the executor keeps answering (`/healthz` included) while every pooled state hashes.                                                                                                                                                                                     |
-| **A stored credential that can never verify**            | `password_verify` returns a reason alongside the boolean and logs a warning naming it, so a bcrypt row left behind by a migration is diagnosable instead of an unexplained permanent "wrong password".                                                                                                                                                                                                                                                                                                                                                                                          |
-| **A wedged or draining instance receiving traffic**      | Rust-owned `/readyz` flips _before_ requests can fail. An application cannot report itself healthy through a broken handler.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Damaged states after a panic or memory hit**           | Per-request `catch_unwind`. Poisoned states are recycled, not reused. This catches _panics_ — an **abort** is not a panic and is not contained by it, which is why a stack overflow has to be prevented (the serializer bounds above) rather than caught.                                                                                                                                                                                                                                                                                                                                       |
+| Threat                                                   | Defense                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CPU exhaustion** (`while true do end`)                 | A per-request execution budget enforced by an instruction-count hook installed globally on the state — user coroutines inherit it — plus an async timeout for slow I/O. The budget error cannot be swallowed: `pcall`, `xpcall` and `coroutine.resume` re-raise it, so a loop wrapping a loop in `pcall` cannot absorb every trip and run forever. Both clocks cover Lua execution and awaited I/O only: a long _synchronous_ Rust call made on a script's behalf executes no Lua instruction and never yields, so those calls carry their own bounds instead — argon2's cost parameters are capped before any hashing starts, `nitr.db:query` is bounded by `[database] max_rows`, and the serializer is bounded by node count as well as depth.                                                  |
+| **Memory exhaustion**                                    | A per-state Lua memory limit (8 MiB by default). A state that hits it is poisoned, dropped and rebuilt; it never serves another request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Filesystem / process access from Lua**                 | `io` and `os` are excluded from the stdlib by default, and `dofile`/`loadfile` are removed with them — they gate the same ambient authority. Nothing in `nitr.*` needs either: `nitr.time` covers dates, `nitr.path` is lexical only. Native modules cannot be loaded in _any_ configuration — `package.loadlib` is removed and `package.cpath` emptied in every state that has `package` at all. `require` goes through a searcher that owns the script directory itself rather than reading `package.path`, so reassigning that string widens nothing, and `package.searchpath` is removed (it answered "does this file exist and can it be read?" for any path on the box). `collectgarbage` is removed too: it is a heap oracle, and the memory limit is the allocator's, not the collector's. |
+| **Bytecode loaded into the VM**                          | Lua 5.4 does not verify bytecode, so a hand-patched chunk is type confusion inside the interpreter and arbitrary memory access from there — past every bound the memory limit and instruction hook enforce. Every chunk the runtime compiles is **text only**: handler scripts, config scripts, `require`d modules and test files, plus a `load` that ignores whatever mode the caller asked for. `string.dump`, the other half of that primitive, is removed.                                                                                                                                                                                                                                                                                                                                     |
+| **A filesystem _write_ from Lua**                        | There is exactly one, `part:save(path)` for multipart uploads, and it is confined to `[multipart] upload_dir`. Unset, `part:save` is unavailable rather than unconstrained. See [Uploads are the one thing Lua can write](#uploads-are-the-one-thing-lua-can-write).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Request-smuggling-sized inputs**                       | Rust-enforced limits _before_ Lua runs: URI, headers, body (counted as it arrives, not trusted from `Content-Length`), form parts, field and file sizes, connection cap, per-IP rate limit.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **SSRF from `nitr.fetch`**                               | Private, loopback, link-local, CGNAT, multicast, reserved and benchmarking ranges refused by default — including every IPv6 form that _embeds_ an IPv4 address (v4-mapped, v4-compatible, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`), judged by the address it embeds. The filtering happens **inside the resolver the connector uses**, so DNS rebinding does not bypass it; every redirect hop is re-checked and a cross-origin hop drops `Authorization`/`Cookie`; a per-request outbound budget caps the blast radius. An outbound **proxy** sidesteps the resolver by design, so with `fetch` enabled one refuses to start without `allowed_hosts` or an explicit `allow_private_networks`.                                                                                                      |
+| **Path traversal out of static mounts and upload roots** | Percent-decode → component whitelist → canonicalize-prefix check, symlinks included. Uploads run the same lexical rule against `[multipart] upload_dir` — one shared implementation, not two that drift — differing only where they must: no percent-decoding (a Lua string is not a URL), and the _parent_ is canonicalized because the target file does not exist yet. `nitr.path.normalize` cannot be climbed with `..`. All three are fuzzed.                                                                                                                                                                                                                                                                                                                                                  |
+| **Files served by accident**                             | Static mounts hide `.`-prefixed paths by default (`.env`, `.git/`, `.htpasswd`), with `.well-known/` exempt and `dotfiles = true` as the opt-in. A `[static] dir` enclosing the handler script's directory or `[templating] dir` refuses to boot, and an `upload_dir` inside either of those does too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Header and log injection from request data**           | A cookie name must be an RFC 6265 token and a value a cookie-octet string, so a value taken from a request cannot append `; Domain=…` to its own `Set-Cookie`. SSE splits data on every line terminator the grammar knows (`\r` included) and refuses an event name containing one. `nitr.log` escapes control characters in a message, so a `\n` in a request path cannot forge a log line.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Cross-state data leakage**                             | Pooled states share nothing Lua-visible. The shared cache and the config snapshot carry plain serialized data only — never live Lua values.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Serializer blow-ups from script-built values**         | One set of bounds at every Lua-value-to-serializer site (`nitr.json`, JSON responses, cache, sessions, JWT claims, SSE data, `nitr.etag`, error bodies, `fetch` bodies, template contexts, log fields): at most 128 levels deep and 1,000,000 node visits. Depth stops a stack overflow; the node budget stops a shared-subtree DAG that is shallow but exponential to walk, which neither execution budget could interrupt. The JSON sites also refuse a string that is not UTF-8 rather than emitting an array of byte values — a silent change of type that survived a round trip. All are ordinary catchable Lua errors.                                                                                                                                                                       |
+| **Forged cookies, sessions and tokens**                  | HMAC-SHA256 signatures with constant-time verification, and the cookie name bound into the MAC. A session's `max_age` is written inside the signed payload and enforced on load, so a captured cookie stops working when its session ages out. JWT verification requires an explicit algorithm allow-list, structurally cannot accept `alg: none`, and treats a present-but-non-numeric `exp`/`nbf` as malformed rather than as absent.                                                                                                                                                                                                                                                                                                                                                            |
+| **CSRF through a token the attacker planted**            | The double-submit token is the second check, not the first: an unsafe request a browser marked `Sec-Fetch-Site: cross-site` is refused before the comparison, unless the token cookie is deliberately `SameSite=None`. A token proves the sender read _a_ cookie, and a sibling subdomain can write one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Cookies read by page scripts, or sent in the clear**   | `HttpOnly` and `SameSite=Lax` are defaults on the session and CSRF cookies, and a caller's options table **extends** them rather than replacing them — `http_only` cannot be un-set. `Secure` follows [`[cookies] secure`](./cookies-sessions#secure-comes-from-configuration) for every cookie Nitr builds, and a configuration resolving to _not_ secure warns at startup. A handler that writes the `Set-Cookie` header itself bypasses all of it.                                                                                                                                                                                                                                                                                                                                              |
+| **Traffic readable or modifiable on the wire**           | `[tls]` terminates TLS in this process — rustls over the `ring` provider, TLS 1.2 as the floor, ALPN pinned to what the server speaks — or a proxy terminates it in front. See [TLS](./tls).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Password hashing turned into a CPU/memory amplifier**  | Argon2 hashes its whole input, so `password_hash`/`password_verify` cap the password at 1 KiB _before_ any work, and refuse a **stored** hash whose recorded cost exceeds 256 MiB / t=8 / p=8 — those parameters come from the row, not from the server. All three argon2 entry points offload to the blocking pool, so the executor keeps answering (`/healthz` included) while every pooled state hashes.                                                                                                                                                                                                                                                                                                                                                                                        |
+| **A stored credential that can never verify**            | `password_verify` returns a reason alongside the boolean and logs a warning naming it, so a bcrypt row left behind by a migration is diagnosable instead of an unexplained permanent "wrong password".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **A wedged or draining instance receiving traffic**      | Rust-owned `/readyz` flips _before_ requests can fail. An application cannot report itself healthy through a broken handler.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Damaged states after a panic or memory hit**           | Per-request `catch_unwind`. Poisoned states are recycled, not reused. This catches _panics_ — an **abort** is not a panic and is not contained by it, which is why a stack overflow has to be prevented (the serializer bounds above) rather than caught.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## What it does not defend against
 
@@ -60,8 +64,13 @@ boundary.
   authority: configuration written by the application is trusted, and is
   not part of the sandbox.
 - **Denial of service by a legitimate key.** The rate limiter is
-  per-client-IP and fixed-window; a distributed attacker, or one behind
-  a shared NAT, is bounded only by the connection and pool limits.
+  per-client and fixed-window (IPv4 by address, IPv6 by /64); a
+  distributed attacker, or one behind a shared NAT, is bounded only by
+  the connection and pool limits. Past ~200 000 tracked clients a
+  client not already known is admitted **untracked** rather than
+  refused — refusing would let an address flood deny every new visitor,
+  while admitting costs nothing the flood could not get by rotating
+  addresses. Clients already tracked keep their budget either way.
 - **Certificate lifecycle.** `[tls]` terminates TLS; it does not obtain,
   renew or rotate anything. Protecting the key file stays the operator's
   job — though on Unix a key readable beyond its owner (mode bits
@@ -83,9 +92,11 @@ Tracked deliberately rather than glossed over:
 - **The rate limiter is a fixed window**, so bursts straddling a window
   boundary can briefly reach twice the intended rate. A sliding-window
   revisit is parked, not forgotten.
-- **Sessions cannot be invalidated server-side** before their cookie
-  expires. That is the documented cost of stateless sessions; rotating
-  the secret invalidates everything at once. See
+- **Sessions cannot be revoked server-side** before they expire. A
+  `max_age` _is_ enforced on the server (the expiry travels inside the
+  signed payload, so a captured cookie stops working when the session
+  ages out), but nothing can invalidate one session early; rotating the
+  secret invalidates everything at once. See
   [Sessions](./cookies-sessions#what-a-stateless-session-means).
 - **There is no metrics endpoint yet**, so abuse is visible in logs but
   not on a dashboard.
@@ -149,6 +160,26 @@ exec_timeout_ms = 30000         # 0 disables the execution budget
 > A single infinite loop then holds one of your `workers` states
 > forever, and enough of them stop the server entirely.
 
+> [!NOTE] The budget error cannot be caught and ignored
+>
+> The instruction hook raises an ordinary Lua error, and the count
+> restarts on every trip — so
+> `while true do pcall(function() while true do end end) end` used to
+> catch each one and never accumulate enough instructions to trip on its
+> own, holding a state and a worker thread past every timeout.
+> `pcall`, `xpcall` and `coroutine.resume` re-raise a failure caught
+> **after** the deadline as the budget error. A body that yields (an
+> async builtin inside `pcall`) keeps working as before.
+
+> [!NOTE] Scripts are compiled from source, never from bytecode
+>
+> `load` is pinned to text mode whatever the caller asks for,
+> `string.dump` is removed, and the handler script, config script,
+> `require`d modules and test files are all compiled as text.
+> Lua 5.4 performs no bytecode verification, so a hand-patched binary
+> chunk is type confusion inside the VM — a complete escape from the
+> memory limit and the instruction hook, neither of which can see it.
+
 ## Uploads are the one thing Lua can write
 
 `part:save(path)` is the only filesystem write a script can reach, and
@@ -167,14 +198,17 @@ upload_dir = "/var/lib/myapp/uploads"
 - The directory must exist and be writable at startup; Nitr write-probes
   it rather than discovering the problem on the first upload.
 
-> [!DANGER] An upload root inside the script directory refuses to boot
+> [!DANGER] An upload root inside the script or template directory refuses to boot
 >
-> `require`'s search path is pinned to the handler script's directory,
-> so an uploaded `.lua` file sitting there would be a loadable module —
-> the upload-to-RCE chain written in configuration. Nitr refuses to
-> start on that combination. An upload root inside `[static] dir` only
-> **warns**, since serving uploads back is a real choice — just one to
-> make deliberately.
+> `require` resolves modules inside the handler script's directory, so
+> an uploaded `.lua` file sitting there would be a loadable module — the
+> upload-to-RCE chain written in configuration. An upload root inside
+> `[templating] dir` is the same shape one step over: an upload whose
+> name matches a template replaces it, which is stored script injection
+> through the renderer. Nitr refuses to start on either combination.
+>
+> An upload root inside `[static] dir` only **warns**, since serving
+> uploads back is a real choice — just one to make deliberately.
 
 Build the destination from `part.safe_filename`, not `part.filename`.
 The raw field is exactly what the client sent; `safe_filename` is that
@@ -271,12 +305,12 @@ reader copying the file copies the safe version.
 against the allow-list you pass, and `exp`/`nbf` **when the token
 carries them**. It checks nothing else:
 
-| Claim            | Status                                                                                             |
-| ---------------- | -------------------------------------------------------------------------------------------------- |
-| `iss` (issuer)   | **Never read.** A token from any issuer verifies.                                                  |
-| `aud` (audience) | **Never read.** A token minted for another audience verifies. `aud` may be a string _or_ an array. |
-| `typ` (header)   | Written by `sign`, never verified.                                                                 |
-| `exp` / `nbf`    | Checked **only if present**. A token with neither never expires.                                   |
+| Claim            | Status                                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `iss` (issuer)   | **Never read.** A token from any issuer verifies.                                                                                   |
+| `aud` (audience) | **Never read.** A token minted for another audience verifies. `aud` may be a string _or_ an array.                                  |
+| `typ` (header)   | Written by `sign`, never verified.                                                                                                  |
+| `exp` / `nbf`    | Checked **only if present**. A token with neither never expires. A present-but-non-numeric one is `malformed claims`, not "absent". |
 
 So "this signature is valid" and "this token is still good" are
 different questions, and the second one is yours. See
@@ -377,9 +411,11 @@ Two settings replace `[tls]` in that arrangement:
   wrong. Nothing here can detect that proxy, so Nitr warns at startup
   instead of guessing — [that warning is the
   check](./tls#when-not-to-use-it).
-- `[rate_limit] trust_forwarded_for = true`, but **only** if the proxy
-  overwrites `X-Forwarded-For` rather than appending to whatever the
-  client sent.
+- `[rate_limit] trust_forwarded_for = true`, but **only** where a proxy
+  really is in front. The budget keys by the **last** `X-Forwarded-For`
+  entry — the address that proxy appended — so overwriting and appending
+  proxies both work; on a directly-exposed listener the setting lets any
+  client mint its own key.
 
 HSTS, in this arrangement, belongs to the proxy.
 
@@ -401,10 +437,18 @@ HSTS, in this arrangement, belongs to the proxy.
 - [ ] `[cors] origins` explicit — never `["*"]` together with
       `credentials` (the server refuses to start on that combination
       anyway).
-- [ ] `[fetch] allowed_hosts` set when any URL derives from user input.
+- [ ] `[fetch] allowed_hosts` set when any URL derives from user input —
+      and required outright when an outbound proxy is configured or
+      inherited from the environment.
 - [ ] `[multipart] upload_dir` outside the handler script's directory
-      (Nitr refuses to boot otherwise) and outside `[static] dir` unless
-      serving uploads back is the intent.
+      and outside `[templating] dir` (Nitr refuses to boot otherwise),
+      and outside `[static] dir` unless serving uploads back is the
+      intent.
+- [ ] `[static] dir` pointing at public assets only — a directory
+      enclosing the scripts or the templates refuses to boot — and
+      `dotfiles` left `false`.
+- [ ] `[testing] database` left alone unless you want a keepable test
+      file; `nitr test` never uses `[database] path` either way.
 - [ ] `[std] features` listing only what you use — a builtin you do not
       enable is one a compromised script cannot reach.
 
@@ -441,7 +485,10 @@ HSTS, in this arrangement, belongs to the proxy.
 - [ ] Every request body [validated](./validation); `check` strips
       undeclared fields, which is what prevents mass assignment.
 - [ ] `res.cookies:set` given `http_only` explicitly — only the session
-      and CSRF cookies carry it by default.
+      and CSRF cookies carry it by default — and any request-derived
+      cookie value base64-encoded, since the raw grammar is enforced.
+- [ ] `nitr.session` given a `max_age`, so a captured cookie eventually
+      stops working.
 - [ ] Secret comparisons via `nitr.crypto.constant_time_eq`, never `==`
       — bearer tokens included, and a variable-length secret compared as
       a digest.
@@ -455,15 +502,18 @@ HSTS, in this arrangement, belongs to the proxy.
       a token without one never expires.
 - [ ] [CSRF middleware](./cookies-sessions#csrf-protection) on
       cookie-authenticated form endpoints.
-- [ ] `| safe` in templates used only for markup you generated.
+- [ ] `| safe` in templates used only for markup you generated, and no
+      HTML template named with a plain-text extension (`.txt.j2`,
+      `.md.j2`, …), which turns auto-escaping off.
 - [ ] Upload destinations built from `part.safe_filename`, or from
       generated names — never from the raw `part.filename`.
 - [ ] `on_error` returning a stable shape, never `err.message`.
 
 ### Operations
 
-- [ ] The static directory contains no `.env`, `.git` or backups — it is
-      all public.
+- [ ] The static directory contains no backups or exports — everything
+      not `.`-prefixed in it is public, and the dotfile rule is a
+      backstop, not a hiding place.
 - [ ] Health probes on a separate `[health] bind` if the main listener
       is public, remembering that the probe listener is plaintext by
       design.

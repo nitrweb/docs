@@ -18,7 +18,7 @@ const FEATURES = [
   {
     title: 'Templates',
     icon: 'M4 4h16v4H4zM4 11h7v9H4zM14 11h6v9h-6z',
-    body: 'minijinja rendering, with escaping on by default.'
+    body: 'minijinja rendering, HTML-escaped by default whatever the file is called.'
   },
   {
     title: 'Outbound HTTP',
@@ -28,7 +28,7 @@ const FEATURES = [
   {
     title: 'Static files',
     icon: 'M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10zM13 3v7h7',
-    body: 'ETag, 304, range requests, traversal protection, precompressed sidecars.'
+    body: 'ETag, 304, range requests, traversal protection, dotfiles hidden, precompressed sidecars.'
   },
   {
     title: 'Compression &amp; CORS',
@@ -48,7 +48,7 @@ const FEATURES = [
   {
     title: 'TLS in-process',
     icon: 'M6 11V8a6 6 0 1 1 12 0v3M5 11h14v10H5zM12 15v3',
-    body: 'Terminate HTTPS with rustls — three lines of <code>[tls]</code>, no proxy required.'
+    body: 'Terminate HTTPS with rustls — three lines of <code>[tls]</code>, no proxy required, renewals picked up on reload.'
   },
   {
     title: 'Crypto &amp; auth',
@@ -73,12 +73,12 @@ const FEATURES = [
   {
     title: 'A test framework',
     icon: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3',
-    body: '<code>describe</code>/<code>it</code>/<code>expect</code>, dispatching through the real router.'
+    body: '<code>describe</code>/<code>it</code>/<code>expect</code>, dispatching through the real router, against a throwaway database.'
   },
   {
     title: 'Hot reload',
     icon: 'M20 11A8 8 0 1 0 12 20a8 8 0 0 0 7-4M20 5v6h-6',
-    body: '<code>nitr dev</code> rebuilds on save; <code>SIGHUP</code> reloads without dropping connections.'
+    body: '<code>nitr dev</code> rebuilds on save; <code>SIGHUP</code> reloads the pool and re-reads TLS certificates, without dropping connections.'
   },
   {
     title: 'Health &amp; graceful drain',
