@@ -107,11 +107,44 @@ t.request("GET", "/me", {
 })
 ```
 
-| Option    | Meaning                                             |
-| --------- | --------------------------------------------------- |
-| `json`    | Table body, JSON-encoded, with the content type set |
-| `body`    | Raw string body                                     |
-| `headers` | Request headers                                     |
+| Option      | Meaning                                              |
+| ----------- | ---------------------------------------------------- |
+| `json`      | Table body, JSON-encoded, with the content type set  |
+| `form`      | Table body, urlencoded, with the content type set    |
+| `multipart` | Table body, multipart-encoded, with the boundary set |
+| `body`      | Raw string body                                      |
+| `headers`   | Request headers                                      |
+
+### Request bodies
+
+`json` is the common one. `form` and `multipart` exist so a validated
+form post or an upload is testable without a browser — the three shapes
+a route's [`input`](./validation/route-input#bodies-and-content-types)
+can accept.
+
+```lua
+-- An HTML form. A sequence value repeats the key, as a browser does.
+t.request("POST", "/profile", {
+    form = { name = "Ada", age = 36, news = true, tags = { "a", "b" } },
+})
+```
+
+```lua
+-- An upload. A string value is a text part; a table is a file part.
+t.request("POST", "/profile", {
+    multipart = {
+        name   = "Ada",
+        avatar = { filename = "a.png", content_type = "image/png", data = PNG_BYTES },
+    },
+})
+```
+
+Numbers and booleans are encoded the way a browser would send them, so
+`age = 36` arrives as `"36"` and is coerced back to a number by the
+schema — which is the round trip you actually want to test.
+
+An empty file input (`{ filename = "", data = "" }`) reproduces what a
+browser sends for a file field nobody filled in.
 
 The response is `{ status, headers, body }` plus `resp:json()`:
 

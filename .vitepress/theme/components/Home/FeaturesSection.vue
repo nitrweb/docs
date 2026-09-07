@@ -63,7 +63,17 @@ const FEATURES = [
   {
     title: 'Validation',
     icon: 'M9 12l2 2 4-4M12 3l8 3v6c0 4.4-3.2 8.3-8 9-4.8-.7-8-4.6-8-9V6z',
-    body: 'Schemas compiled once, checked in Rust, undeclared fields stripped.'
+    body: 'Declare a route’s input once: checked in Rust before the handler, undeclared fields stripped.'
+  },
+  {
+    title: 'OpenAPI &amp; Swagger UI',
+    icon: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
+    body: 'A 3.1 document generated from your routes, and the page to browse it — served from the binary, no CDN.'
+  },
+  {
+    title: 'Uploads it can vouch for',
+    icon: 'M12 16V4M8 8l4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M9 12h6',
+    body: 'A file’s type comes from its bytes, not its header. Presets for images, documents, archives.'
   },
   {
     title: 'Structured logs',

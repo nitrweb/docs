@@ -123,21 +123,61 @@ end)
 The chain runs left to right, outermost first, and only for that route.
 See [Middleware](./middleware).
 
-## A per-route error handler
+## Route options
 
-An optional trailing table sets an error handler that wins over the
-app-wide one for this route:
+Every registration method takes an optional **trailing table** after the
+handler. Four keys; anything else is a load-time error naming the route
+and the line that registered it.
+
+| Key          | What it does                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| `input`      | What the route accepts. Checked in Rust **before the handler**, and reaching it as `req.valid` |
+| `doc`        | How the operation appears in the generated [OpenAPI document](./openapi/)                      |
+| `on_invalid` | This route's answer to a request that failed its `input`. Wins over `app:on_invalid`           |
+| `on_error`   | This route's error handler. Wins over `app:on_error`                                           |
 
 ```lua
-app:get("/report", generate_report, {
+app:post("/api/notes", function(req)
+    -- Already checked, typed and stripped.
+    return nitr.json(create_note(req.valid.body), 201)
+end, {
+    input = {
+        body    = NoteInput,
+        query   = { draft = "boolean|default:false" },
+        headers = { ["x-team"] = "string|format:alpha_dash|required" },
+    },
+    doc = {
+        summary   = "Create a note",
+        tags      = { "notes" },
+        responses = { [201] = { description = "Created", schema = Note } },
+    },
+    on_invalid = function(err, req)
+        return nitr.error(422, { code = err.code, fields = err.fields })
+    end,
     on_error = function(err, req)
-        nitr.log.error("report failed", { error = err.message })
-        return nitr.error(503, { code = "REPORT_UNAVAILABLE" })
+        nitr.log.error("create failed", { error = err.message })
+        return nitr.error(503, { code = "UNAVAILABLE" })
     end,
 })
 ```
 
-See [Errors](./errors).
+`input` and `doc` are the two halves of the same idea: one enforces the
+request, the other describes the operation, and neither can drift from
+the other because a request schema written under `doc` is refused.
+
+- [Route input validation](./validation/route-input) — `input`,
+  `req.valid`, text coercion, the `415` and `422`
+- [Documenting routes](./openapi/documenting) — `doc`, responses,
+  security schemes
+- [Errors](./errors) — `on_error` and the structured error value
+
+> [!NOTE] Validation runs before your middleware
+>
+> A route with both an `input` and a route middleware answers `422` to a
+> malformed request without running the middleware — the cheap check
+> comes first, and no Lua state does work for a body that was never
+> going to be accepted. Check authorization in the handler when it must
+> be decided first.
 
 ## Organising routes across files
 

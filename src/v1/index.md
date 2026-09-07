@@ -20,7 +20,7 @@ You write the request handling in Lua. Everything underneath — the HTTP
 layer, routing, TLS termination, compression, static files, SQLite, the
 outbound HTTP client, cryptography — is Rust, and it is already there.
 
-The current release is **`0.0.0-beta.4`**, published on
+The current release is **`0.0.0-beta.5`**, published on
 [crates.io](https://crates.io/crates/nitr-cli); the source lives at
 [github.com/nitrweb/nitr](https://github.com/nitrweb/nitr).
 
@@ -111,6 +111,29 @@ requests, compression, CORS preflights, multipart uploads that stream to
 disk without touching the Lua heap, 404/405 answered without entering
 Lua at all.
 
+**Declare what a route accepts, once.** A route's `input` is checked in
+Rust **before your handler runs** — body, query string, path parameters
+and headers, with text coerced to the declared types and undeclared
+fields stripped. The handler reads `req.valid` and contains no
+validation code:
+
+```lua
+app:post("/api/notes", function(req)
+    return nitr.json(create(req.valid.body), 201)
+end, { input = { body = NoteInput } })
+```
+
+Nine types, 36 string formats, uploads judged by their bytes rather than
+their declared type, and messages you can reword. See
+[Validation](./server/validation/).
+
+**And the same declaration is your API document.** Nitr generates
+OpenAPI 3.1 from the route table, with a Swagger UI page served from the
+binary — no CDN, and nothing to keep in sync by hand, because the table
+that describes a request is the table that enforces it. `nitr openapi
+--check` is a CI gate against drift. See
+[OpenAPI](./server/openapi/).
+
 **HTTPS without a proxy in front.** Three lines of `[tls]` terminate TLS
 in-process with rustls (the `ring` provider, a TLS 1.2 floor, ALPN
 pinned to what the server actually speaks). The certificate and key are
@@ -134,6 +157,8 @@ running the Lua Language Server.
 | Install the binary             | [Download & Install](./download-install)     |
 | Understand the execution model | [How Nitr works](./how-it-works)             |
 | Build an application           | [Server → Overview](./server/)               |
+| Validate what a route accepts  | [Validation](./server/validation/)           |
+| Publish an API document        | [OpenAPI & Swagger UI](./server/openapi/)    |
 | Serve HTTPS directly           | [TLS termination](./server/tls)              |
 | Store and check a password     | [Passwords & Basic auth](./server/passwords) |
 | Sign or verify a token         | [JWT](./server/jwt)                          |

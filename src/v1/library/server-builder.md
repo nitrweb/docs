@@ -268,16 +268,29 @@ afterwards clones an `Arc` rather than touching the filesystem.
 
 ## `Server`
 
-| Method                               | Description                                                                   |
-| ------------------------------------ | ----------------------------------------------------------------------------- |
-| `serve() -> Result`                  | Serves until a shutdown signal arrives, then drains gracefully                |
-| `serve_with_shutdown(fut) -> Result` | Serves until `fut` resolves, then drains                                      |
-| `test_client() -> TestClient`        | An in-process client through the real dispatch path. See [Testing](./testing) |
-| `pool() -> Arc<RuntimePool>`         | The Lua state pool currently serving requests                                 |
-| `is_ready() -> bool`                 | What `/readyz` reports; cleared the moment a drain starts                     |
+| Method                                           | Description                                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `serve() -> Result`                              | Serves until a shutdown signal arrives, then drains gracefully                                                      |
+| `serve_with_shutdown(fut) -> Result`             | Serves until `fut` resolves, then drains                                                                            |
+| `test_client() -> TestClient`                    | An in-process client through the real dispatch path. See [Testing](./testing)                                       |
+| `pool() -> Arc<RuntimePool>`                     | The Lua state pool currently serving requests                                                                       |
+| `is_ready() -> bool`                             | What `/readyz` reports; cleared the moment a drain starts                                                           |
+| `openapi_json() -> Option<Bytes>`                | The [OpenAPI document](../server/openapi/) as `nitr openapi` prints it. Needs the `openapi` feature                 |
+| `openapi_site() -> Option<Vec<(String, Bytes)>>` | The Swagger UI page, the document and its assets as a static site — relative names and their bytes. Needs `swagger` |
 
 Both `serve` methods take `self`, so the server is consumed by running
 it. Read `pool()`, `is_ready()` or `test_client()` before that.
+
+```rust
+// Write the document from your own build script or test.
+let server = Server::builder().config(cfg).build().await?;
+if let Some(spec) = server.openapi_json() {
+    std::fs::write("openapi.json", &spec)?;
+}
+```
+
+Both are generated whether or not `[openapi] enabled` — the flag gates
+serving, not generation.
 
 ### The signal contract
 

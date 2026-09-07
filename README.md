@@ -42,6 +42,8 @@ src/
     ├── server/               the `nitr` binary: config + writing Lua apps
     │   ├── configuration/    the nitr.toml file, env vars, CLI flags
     │   ├── deployment/       single-file, systemd, Docker
+    │   ├── validation/       schemas, route input, uploads, messages
+    │   ├── openapi/          the generated document and Swagger UI
     │   ├── passwords.md      argon2id hashing and Basic auth
     │   ├── jwt.md            signing and verifying JWTs
     │   ├── tls.md            in-process HTTPS termination

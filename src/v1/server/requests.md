@@ -92,24 +92,50 @@ if not ok then
 end
 ```
 
-Better still, validate the shape too:
+Better still, declare the shape on the route and let Nitr check it
+**before** the handler runs:
 
 ```lua
-local schema = nitr.validate.schema({
-    name  = { type = "string", min_len = 1, required = true },
-    email = { type = "string", format = "email", required = true },
+local Signup = nitr.validate.schema({
+    name  = "string|trim|min_len:1|required",
+    email = "string|trim|case:lower|format:email|required",
 })
 
 app:post("/users", function(req)
-    local data, err = schema:check(req:json())
-    if not data then
-        return nitr.error(422, { code = "VALIDATION_FAILED", fields = err.fields })
-    end
-    return nitr.json(create_user(data), 201)
-end)
+    -- Checked, typed and stripped. A bad body never got here.
+    return nitr.json(create_user(req.valid.body), 201)
+end, { input = { body = Signup } })
 ```
 
-See [Validation](./validation).
+See [Route input validation](./validation/route-input), and
+[Validation](./validation/) for the schema vocabulary.
+
+## `req.valid` — the checked view
+
+On a route that declared [`input`](./validation/route-input), `req.valid`
+holds the validated request:
+
+| Key                 | What it is                                                |
+| ------------------- | --------------------------------------------------------- |
+| `req.valid.body`    | The body, decoded and checked                             |
+| `req.valid.query`   | The query string, with text coerced to the declared types |
+| `req.valid.params`  | The path parameters, likewise                             |
+| `req.valid.headers` | The declared headers, by lowercase name                   |
+
+Only the parts the route declared are present, and `req.valid` itself is
+`nil` on a route without an `input` — so `if req.valid then` is a
+meaningful test in shared middleware.
+
+The raw request is untouched. `req.params`, `req.query`, `req:json()`
+and `req:form()` all still read exactly what arrived, which is what you
+want when you need both the normalized view and the original.
+
+```lua
+app:post("/notes", function(req)
+    local clean = req.valid.body        -- trimmed, typed, stripped
+    local raw   = req:json()            -- byte-for-byte what was sent
+end, { input = { body = NoteInput } })
+```
 
 ### Text
 

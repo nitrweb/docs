@@ -26,23 +26,29 @@ my-app/
 └── nitr-types.lua         generated editor completions
 ```
 
+One more file appears on the first `nitr dev`: **`openapi.json`**, the
+generated [API document](./openapi/). The scaffold sets
+`[openapi] output`, so it is rewritten whenever a route changes and
+`nitr openapi --check` in CI keeps the committed copy honest. Commit it.
+
 `nitr init` refuses to overwrite: if any of those paths already exists
 it writes nothing at all, rather than merging into a directory it did
 not create.
 
 Nothing here is magic. Every path is a configuration key you can change:
 
-| Path          | Configured by                             | Required?                       |
-| ------------- | ----------------------------------------- | ------------------------------- |
-| `app.lua`     | `handler_script`                          | **yes**                         |
-| `config.lua`  | `config_script`                           | no                              |
-| `routes/`     | nothing — it is `require`d from `app.lua` | no                              |
-| `migrations/` | `[database] migrations_dir`               | no                              |
-| `templates/`  | `[templating] dir`                        | only if you use `nitr.template` |
-| `public/`     | `[static] dir` + `mount`                  | no                              |
-| `tests/`      | `[testing] dir`                           | only for `nitr test`            |
-| `data/app.db` | `[database] path`                         | only if you use `nitr.db`       |
-| `uploads/`    | `[multipart] upload_dir`                  | only if you call `part:save`    |
+| Path           | Configured by                             | Required?                                      |
+| -------------- | ----------------------------------------- | ---------------------------------------------- |
+| `app.lua`      | `handler_script`                          | **yes**                                        |
+| `config.lua`   | `config_script`                           | no                                             |
+| `routes/`      | nothing — it is `require`d from `app.lua` | no                                             |
+| `migrations/`  | `[database] migrations_dir`               | no                                             |
+| `templates/`   | `[templating] dir`                        | only if you use `nitr.template`                |
+| `public/`      | `[static] dir` + `mount`                  | no                                             |
+| `tests/`       | `[testing] dir`                           | only for `nitr test`                           |
+| `data/app.db`  | `[database] path`                         | only if you use `nitr.db`                      |
+| `openapi.json` | `[openapi] output`                        | no — written in dev mode                       |
+| `uploads/`     | `[multipart] upload_dir`                  | only if you call `part:save`, or a `file` rule |
 
 The last row is the one `nitr init` does _not_ write: uploads need a
 directory you chose deliberately, and the section on them below explains
@@ -74,11 +80,31 @@ features = ["json", "http", "log", "time", "validate", "base64", "path", "url", 
 [static]
 dir = "public"
 mount = "/"
+
+# The OpenAPI document, generated from the routes' `input` and `doc`
+# tables: served at /openapi.json, and kept current in openapi.json
+# while `nitr dev` runs.
+[openapi]
+enabled = true
+output = "openapi.json"
+
+# Swagger UI at /docs, rendered from this binary (no CDN).
+[swagger]
+enabled = true
+try_it_out = true
 ```
 
 See [Configuration → nitr.toml](./configuration/file) for every
 section, and [`nitr check --print-config`](./cli#check) for what the
 layering actually produced.
+
+> [!TIP] Turn the docs off where they should not be public
+>
+> The scaffold enables both because the audience is you. In production
+> that is a decision — `NITR_OPENAPI_ENABLED=false
+NITR_SWAGGER_ENABLED=false` is the one-line version, and
+> `nitr openapi --ui` publishes the same page as a static site instead.
+> See [OpenAPI](./openapi/).
 
 ## `config.lua` — the startup script
 
@@ -140,6 +166,12 @@ application and returns it. This is the scaffolded file, trimmed:
 ```lua
 local app = nitr.app()
 
+app:doc({                                -- names the OpenAPI document
+    title = "My App",
+    version = "0.1.0",
+    tags = { { name = "notes", description = "Notes" } },
+})
+
 app:use(function(next)
     return function(req)
         local started = nitr.time.monotonic()
@@ -180,7 +212,7 @@ can branch on _why_ the handler failed. See [Errors](./errors).
 > [!TIP] Where to put expensive work
 >
 > The body of `app.lua` runs once per state — compiling a
-> [validation schema](./validation), building a lookup table or reading
+> [validation schema](./validation/), building a lookup table or reading
 > `nitr.cfg` all belong here, at file scope. Only the innermost handler
 > function runs per request.
 
@@ -195,27 +227,50 @@ A module is just a function that takes the app:
 
 ```lua
 -- routes/notes.lua
-local schema = nitr.validate.schema({
-    text = { type = "string", min_len = 1, max_len = 500, required = true },
-})
+--
+-- A route's `input` is validated in Rust before the handler runs, and
+-- the same declaration documents the operation in /openapi.json.
+local NoteInput = nitr.validate.schema({
+    text = "string|trim|min_len:1|max_len:500|required",
+}, { title = "NoteInput" })
+
+-- Documentation only: responses are never checked.
+local Note = nitr.validate.schema({
+    id         = "integer|required",
+    text       = "string|required",
+    created_at = "integer|required",
+}, { title = "Note" })
 
 return function(app)
     app:get("/api/notes", function(req)
-        return nitr.json(nitr.db:query("SELECT id, text, created_at FROM notes ORDER BY id"))
-    end)
+        return nitr.json(nitr.db:query(
+            "SELECT id, text, created_at FROM notes ORDER BY id LIMIT ?",
+            { req.valid.query.limit }
+        ))
+    end, {
+        input = { query = { limit = "integer|min:1|max:100|default:50" } },
+        doc = {
+            summary = "List notes", tags = { "notes" },
+            responses = { [200] = { description = "The newest notes",
+                                    schema = { type = "array", items = Note } } },
+        },
+    })
 
     app:post("/api/notes", function(req)
-        local data, err = schema:check(req:json())
-        if not data then
-            return nitr.error(422, { code = "VALIDATION_FAILED", fields = err.fields })
-        end
+        local data = req.valid.body        -- checked, trimmed, stripped
         nitr.db:execute(
             "INSERT INTO notes (text, created_at) VALUES (?, ?)",
             { data.text, nitr.time.now() }
         )
         local note = nitr.db:query_row("SELECT id, text, created_at FROM notes ORDER BY id DESC")
         return nitr.json(note, 201)
-    end)
+    end, {
+        input = { body = NoteInput },
+        doc = {
+            summary = "Create a note", tags = { "notes" },
+            responses = { [201] = { description = "The created note", schema = Note } },
+        },
+    })
 end
 ```
 

@@ -400,6 +400,30 @@ or the server refuses to start: they answer different questions. Only
 application. A drain that runs out of time exits non-zero, because a cut
 request is not a clean shutdown.
 
+## API documentation (`[openapi]`, `[swagger]`)
+
+| Setting                                 | Default               |
+| --------------------------------------- | --------------------- |
+| `[openapi] enabled`                     | `false`               |
+| `[openapi] path`                        | `/openapi.json`       |
+| `[openapi] servers`                     | unset                 |
+| `[openapi] include_undocumented`        | `true`                |
+| `[openapi] output`                      | unset (dev mode only) |
+| `[swagger] enabled`                     | `false`               |
+| `[swagger] path`                        | `/docs`               |
+| `[swagger] doc_expansion`               | `list`                |
+| `[swagger] deep_linking`                | `true`                |
+| `[swagger] try_it_out`                  | `false`               |
+| `[swagger] persist_authorization`       | `false`               |
+| `[swagger] filter`                      | `false`               |
+| `[swagger] default_models_expand_depth` | `1`                   |
+
+Both off, because a route map is reconnaissance material and publishing
+one should be a decision. `nitr init` turns both on for a scaffolded
+application, where the audience is you. `nitr openapi` generates the
+document regardless — the flags gate serving. See
+[OpenAPI](./openapi/).
+
 ## Logging (`[log]`)
 
 | Setting    | Default                      |
@@ -447,6 +471,18 @@ Things that are simply on, with no key to enable them:
 - Templates HTML-escape by default, whatever the file is called —
   except names ending in a plain-text extension (`.txt`, `.md`, `.csv`,
   `.json`, `.yaml`, `.toml`), before an optional `.j2`.
+- A route's [`input`](./validation/route-input) is checked in Rust
+  before any Lua runs — before your middleware too — with text coerced
+  to the declared types, undeclared fields stripped and `default`s
+  filled in. A failure is a JSON `422` naming every failing path; a body
+  in a media type the route does not accept is a `415` naming what it
+  does.
+- Validated uploads stream to disk under `[multipart] upload_dir`,
+  never entering the Lua heap, and a file neither saved nor discarded is
+  removed when the request ends.
+- A file's type is decided by its **bytes**, not its declared
+  `Content-Type`, and an executable never matches a `types` list unless
+  `allow_executables` says so.
 - A request id per request (UUIDv7), echoed as `X-Request-ID`.
 - Binary-safe request and response bodies.
 - Multi-value response headers, `Set-Cookie` included.

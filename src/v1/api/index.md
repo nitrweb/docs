@@ -416,11 +416,44 @@ See [Cache](../server/cache).
 ### `nitr.validate`
 
 _(std feature: `validate`)_ — Declarative validation, compiled once and
-checked in Rust. See [Validation](../server/validation).
+checked in Rust. See [Validation](../server/validation/).
 
-|                                               |                    |
-| --------------------------------------------- | ------------------ |
-| `nitr.validate.schema(fields) -> nitr.Schema` | Compiles a schema. |
+A rule is a table (`{ type = "string", min_len = 1 }`), a shorthand
+string (`"string|trim|min_len:1|required"`), the mixed form
+(`{ "string|required", message = "…" }`) or a compiled schema. Types:
+`string`, `integer`, `number`, `boolean`, `array`, `table`, `map`, `any`,
+`file`.
+
+|                                                      |                                                                                                                             |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `nitr.validate.schema(fields, opts?) -> nitr.Schema` | Compiles a schema. `opts`: `title`, `strict`, `messages`, the cross-field groups, `checks`.                                 |
+| `nitr.validate.expand(shorthand) -> table`           | The table form of a shorthand rule string.                                                                                  |
+| `nitr.validate.format(name, spec)`                   | Registers a [custom string format](../server/validation/formats#custom-formats). Per state, before the schemas that use it. |
+| `nitr.validate.formats() -> string[]`                | Every format name, built in and custom, sorted.                                                                             |
+| `nitr.validate.messages(messages)`                   | App-wide default messages per rule code. **Load time only** — a call after the app compiled raises.                         |
+| `nitr.validate.media_types() -> table`               | The media types a `file` rule may name, with their extensions and whether dimensions are readable.                          |
+
+[File-rule presets](../server/validation/files#presets). Each returns a
+plain rule table; `opts` overrides any key in it.
+
+|                                    |                                                                              |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| `nitr.validate.image(opts?)`       | png, jpeg, gif, webp, bmp; `max_bytes = "5mb"`, `max_pixels = 25000000`      |
+| `nitr.validate.document(opts?)`    | pdf, docx, xlsx, pptx, odt, ods, odp, rtf; `max_bytes = "20mb"`              |
+| `nitr.validate.spreadsheet(opts?)` | xlsx, ods, csv; `max_bytes = "20mb"`                                         |
+| `nitr.validate.text_file(opts?)`   | txt, csv, md, json, xml, yaml; UTF-8 required; `max_bytes = "1mb"`           |
+| `nitr.validate.archive(opts?)`     | zip, gzip, tar, bz2, xz, zstd, 7z; `max_bytes = "50mb"`                      |
+| `nitr.validate.audio(opts?)`       | mp3, wav, ogg, flac, m4a; `max_bytes = "50mb"`                               |
+| `nitr.validate.video(opts?)`       | mp4, mov, webm, mkv; `max_bytes = "500mb"` — above `[limits] max_file_bytes` |
+| `nitr.validate.font(opts?)`        | woff, woff2, ttf, otf; `max_bytes = "5mb"`                                   |
+| `nitr.validate.any_file(opts)`     | Any type; executables still refused. `max_bytes` required                    |
+
+> [!TIP] Compile at load time, not per request
+>
+> `schema(...)` walks the rule tables and builds the checker. Call it at
+> file scope, where it runs once per pooled Lua state — inside a handler
+> it recompiles on every request and spends the request's execution
+> budget doing it.
 
 ---
 

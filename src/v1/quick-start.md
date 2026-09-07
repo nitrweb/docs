@@ -46,6 +46,10 @@ my-app/
 └── nitr-types.lua         editor completion for the whole nitr.* API
 ```
 
+A twelfth file, `openapi.json`, appears on the first `nitr dev`: the
+generated [API document](./server/openapi/), kept current while you
+work.
+
 It prints a `created …` line per file and then the path through the rest
 of this page:
 
@@ -54,7 +58,7 @@ Next steps:
   nitr migrate
   nitr check
   nitr test
-  nitr dev
+  nitr dev   # then open http://127.0.0.1:3000/docs
 ```
 
 > [!NOTE] `init` never overwrites
@@ -119,9 +123,11 @@ nitr test
 notes_test.lua
   ok   notes API > starts empty
   ok   notes API > creates a note
-  ok   notes API > rejects an empty note
+  ok   notes API > rejects an empty note before the handler runs
+  ok   notes API > bounds the page size
+  ok   notes API > publishes what it enforces
 
-3 passed, 0 failed (1 file(s))
+5 passed, 0 failed (1 file(s))
 ```
 
 These are real requests: `t.request(...)` dispatches through the actual
@@ -155,7 +161,8 @@ curl -X POST http://127.0.0.1:3000/api/notes \
 
 curl -X POST http://127.0.0.1:3000/api/notes \
   -H 'content-type: application/json' -d '{}'
-# 422 {"code":"VALIDATION_FAILED","fields":{"text":"is required"}}
+# 422 {"code":"VALIDATION_FAILED","message":"validation failed",
+#      "fields":{"body.text":"is required"}, "errors":[…]}
 
 curl http://127.0.0.1:3000/hello/ada
 # <!doctype html>
@@ -166,11 +173,44 @@ curl http://127.0.0.1:3000/
 # the static public/index.html, served by Rust without running Lua
 ```
 
-The `422` is `routes/notes.lua` running its
-[validation schema](./server/validation) — compiled once when the file
-loads, checked in Rust on every request.
+The `422` is the route's `input` declaration in `routes/notes.lua`,
+enforced **in Rust before the handler ran** — so the handler contains no
+validation code at all:
 
-## Step 6 — Add a route
+```lua
+app:post("/api/notes", function(req)
+    local data = req.valid.body          -- already checked and trimmed
+    ...
+end, { input = { body = NoteInput } })
+```
+
+See [Validation](./server/validation/).
+
+## Step 6 — Open the API docs
+
+The same declaration that rejected that request also documents it.
+While `nitr dev` is running:
+
+```sh
+open http://127.0.0.1:3000/docs        # Swagger UI, served from the binary
+curl -s http://127.0.0.1:3000/openapi.json | jq '.paths | keys'
+# [ "/api/notes", "/hello/{name}" ]
+```
+
+Nothing generated that by hand: the request schemas come from each
+route's `input`, the prose from its `doc`, and the two cannot drift
+apart because the same table does both jobs. The scaffold also sets
+`[openapi] output`, so `openapi.json` in your project directory is
+rewritten whenever a route changes — commit it, and let
+`nitr openapi --check` keep CI honest.
+
+```sh
+nitr openapi --check     # exits 1 when the committed document is stale
+```
+
+See [OpenAPI](./server/openapi/).
+
+## Step 7 — Add a route
 
 Open `app.lua` and add a route before the `return app` line:
 
@@ -178,13 +218,16 @@ Open `app.lua` and add a route before the `return app` line:
 app:get("/api/notes/:id", function(req)
     local note = nitr.db:query_row(
         "SELECT id, text, created_at FROM notes WHERE id = ?",
-        { req.params.id }
+        { req.valid.params.id }              -- an integer, already checked
     )
     if not note then
         return nitr.error(404, { code = "NOT_FOUND" })
     end
     return nitr.json(note)
-end)
+end, {
+    input = { params = { id = "integer|min:1" } },
+    doc   = { summary = "Fetch one note", tags = { "notes" } },
+})
 ```
 
 Save the file. The dev server reloads on its own — no restart:
@@ -192,9 +235,13 @@ Save the file. The dev server reloads on its own — no restart:
 ```sh
 curl http://127.0.0.1:3000/api/notes/1
 curl -i http://127.0.0.1:3000/api/notes/999   # 404 {"code":"NOT_FOUND"}
+curl -i http://127.0.0.1:3000/api/notes/abc   # 422 params.id: must be an integer
 ```
 
-## Step 7 — Ship it
+Reload `/docs` and the new operation is there, with its parameter, its
+type and its bound — because you declared them once.
+
+## Step 8 — Ship it
 
 ```sh
 nitr build --output my-app

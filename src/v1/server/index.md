@@ -91,7 +91,8 @@ why that distinction matters.
 | [Database](./database)                | `nitr.db`, transactions, migrations                   |
 | [Templates](./templates)              | `nitr.template` (minijinja)                           |
 | [Static files](./static-files)        | Rust-side serving, SPA mode, caching                  |
-| [Validation](./validation)            | `nitr.validate` schemas                               |
+| [Validation](./validation/)           | `nitr.validate`, route `input`, uploads, messages     |
+| [OpenAPI & Swagger UI](./openapi/)    | The document generated from your routes, and the page |
 | [Outbound HTTP](./fetch)              | `nitr.fetch`, concurrency, SSRF policy                |
 | [Cache](./cache)                      | `nitr.cache`, and what does _not_ belong in it        |
 | [Crypto & auth](./crypto-auth)        | Hashes, HMAC, random bytes, AEAD, `Authorization`     |

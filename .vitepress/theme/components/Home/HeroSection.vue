@@ -50,20 +50,40 @@ ${k('return')} app`
     code: `${k('local')} app = ${N}.${f('app')}()
 
 ${c('-- Compiled once, checked in Rust.')}
-${c('-- Undeclared fields are stripped.')}
-${k('local')} schema = ${N}.validate.${f('schema')}({
-    email = { type = ${s('"string"')}, required = ${k('true')}, format = ${s('"email"')} },
-    age   = { type = ${s('"integer"')}, min = ${n('0')}, max = ${n('150')} },
+${k('local')} User = ${N}.validate.${f('schema')}({
+    email = ${s('"string|trim|case:lower|format:email|required"')},
+    age   = ${s('"integer|min:0|max:150"')},
+    tags  = { ${s('"array|max_items:5|unique"')}, items = ${s('"string|format:slug"')} },
 })
 
+${c('-- Checked BEFORE the handler runs. A bad body')}
+${c('-- never gets here; it gets a 422 naming every field.')}
 app:${f('post')}(${s('"/users"')}, ${k('function')}(req)
-    ${k('local')} data, err = schema:${f('check')}(req:${f('json')}())
-    ${k('if')} ${k('not')} data ${k('then')}
-        ${k('return')} ${N}.${f('error')}(${n('422')}, { fields = err.fields })
-    ${k('end')}
-    ${k('return')} ${N}.${f('json')}(create_user(data), ${n('201')})
-${k('end')})
+    ${k('return')} ${N}.${f('json')}(create_user(req.valid.body), ${n('201')})
+${k('end')}, { input = { body = User } })
 
+${k('return')} app`
+  },
+  {
+    id: 'openapi',
+    label: 'OpenAPI',
+    file: 'app.lua',
+    code: `${k('local')} app = ${N}.${f('app')}()
+
+app:${f('doc')}({ title = ${s('"Notes"')}, version = ${s('"1.0.0"')} })
+
+${c('-- `input` enforces, `doc` describes. The document')}
+${c('-- at /openapi.json is generated from both.')}
+app:${f('post')}(${s('"/api/notes"')}, create_note, {
+    input = { body = NoteInput },
+    doc = {
+        summary = ${s('"Create a note"')},
+        tags = { ${s('"notes"')} },
+        responses = { [${n('201')}] = { description = ${s('"Created"')} } },
+    },
+})
+
+${c('-- Swagger UI at /docs, served from the binary.')}
 ${k('return')} app`
   },
   {

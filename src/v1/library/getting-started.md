@@ -16,7 +16,7 @@ cargo add nitr --features all             # everything
 ```toml
 # Cargo.toml
 [dependencies]
-nitr = "0.0.0-beta.4"
+nitr = "0.0.0-beta.5"
 tokio = { version = "1", features = ["full"] }
 
 # Optional, but you will want logs:
@@ -32,7 +32,7 @@ with it.
 > The **library** ships no optional builtin unless you ask for it, so a
 > build carries only the dependencies it uses. (The `nitr` **binary** is
 > the opposite: it enables `all`, because someone installing a server
-> expects the whole standard library.) A plain `nitr = "0.0.0-beta.4"`
+> expects the whole standard library.) A plain `nitr = "0.0.0-beta.5"`
 > still gives you routing, static files, and the builtins with no
 > exclusive dependency — `json`, `http`, `log`, `cache`, `time`,
 > `validate`, `base64`, `path`, `url`, `env`, `dbg`. See [Cargo

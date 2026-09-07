@@ -248,7 +248,7 @@ end)
 ```
 
 (The schema needs `validate` in `[std] features` — see
-[Validation](./validation).)
+[Validation](./validation/).)
 
 > [!TIP] `#` counts bytes; `max_len` counts characters
 >

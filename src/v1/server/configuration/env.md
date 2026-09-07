@@ -45,6 +45,10 @@ option is `NITR_<SECTION>_<OPTION>`.
 | `NITR_TLS_CERT`            | `[tls] cert`            | `/etc/nitr/fullchain.pem` |
 | `NITR_TLS_KEY`             | `[tls] key`             | `/etc/nitr/privkey.pem`   |
 | `NITR_TLS_MIN_VERSION`     | `[tls] min_version`     | `1.3`                     |
+| `NITR_OPENAPI_ENABLED`     | `[openapi] enabled`     | `false`                   |
+| `NITR_OPENAPI_PATH`        | `[openapi] path`        | `/openapi.json`           |
+| `NITR_SWAGGER_ENABLED`     | `[swagger] enabled`     | `false`                   |
+| `NITR_SWAGGER_PATH`        | `[swagger] path`        | `/docs`                   |
 | `NITR_LOG_FORMAT`          | `[log] format`          | `json` (or `text`)        |
 | `NITR_LOG_LEVEL`           | `[log] level`           | `info,nitr_http=debug`    |
 
@@ -117,6 +121,22 @@ startup, still requires a binary built with the `tls` Cargo feature, and
 `NITR_TLS_MIN_VERSION` still accepts only `1.2` or `1.3`. Enabling TLS
 also **converts** the single listener rather than adding one — nothing
 answers plaintext afterwards. See [TLS](../tls).
+
+### Turning the API docs off per environment
+
+The same shape, and the case the four `OPENAPI`/`SWAGGER` variables
+exist for: one `nitr.toml` with the docs on for development, and one
+line of deployment configuration turning them off where they should not
+be public.
+
+```sh
+NITR_OPENAPI_ENABLED=false NITR_SWAGGER_ENABLED=false nitr run
+```
+
+They gate **serving** only. `nitr openapi` still generates the document
+— which is how you publish it from CI as a
+[static site](../openapi/swagger-ui#a-static-site) while keeping `/docs`
+off the running server. See [OpenAPI](../openapi/).
 
 ### Renamed variables fail loudly
 

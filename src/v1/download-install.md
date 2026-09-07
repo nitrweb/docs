@@ -2,7 +2,7 @@
 
 > [!WARNING] Pre-release
 >
-> Nitr is at `0.0.0-beta.4`. The crates **are published on crates.io**,
+> Nitr is at `0.0.0-beta.5`. The crates **are published on crates.io**,
 > so installing is one `cargo install` — but **pre-built binaries are
 > not published yet**. The [planned release
 > channels](#planned-release-channels) are listed at the bottom of this
@@ -14,7 +14,7 @@ You need a Rust toolchain at or above the project's MSRV (**1.88.0**).
 Get one from [rustup.rs](https://rustup.rs/) if you do not have it.
 
 ```sh
-cargo install nitr-cli --version 0.0.0-beta.4
+cargo install nitr-cli --version 0.0.0-beta.5
 ```
 
 The crate is `nitr-cli`; the binary it installs into `~/.cargo/bin` is
@@ -22,7 +22,7 @@ called `nitr`. Verify it:
 
 ```sh
 nitr --version
-# nitr 0.0.0-beta.4
+# nitr 0.0.0-beta.5
 ```
 
 > [!WARNING] `--version` is not optional yet
@@ -38,12 +38,12 @@ nitr --version
 >
 > That is a property of pre-1.0 versioning, not of Nitr — the flag stops
 > being necessary the day a non-pre-release version ships.
-> `--version '^0.0.0-beta.4'` works too and follows later betas in the
+> `--version '^0.0.0-beta.5'` works too and follows later betas in the
 > same series.
 >
 > `cargo add` does not have this problem: it picks the newest version
 > including pre-releases, so `cargo add nitr` writes
-> `nitr = "0.0.0-beta.4"` for you.
+> `nitr = "0.0.0-beta.5"` for you.
 
 > [!TIP] What you get
 >
@@ -61,7 +61,7 @@ If you know which builtins your application uses, drop the rest. The
 CLI's own feature names mirror the library's:
 
 ```sh
-cargo install nitr-cli --version 0.0.0-beta.4 \
+cargo install nitr-cli --version 0.0.0-beta.5 \
   --no-default-features --features template
 ```
 
@@ -82,7 +82,7 @@ cargo install --git https://github.com/nitrweb/nitr nitr-cli
 same binary twice:
 
 ```sh
-cargo install --git https://github.com/nitrweb/nitr --tag v0.0.0-beta.4 nitr-cli
+cargo install --git https://github.com/nitrweb/nitr --tag v0.0.0-beta.5 nitr-cli
 cargo install --git https://github.com/nitrweb/nitr --rev <commit-sha> nitr-cli
 ```
 
@@ -160,7 +160,7 @@ SQLite database and a `HEALTHCHECK` wired to `/healthz`.
 > Its build stage runs a bare `cargo install nitr-cli`, which hits the
 > pre-release resolution rule described above. While every release is a
 > pre-release, change that line to
-> `cargo install nitr-cli --version 0.0.0-beta.4`.
+> `cargo install nitr-cli --version 0.0.0-beta.5`.
 
 [Docker deployment](./server/deployment/docker) explains the two
 settings that actually matter: an exec-form `ENTRYPOINT`, so `nitr` is

@@ -72,7 +72,43 @@ export const v1: DefaultTheme.Config = {
           { text: 'Database', link: '/v1/server/database' },
           { text: 'Templates', link: '/v1/server/templates' },
           { text: 'Static Files', link: '/v1/server/static-files' },
-          { text: 'Validation', link: '/v1/server/validation' },
+          {
+            text: 'Validation',
+            collapsed: true,
+            items: [
+              { text: 'Overview', link: '/v1/server/validation/' },
+              { text: 'Rules & Types', link: '/v1/server/validation/rules' },
+              {
+                text: 'String Formats',
+                link: '/v1/server/validation/formats'
+              },
+              {
+                text: 'Route Input',
+                link: '/v1/server/validation/route-input'
+              },
+              { text: 'File Uploads', link: '/v1/server/validation/files' },
+              {
+                text: 'Messages & Errors',
+                link: '/v1/server/validation/messages'
+              },
+              {
+                text: 'Composition',
+                link: '/v1/server/validation/composition'
+              }
+            ]
+          },
+          {
+            text: 'OpenAPI & Swagger UI',
+            collapsed: true,
+            items: [
+              { text: 'Overview', link: '/v1/server/openapi/' },
+              {
+                text: 'Documenting Routes',
+                link: '/v1/server/openapi/documenting'
+              },
+              { text: 'Swagger UI', link: '/v1/server/openapi/swagger-ui' }
+            ]
+          },
           { text: 'Outbound HTTP', link: '/v1/server/fetch' },
           { text: 'Cache', link: '/v1/server/cache' },
           { text: 'Crypto & Auth', link: '/v1/server/crypto-auth' },

@@ -223,7 +223,7 @@ surprise in production.
 
 The parsers an attacker fully controls are fuzzed with
 [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz). There are
-**16 targets**:
+**18 targets**:
 
 | Area            | Targets                                                                        |
 | --------------- | ------------------------------------------------------------------------------ |
@@ -232,7 +232,7 @@ The parsers an attacker fully controls are fuzzed with
 | Paths and URLs  | `path-lexical`, `static-resolve`, `upload-resolve`, `url-lexical`              |
 | Bodies          | `multipart`, `json-lua`                                                        |
 | Auth and crypto | `basic-auth`, `jwt-verify`, `tls-pem`                                          |
-| Validation      | `validate-formats`                                                             |
+| Validation      | `validate-formats`, `validate-coerce`, `sniff-file`                            |
 
 ```sh
 cargo install cargo-fuzz          # plus a nightly toolchain

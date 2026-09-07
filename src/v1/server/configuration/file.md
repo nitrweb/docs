@@ -703,6 +703,96 @@ they answer different questions, and one path cannot answer both.
 > liveness most needs to answer — during certificate trouble. TLS
 > terminates on the main listener only, and the startup line says so.
 
+## `[openapi]`
+
+The [OpenAPI 3.1 document](../openapi/), generated from the routes'
+`input` and `doc` tables. Needs the `openapi` Cargo feature (part of
+`all`).
+
+```toml
+[openapi]
+enabled = true
+path = "/openapi.json"
+servers = ["https://api.example.com"]
+include_undocumented = true
+output = "openapi.json"
+```
+
+| Key                    | Default           | Description                                                                                                                                          |
+| ---------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`              | `false`           | Serve the document at `path`. `nitr openapi` generates it regardless — this flag gates **serving**, not generation.                                  |
+| `path`                 | `"/openapi.json"` | Where it answers. Absolute, below `/`, no trailing slash.                                                                                            |
+| `servers`              | _unset_           | The document's `servers` list. A deployment fact, hence configuration rather than script.                                                            |
+| `include_undocumented` | `true`            | Routes without a `doc` table still appear, as bare operations. `doc = { hidden = true }` keeps one out either way.                                   |
+| `output`               | _unset_           | **Dev mode only**: a file rewritten after each rebuild whose document changed, so a committed `openapi.json` stays current. Production never writes. |
+
+Off by default: a route map is reconnaissance material, and publishing
+one should be a decision rather than an upgrade side effect.
+
+> [!NOTE] A route may not claim `path`
+>
+> With the section enabled, registering a route there is a startup error
+> naming this setting and the line that registered the route — it could
+> never be reached. With the section disabled nothing is reserved.
+
+> [!WARNING] Where `output` may not point
+>
+> The dev-mode watcher reloads on the files a rebuild reads, so a
+> document written into one of them is an endless rebuild loop. A `.lua`
+> extension and a path inside `[templating] dir` are **startup errors**;
+> a path inside `[static] dir` is a warning, because that file would be
+> served statically and bypass `enabled`.
+
+## `[swagger]`
+
+The [Swagger UI page](../openapi/swagger-ui), served from this binary
+with a strict `Content-Security-Policy` — no CDN, no inline script.
+Needs the `swagger` Cargo feature, which implies `openapi`.
+
+```toml
+[swagger]
+enabled = true
+path = "/docs"
+try_it_out = true
+
+[swagger.options]
+showExtensions = true
+```
+
+| Key                           | Default             | Description                                                                             |
+| ----------------------------- | ------------------- | --------------------------------------------------------------------------------------- |
+| `enabled`                     | `false`             | Serve the page at `path`. Needs `[openapi] enabled`, or an explicit `spec_url`.         |
+| `path`                        | `"/docs"`           | Where the page answers; its assets live under `<path>/assets/<version>/`.               |
+| `title`                       | the `app:doc` title | The page's `<title>`.                                                                   |
+| `spec_url`                    | `[openapi] path`    | The document the page loads.                                                            |
+| `allow_external_spec`         | `false`             | Permit a `spec_url` on another origin, widening the page's `connect-src` to exactly it. |
+| `deep_linking`                | `true`              | Swagger UI `deepLinking`.                                                               |
+| `doc_expansion`               | `"list"`            | `"list"`, `"full"` or `"none"`.                                                         |
+| `filter`                      | `false`             | The operation filter box.                                                               |
+| `try_it_out`                  | `false`             | Whether "Try it out" starts enabled.                                                    |
+| `display_request_duration`    | `false`             | Show how long a try-it-out request took.                                                |
+| `persist_authorization`       | `false`             | Keep entered credentials in the browser's `localStorage`.                               |
+| `display_operation_id`        | `false`             | Show each operation's id.                                                               |
+| `default_models_expand_depth` | `1`                 | How deep the schema panes start expanded.                                               |
+| `[swagger.options]`           | _empty_             | Further Swagger UI options, verbatim, in camelCase.                                     |
+
+`[swagger.options]` may not repeat a typed setting under its camelCase
+name (`docExpansion` is an error pointing at `doc_expansion`), and may
+not set `url`, `dom_id`, `domNode` or `spec` — the page owns those.
+
+> [!WARNING] `persist_authorization` puts tokens in browser storage
+>
+> Off for that reason. Convenient against a staging API on your own
+> machine; a bearer token in `localStorage` on a shared one is a
+> different proposition.
+
+> [!NOTE] The two paths may not overlap
+>
+> `[openapi] path` and `[swagger] path` must be distinct and neither
+> below the other — the page's assets live under its own path. Neither
+> may be a `[health]` probe path when the probes answer on the main
+> listener, since the probes answer first.
+
 ## `[log]`
 
 ```toml

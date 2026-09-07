@@ -132,6 +132,12 @@ Lua function:
   is wrong, `204` + `Allow` for a bare `OPTIONS` on a known path
 - CORS preflights
 - `/healthz` and `/readyz`
+- the [OpenAPI document and the Swagger UI page](./server/openapi/),
+  when those sections are enabled — a string compare and a buffer clone,
+  with an `ETag` and a `304`
+- a route's [`input`](./server/validation/route-input): the body, query
+  string, path parameters and headers are checked, coerced and stripped
+  before any Lua runs, so a `415` or a `422` costs no handler at all
 - every [limit](./server/configuration/file#limits): oversized URI,
   headers, body, too many connections, rate limit
 - a request carrying **more than one `Authorization` header** — refused

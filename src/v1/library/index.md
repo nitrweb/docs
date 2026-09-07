@@ -23,7 +23,7 @@ except the last item.
 ```toml
 # Cargo.toml
 [dependencies]
-nitr = "0.0.0-beta.4"
+nitr = "0.0.0-beta.5"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -99,7 +99,7 @@ execution budget. See [Extension modules](./extension-modules).
 | `nitr-http` | hyper server, configuration, HTTP↔Lua bridge           | Unstable pre-1.0               |
 | `nitr-cli`  | The `nitr` binary                                      | Flags follow the config policy |
 
-All five are published on crates.io at **0.0.0-beta.4**, and each has a
+All five are published on crates.io at **0.0.0-beta.5**, and each has a
 rendered API reference on docs.rs — [`nitr`](https://docs.rs/nitr) is the
 one to read.
 

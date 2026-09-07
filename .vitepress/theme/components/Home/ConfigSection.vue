@@ -18,6 +18,14 @@ ${c('# Which nitr.* modules scripts may use')}
 ${n('[std]')}
 ${k('features')} = [${s('"json"')}, ${s('"http"')}, ${s('"log"')}, ${s('"db"')}]
 
+${c('# The API document, generated from your routes')}
+${n('[openapi]')}
+${k('enabled')} = ${k('true')}
+
+${c('# Swagger UI, served from this binary')}
+${n('[swagger]')}
+${k('enabled')} = ${k('true')}
+
 ${c('# The sandbox')}
 ${n('[lua]')}
 ${k('memory_limit')}    = ${n('8388608')}

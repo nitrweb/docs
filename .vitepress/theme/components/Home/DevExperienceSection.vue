@@ -40,6 +40,7 @@ const STAGES: Stage[] = [
       '<code>nitr init</code> writes the layout the CLI expects — routes, a migration, a template, a test — and the pieces already fit together.',
     points: [
       '<code>nitr-types.lua</code> gives your editor completion and inline docs for every <code>nitr.*</code> call.',
+      'The routes come with validated <code>input</code>, so <code>/openapi.json</code> and a Swagger UI at <code>/docs</code> work from the first run.',
       '<code>--minimal</code> for a four-file version when you only need one endpoint.',
       'It refuses to overwrite: running it in a non-empty directory is safe.'
     ],
@@ -57,7 +58,7 @@ const STAGES: Stage[] = [
       { kind: 'dim', text: '  nitr migrate' },
       { kind: 'dim', text: '  nitr check' },
       { kind: 'dim', text: '  nitr test' },
-      { kind: 'dim', text: '  nitr dev' }
+      { kind: 'dim', text: '  nitr dev   # then open http://127.0.0.1:3000/docs' }
     ]
   },
   {
@@ -120,7 +121,8 @@ const STAGES: Stage[] = [
     points: [
       'Unknown or renamed keys in <code>nitr.toml</code> are errors, never silently ignored.',
       '<code>--print-config</code> shows the effective value after file, environment and flags.',
-      'A pending migration is caught before a deploy, not after.'
+      'A pending migration is caught before a deploy, not after.',
+      '<code>nitr openapi --check</code> fails the build when the committed API document is stale.'
     ],
     lines: [
       { kind: 'cmd', text: 'nitr check' },

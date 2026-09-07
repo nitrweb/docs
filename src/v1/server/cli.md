@@ -13,6 +13,7 @@ Commands:
   dev            Start the server in development mode (hot reload)
   check          Load the configuration and scripts, then exit
   test           Run the Lua tests against an in-process server
+  openapi        Generate the OpenAPI document from the application's routes
   migrate        Apply pending SQL migrations from migrations/
   init           Scaffold a new Nitr application
   build          Package the application and this binary into one runnable file
@@ -198,6 +199,49 @@ straight into CI. See [Testing](./testing).
 > run against it first, so a test sees the schema. A `before_each` that
 > says `DELETE FROM notes` cannot empty the database your `nitr.toml`
 > points at.
+
+## `openapi`
+
+```sh
+nitr openapi                        # print the document to stdout
+nitr openapi --output openapi.json  # write it to a file
+nitr openapi --check                # CI drift gate: exit 1 when it differs
+nitr openapi --ui site/             # a self-contained Swagger UI site
+```
+
+Generates the [OpenAPI 3.1 document](./openapi/) from the application's
+routes, without binding a port. The build is the one
+[`nitr check`](#check) performs, so the configuration script runs once
+here too.
+
+| Flag             | What it does                                                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `-o`, `--output` | Write to this file instead of standard output                                                   |
+| `--check`        | Compare with the committed file and **exit 1** when it differs, naming the first differing path |
+| `--ui <DIR>`     | Write the page, the document and the assets as a static site                                    |
+
+Generation ignores `[openapi] enabled` — that flag gates **serving**, so
+you can keep the document off production and still publish it from CI.
+
+`--check` compares against `--output` if given, then `[openapi] output`,
+then `openapi.json`. Both sides are re-serialized canonically first, so
+key order and a trailing newline never fail the build:
+
+```console
+$ nitr openapi --check
+openapi: openapi.json is out of date: first difference at $.paths./api/notes.post.summary;
+run `nitr openapi --output openapi.json` and commit the result
+```
+
+> [!NOTE] Log lines go to stderr on this command
+>
+> Standard output is the document, so `nitr openapi | jq .` works and
+> the progress lines still reach your terminal. Every other command logs
+> to stdout as usual.
+
+Needs the `openapi` Cargo feature; `--ui` also needs `swagger`. Both are
+in the released binary, and a build without them says so rather than
+failing obscurely.
 
 ## `migrate`
 

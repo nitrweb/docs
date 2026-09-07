@@ -58,7 +58,7 @@ The original lives at
 >
 > `cargo install nitr-cli` pulls the published crate and installs a
 > binary named `nitr`. Pin it in a real pipeline —
-> `cargo install nitr-cli --version 0.0.0-beta.4` — so an image rebuild
+> `cargo install nitr-cli --version 0.0.0-beta.5` — so an image rebuild
 > is reproducible instead of tracking whatever is newest. Building from
 > a checkout is one line: `COPY . .` then
 > `cargo install --path crates/nitr-cli`.

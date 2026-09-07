@@ -7,7 +7,7 @@ surface is allowed to change.
 
 > [!WARNING] Pre-1.0
 >
-> Nitr is at `0.0.0-beta.4`. While the version is `0.x`, **a minor bump
+> Nitr is at `0.0.0-beta.5`. While the version is `0.x`, **a minor bump
 > may break anything below**. The rules on this page describe the
 > _shape_ of the promise that hardens at 1.0, so you can tell which
 > parts are meant to be depended on and which are meant to move.
@@ -36,6 +36,99 @@ first release.
 changes to the `nitr.*` Lua API are recorded here, **newest first**. Each
 one names what broke, what you see when you hit it, and what to write
 instead.
+
+### `nitr.validate` grew a great deal — and one call signature changed
+
+**What changed.** The validation vocabulary went from six types and
+thirteen formats to **nine types and thirty-six formats**, plus
+shorthand rule strings, custom formats, per-field `check` and
+`transform`, cross-field rules, schema derivations, file rules with
+media-type detection, and messages you can override at four levels. See
+[Validation](./server/validation/).
+
+**What breaks.** Almost nothing you already wrote: a rule table is still
+a rule table, and `schema:check(value)` still returns
+`data, err`. Two adjustments:
+
+- **`err` gained fields.** It is now
+  `{ code, message, fields, errors }` — `code` is always
+  `"VALIDATION_FAILED"`, and `errors` lists each failure with its rule
+  code and parameters. `err.fields` and `err.message` are unchanged, so
+  code reading only those keeps working.
+- **`nitr.validate.schema` takes a second argument.** Schema options
+  (`title`, `strict`, `messages`, the cross-field groups, `checks`) live
+  there. Existing one-argument calls are unaffected.
+
+An unknown rule key was already a load-time error; the set of keys that
+counts as known is simply much larger now.
+
+### Routes take an options table, and can validate their own input
+
+**What changed.** The trailing table a route registration accepts used
+to hold one key, `on_error`. It now holds four: `on_error`,
+`on_invalid`, `input` and `doc`.
+
+```lua
+app:post("/api/notes", handler, {
+    input = { body = NoteInput },      -- checked in Rust before the handler
+    doc   = { summary = "Create a note" },
+})
+```
+
+A route with an `input` gets `req.valid` — the checked, coerced,
+stripped request — and a request that fails it answers a JSON `422`
+before any Lua runs. See
+[Route input validation](./server/validation/route-input).
+
+**What breaks.** Only a route that passed a table with a key that is now
+refused: unknown keys are a **load-time error naming the four allowed
+ones**, where before anything but `on_error` was ignored. That is the
+change: a misspelled `on_errror` used to be silently a route without an
+error handler.
+
+Two new statuses can now come from a route you annotated: `415` for a
+body in a media type the route does not accept, and `422` for a failed
+`input`. Neither can appear on a route without an `input`.
+
+### `nitr.validate.messages` is load-time only
+
+**What changed.** App-wide default messages are set once, at load:
+
+```lua
+nitr.validate.messages({ required = "This field is required" })
+```
+
+**What breaks.** Calling it after the application has compiled
+**raises**. Wording is configuration, not per-request state — one
+request must never be able to change what another is told. Put the call
+at the top of `app.lua`.
+
+### `part.safe_filename` keeps the extension when it truncates
+
+**What changed.** A name longer than the filesystem allows now gives way
+at the **stem**, not the suffix: `<250 chars>.tar.gz` keeps its
+`.tar.gz`. Bidirectional overrides and zero-width characters are
+stripped too, alongside the control characters that were already
+removed — `photo\u{202E}gnp.exe`, which renders as `photoexe.png`, is
+reduced to `photognp.exe`.
+
+**What breaks.** Nothing that was correct. Code comparing against an
+exact truncated name would see a different string, and it is the shorter
+name that was wrong: an `extensions` rule and most handlers decide by
+the suffix, so the suffix is what must survive.
+
+### New configuration sections
+
+`[openapi]` and `[swagger]` are **off by default**, so an upgrade
+publishes nothing. Turning either on needs its Cargo feature
+(`openapi`, `swagger`), which the released binary has; `enabled = true`
+on a build without it is a startup error naming the feature, the way
+`[tls]` already was. See [OpenAPI](./server/openapi/).
+
+With a section enabled, **a route may not claim its path** — that is a
+startup error naming the setting and the line that registered the
+route, because the route could never be reached. With the section
+disabled nothing is reserved and the route wins.
 
 ### Templates HTML-escape by default, and `render` is asynchronous
 
@@ -358,16 +451,16 @@ nitr-core → nitr-std → nitr-http → nitr → nitr-cli
   ordinary version requirement is enough:
 
   ```sh
-  cargo install nitr-cli --version 0.0.0-beta.4
+  cargo install nitr-cli --version 0.0.0-beta.5
   ```
 
   ```toml
   # Cargo.toml
-  nitr = { version = "0.0.0-beta.4", features = ["db"] }
+  nitr = { version = "0.0.0-beta.5", features = ["db"] }
   ```
 
   That requirement is a caret, so it will also accept a later
-  `0.0.0-beta.N`. Write `"=0.0.0-beta.4"` for an exact pin, and commit
+  `0.0.0-beta.N`. Write `"=0.0.0-beta.5"` for an exact pin, and commit
   `Cargo.lock` in an application either way — the lockfile, not the
   requirement, is what makes two builds identical.
 

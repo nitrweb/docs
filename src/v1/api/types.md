@@ -9,17 +9,38 @@ knows all of this too.
 The incoming request, passed to every handler and middleware. See
 [Requests](../server/requests).
 
-| Field         | Type                                          | Description                                                             |
-| ------------- | --------------------------------------------- | ----------------------------------------------------------------------- |
-| `method`      | `string`                                      | Request method, uppercase (`"GET"`).                                    |
-| `path`        | `string`                                      | URI path (`"/users/42"`).                                               |
-| `params`      | `table<string, string>`                       | Path parameters captured by the router (`:id` → `params.id`).           |
-| `query`       | `table<string, string>`                       | Parsed query string; repeated keys keep the last value.                 |
-| `headers`     | `table<string, string>`                       | Request headers, **lowercase names**.                                   |
-| `id`          | `string`                                      | The request id (UUIDv7, echoed as `X-Request-ID`).                      |
-| `remote_addr` | `string`                                      | Peer address (`"ip:port"`).                                             |
-| `uri`         | `table`                                       | URI components: `scheme`, `host`, `port`, `path`, `authority`, `query`. |
-| `cookies`     | [`nitr.RequestCookies`](#nitr-requestcookies) | Parsed request cookies.                                                 |
+| Field         | Type                                          | Description                                                                              |
+| ------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `method`      | `string`                                      | Request method, uppercase (`"GET"`).                                                     |
+| `path`        | `string`                                      | URI path (`"/users/42"`).                                                                |
+| `params`      | `table<string, string>`                       | Path parameters captured by the router (`:id` → `params.id`).                            |
+| `query`       | `table<string, string>`                       | Parsed query string; repeated keys keep the last value.                                  |
+| `headers`     | `table<string, string>`                       | Request headers, **lowercase names**.                                                    |
+| `id`          | `string`                                      | The request id (UUIDv7, echoed as `X-Request-ID`).                                       |
+| `remote_addr` | `string`                                      | Peer address (`"ip:port"`).                                                              |
+| `uri`         | `table`                                       | URI components: `scheme`, `host`, `port`, `path`, `authority`, `query`.                  |
+| `cookies`     | [`nitr.RequestCookies`](#nitr-requestcookies) | Parsed request cookies.                                                                  |
+| `valid`       | `table\|nil`                                  | The route's validated input — see below. `nil` on routes without an `input` declaration. |
+
+> [!NOTE] `req.valid` — the checked view of the request
+>
+> On a route that declared
+> [`input`](../server/validation/route-input), Nitr validates before the
+> handler runs and puts the result here as
+> `{ body, query, params, headers }` — only the parts the route
+> declared, with text coerced to the declared types, undeclared fields
+> stripped and `default`s filled in.
+>
+> ```lua
+> app:get("/api/notes/:id", function(req)
+>     local id = req.valid.params.id       -- an integer, not "42"
+>     local q  = req.valid.query           -- limit/offset already numbers
+> end, { input = { params = { id = "integer|min:1" },
+>                  query  = { limit = "integer|min:1|max:100|default:20" } } })
+> ```
+>
+> The raw request is untouched: `req.params`, `req.query`, `req:json()`
+> and `req:form()` all still read what actually arrived.
 
 | Method                                    | Description                                                                                                                                      |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -92,18 +113,43 @@ Builder for `Set-Cookie` headers on a response.
 The application: routes, middleware, error handling, static mounts.
 Return it from the handler script. See [Routing](../server/routing).
 
-| Method                       | Description                                                                                                                                                 |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:get(path, ...)`            | Registers a GET route: `middleware..., handler`, plus an optional trailing `{ on_error = fn }`. Paths take `:name` parameters and a trailing `*` catch-all. |
-| `:post(path, ...)`           | Registers a POST route (see `get`).                                                                                                                         |
-| `:put(path, ...)`            | Registers a PUT route (see `get`).                                                                                                                          |
-| `:delete(path, ...)`         | Registers a DELETE route (see `get`).                                                                                                                       |
-| `:patch(path, ...)`          | Registers a PATCH route (see `get`).                                                                                                                        |
-| `:head(path, ...)`           | Registers a HEAD route. Without one, HEAD reuses the GET route with the body stripped.                                                                      |
-| `:options(path, ...)`        | Registers an OPTIONS route. Without one, OPTIONS answers `204` with `Allow`.                                                                                |
-| `:use(mw)`                   | Adds app-wide middleware: a factory `fn(next) -> fn(req)`. **Must be called before any route.**                                                             |
-| `:on_error(handler)`         | Sets the app-wide error handler: `fn(err, req)`, where `err` is the [structured error](../server/errors#the-error-value).                                   |
-| `:static(mount, dir, opts?)` | Mounts a static directory, served in Rust. Options: `{ spa = boolean, cache_control = string, dotfiles = boolean }`.                                        |
+| Method                       | Description                                                                                                                                                             |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:get(path, ...)`            | Registers a GET route: `middleware..., handler`, plus an optional trailing [options table](#route-options). Paths take `:name` parameters and a trailing `*` catch-all. |
+| `:post(path, ...)`           | Registers a POST route (see `get`).                                                                                                                                     |
+| `:put(path, ...)`            | Registers a PUT route (see `get`).                                                                                                                                      |
+| `:delete(path, ...)`         | Registers a DELETE route (see `get`).                                                                                                                                   |
+| `:patch(path, ...)`          | Registers a PATCH route (see `get`).                                                                                                                                    |
+| `:head(path, ...)`           | Registers a HEAD route. Without one, HEAD reuses the GET route with the body stripped.                                                                                  |
+| `:options(path, ...)`        | Registers an OPTIONS route. Without one, OPTIONS answers `204` with `Allow`.                                                                                            |
+| `:use(mw)`                   | Adds app-wide middleware: a factory `fn(next) -> fn(req)`. **Must be called before any route.**                                                                         |
+| `:on_error(handler)`         | Sets the app-wide error handler: `fn(err, req)`, where `err` is the [structured error](../server/errors#the-error-value).                                               |
+| `:on_invalid(handler)`       | Sets the app-wide answer to a failed `input` declaration: `fn(err, req)`. A route's own `on_invalid` wins. Default: a JSON `422`.                                       |
+| `:doc(info)`                 | Document-level information for the [OpenAPI document](../server/openapi/documenting#app-doc). Once per app.                                                             |
+| `:static(mount, dir, opts?)` | Mounts a static directory, served in Rust. Options: `{ spa = boolean, cache_control = string, dotfiles = boolean }`.                                                    |
+
+### Route options
+
+Every registration method takes an optional **trailing table** after the
+handler. Unknown keys are a load-time error naming the four allowed
+ones.
+
+| Key          | What it does                                                                                                                                                                                                                     |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input`      | `{ body, query, params, headers, strict }` — schemas checked in Rust **before the handler**, reaching it as `req.valid`. See [Route input](../server/validation/route-input)                                                     |
+| `doc`        | `{ summary, description, tags, operation_id, responses, security, deprecated, hidden }` — the operation in the [OpenAPI document](../server/openapi/documenting#per-route-doc). Request schemas belong under `input`, never here |
+| `on_invalid` | `fn(err, req)` — this route's answer to a failed `input`                                                                                                                                                                         |
+| `on_error`   | `fn(err, req)` — this route's error handler                                                                                                                                                                                      |
+
+```lua
+app:post("/api/notes", function(req)
+    return nitr.json(create(req.valid.body), 201)
+end, {
+    input = { body = NoteInput, headers = { ["x-team"] = "string|required" } },
+    doc   = { summary = "Create a note", tags = { "notes" },
+              responses = { [201] = { description = "Created", schema = Note } } },
+})
+```
 
 > [!NOTE] Dotfiles are hidden unless you ask for them
 >
@@ -197,11 +243,63 @@ An outbound response.
 ## `nitr.Schema`
 
 A compiled validation schema from `nitr.validate.schema`. See
-[Validation](../server/validation).
+[Validation](../server/validation/).
 
-| Method                                    | Description                                                                                                                                   |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:check(value) -> table\|nil, table\|nil` | Validates a value. Returns the data (**declared fields only**), or `nil` plus `{ message, fields }` mapping each failing path to its message. |
+| Method                                    | Description                                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `:check(value) -> table\|nil, table\|nil` | Validates a value. Returns the data (**declared fields only**, transformed), or `nil` plus the [error](#the-validation-error). |
+| `:partial() -> nitr.Schema`               | A copy with every top-level field optional — the PATCH body of a POST schema.                                                  |
+| `:pick(names) -> nitr.Schema`             | A copy keeping only the named fields.                                                                                          |
+| `:omit(names) -> nitr.Schema`             | A copy without the named fields. A cross-field rule naming a dropped field fails at load.                                      |
+| `:extend(fields) -> nitr.Schema`          | A copy with fields added or replaced; `false` removes one.                                                                     |
+| `:with(opts) -> nitr.Schema`              | A copy under different options (`title`, `strict`, `messages`, the cross-field groups, `checks`).                              |
+| `:fields() -> string[]`                   | The declared field names, sorted.                                                                                              |
+
+Derivations return a **new** schema; the original is untouched, so they
+are safe to build at load time and share. See
+[Composition](../server/validation/composition).
+
+### The validation error
+
+The second return value of `:check`, and the body of the default `422`.
+
+| Field     | Description                                                                                                 |
+| --------- | ----------------------------------------------------------------------------------------------------------- |
+| `code`    | Always `"VALIDATION_FAILED"`.                                                                               |
+| `message` | The summary line; `"validation failed"` unless overridden.                                                  |
+| `fields`  | Path → message: `email`, `home.city`, `tags[2]` — prefixed with the request part on a route (`body.email`). |
+| `errors`  | One entry per failing path, sorted: `{ path, part?, field, rule, message, params?, label? }`.               |
+
+`params` carries the **rule's** parameters (`{ max = 20 }`), never the
+submitted value — an error body gets logged and echoed, and the input is
+the part you would not want in either. See
+[Messages & errors](../server/validation/messages).
+
+## `nitr.File`
+
+A validated upload from a route's [`file` rule](../server/validation/files).
+The bytes are spooled under `[multipart] upload_dir` and **never enter
+the Lua heap**.
+
+| Field / method               | Description                                                                                        |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| `filename: string\|nil`      | The client's file name, **raw** — display text, never a path.                                      |
+| `safe_filename: string\|nil` | That name reduced to one safe path segment.                                                        |
+| `extension: string\|nil`     | The lowercase last suffix of `safe_filename`.                                                      |
+| `content_type: string`       | The media type **detected from the bytes** (the declared header only where nothing is detectable). |
+| `size: integer`              | Bytes received.                                                                                    |
+| `width: integer\|nil`        | Image width read from the header (png, jpeg, gif, webp, bmp, tiff).                                |
+| `height: integer\|nil`       | Image height read from the header.                                                                 |
+| `:save(rel) -> string`       | Moves the file to `rel` **inside** `[multipart] upload_dir`; returns the path.                     |
+| `:text() -> string`          | The contents as a string — only for a file within `[limits] max_field_bytes`.                      |
+| `:hash(algo?) -> string`     | A hex digest streamed from disk (`sha256`, the default and only algorithm today).                  |
+| `:discard()`                 | Removes the spooled file now.                                                                      |
+
+> [!TIP] Cleanup is automatic
+>
+> A file that is neither saved nor discarded is removed when the request
+> ends. `:discard()` frees the space sooner; it is not needed for
+> correctness.
 
 ## `nitr.Session`
 

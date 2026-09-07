@@ -65,6 +65,23 @@ response ←  A  ←  B  ←  C  ←  handler
 Code before `next(req)` runs on the way in; code after it runs on the
 way out, innermost first.
 
+> [!NOTE] A route's `input` is checked before any of it
+>
+> Where a route declares
+> [`input`](./validation/route-input), Nitr validates the request in
+> Rust **before** the middleware chain runs — so a malformed body gets a
+> `422` without your auth or logging middleware seeing it at all. The
+> cheap check comes first, and no Lua state does work for a request that
+> was never going to be accepted.
+>
+> Middleware that must run on every request, valid or not, therefore
+> belongs in [`on_invalid`](./errors#on-invalid-when-the-input-was-wrong)
+> as well — and authorization that must be decided before shape belongs
+> in the handler.
+>
+> Middleware on a validated route can read `req.valid`, which is what
+> makes a shared "who is this?" middleware able to use a checked header.
+
 ## The patterns worth knowing
 
 ### Timing and logging

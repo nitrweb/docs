@@ -101,6 +101,41 @@ app:get("/report", generate_report, {
   `error.kind`, `error.source`, `error.line` and `error.module` — so
   handling an error does not hide it from the logs.
 
+## `on_invalid`: when the input was wrong
+
+`on_error` answers _your code failed_. `on_invalid` answers _their
+request was wrong_ — a route whose
+[`input`](./validation/route-input) declaration was not satisfied. They
+are separate hooks because they are separate events, and confusing them
+is how a `422` becomes a `500`.
+
+```lua
+app:on_invalid(function(err, req)
+    -- err = { code, message, fields, errors }
+    if req:accepts("application/json", "text/html") == "text/html" then
+        return nitr.html(render_form_with_errors(err.fields), 422)
+    end
+    return nitr.error(422, { code = err.code, fields = err.fields })
+end)
+```
+
+|                    | `on_invalid`                        | `on_error`                               |
+| ------------------ | ----------------------------------- | ---------------------------------------- |
+| Fires on           | A request that failed its `input`   | A raised error anywhere in the chain     |
+| Receives           | `{ code, message, fields, errors }` | The [structured error](#the-error-value) |
+| Default answer     | A JSON `422`                        | `Internal Server Error` (a `500`)        |
+| Per-route override | `{ on_invalid = fn }`               | `{ on_error = fn }`                      |
+
+> [!NOTE] A bug inside a `check` is still a `500`
+>
+> A validation `check` function that _raises_ — a nil index, a typo — is
+> an application error, not invalid input. It reaches `on_error` and is
+> logged as a failure. Rejecting a value and crashing on one never get
+> confused.
+
+See [Messages & errors](./validation/messages) for the exact shape of
+`err`.
+
 ## Returned errors vs raised errors
 
 Two different things, and the difference matters:
@@ -156,6 +191,8 @@ Responses your application never sees, answered in Rust:
 | `408`  | No complete headers within `header_read_ms`, or a body read stalled beyond `body_read_ms`                                          | A stalled body gets `Connection: close`; an expired header read simply closes the connection |
 | `413`  | Body beyond `max_body_bytes` (declared or counted while reading)                                                                   | Also for multipart parts beyond their limits                                                 |
 | `414`  | URI beyond `max_uri_bytes`                                                                                                         |                                                                                              |
+| `415`  | The body's media type is not one the route's [`input`](./validation/route-input#bodies-and-content-types) accepts                  | Carries `Accept` and names the accepted types in the body                                    |
+| `422`  | A request failed the route's `input` declaration                                                                                   | Shaped by [`on_invalid`](#on-invalid-when-the-input-was-wrong) when you set one              |
 | `429`  | Per-IP budget exceeded (`[rate_limit]`)                                                                                            | Carries `Retry-After`                                                                        |
 | `500`  | A handler failure `on_error` did not answer — timeout, memory and contained panics included                                        | See the two modes below                                                                      |
 | `503`  | No free Lua state within `pool_wait_ms` (carries `Retry-After: 1`), streaming rejected at `max_streams`, or the server is draining | Shed **before** any Lua runs                                                                 |

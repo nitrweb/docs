@@ -133,12 +133,17 @@ since the rebuild in flight read the scripts before that signal.
 startup keeps its boot-time value. The boundary is worth writing down
 rather than discovering:
 
-| Reloaded by `SIGHUP`                                            | Needs a restart                                       |
-| --------------------------------------------------------------- | ----------------------------------------------------- |
-| The Lua pool: the config script re-runs, the handler recompiles | `listen` and `workers`                                |
-| `[tls] cert` and `[tls] key` — the two _files_                  | `[tls] enabled`, `min_version`, `handshake_ms`        |
-| Templates, since a rebuild reads them                           | `[limits]`, `[rate_limit]`, `trust_request_id`        |
-| Nothing else                                                    | `[cors]`, `[compression]`, `[cache]` and its capacity |
+| Reloaded by `SIGHUP`                                                | Needs a restart                                       |
+| ------------------------------------------------------------------- | ----------------------------------------------------- |
+| The Lua pool: the config script re-runs, the handler recompiles     | `listen` and `workers`                                |
+| `[tls] cert` and `[tls] key` — the two _files_                      | `[tls] enabled`, `min_version`, `handshake_ms`        |
+| Templates, since a rebuild reads them                               | `[limits]`, `[rate_limit]`, `trust_request_id`        |
+| The [OpenAPI document and page](../openapi/), rebuilt with the pool | `[openapi]` and `[swagger]` themselves                |
+| Nothing else                                                        | `[cors]`, `[compression]`, `[cache]` and its capacity |
+
+The document is built once per pool build and swapped with it, so a
+reload can never serve a document describing the routes the previous
+pool had.
 
 Static files are in neither column: they are read from disk per
 request, so changing one needs no signal at all.

@@ -1,6 +1,6 @@
 # Examples
 
-Nitr ships **15 runnable examples**, one per subject. Each is a small
+Nitr ships **17 runnable examples**, one per subject. Each is a small
 `main.rs` plus the Lua it serves, and every one runs with a single
 command against a real server you can `curl`.
 
@@ -34,13 +34,15 @@ is written relative to that root, so the working directory matters.
 > commands below carry the right flag; `--features all` works for every
 > one of them.
 
-| Example                     | Needs                      |
-| --------------------------- | -------------------------- |
-| `basic-auth`, `bearer-auth` | `crypto`                   |
-| `stdlib`                    | `crypto`, `fetch`          |
-| `data-io`, `aggregate`      | `db`, `fetch`              |
-| `standards`                 | `compression`, `multipart` |
-| `tls`                       | `tls`                      |
+| Example                     | Needs                          |
+| --------------------------- | ------------------------------ |
+| `basic-auth`, `bearer-auth` | `crypto`                       |
+| `stdlib`                    | `crypto`, `fetch`              |
+| `data-io`, `aggregate`      | `db`, `fetch`                  |
+| `standards`                 | `compression`, `multipart`     |
+| `tls`                       | `tls`                          |
+| `validation`                | `multipart` (the upload route) |
+| `openapi`                   | `swagger`                      |
 
 Everything else — `hello`, `router`, `extension`, `streaming`, `sse`,
 `static-site` and `observability` — builds on a plain `cargo run`.
@@ -48,18 +50,20 @@ Everything else — `hello`, `router`, `extension`, `streaming`, `sse`,
 
 ## Where to start
 
-| If you want to…             | Run                         |
-| --------------------------- | --------------------------- |
-| See the smallest embedding  | `hello`                     |
-| Write routes and middleware | `router`, then `stdlib`     |
-| Add your own Rust           | `extension`                 |
-| Use a database              | `data-io`                   |
-| Serve a website             | `static-site`, `standards`  |
-| Stream a response           | `streaming`, `sse`          |
-| Protect an endpoint         | `basic-auth`, `bearer-auth` |
-| Terminate HTTPS             | `tls`                       |
-| Run it in production        | `observability`             |
-| Use the CLI, not the crate  | `app-package`               |
+| If you want to…               | Run                         |
+| ----------------------------- | --------------------------- |
+| See the smallest embedding    | `hello`                     |
+| Write routes and middleware   | `router`, then `stdlib`     |
+| Validate what a route accepts | `validation`                |
+| Publish an API document       | `openapi`                   |
+| Add your own Rust             | `extension`                 |
+| Use a database                | `data-io`                   |
+| Serve a website               | `static-site`, `standards`  |
+| Stream a response             | `streaming`, `sse`          |
+| Protect an endpoint           | `basic-auth`, `bearer-auth` |
+| Terminate HTTPS               | `tls`                       |
+| Run it in production          | `observability`             |
+| Use the CLI, not the crate    | `app-package`               |
 
 ---
 
@@ -91,7 +95,7 @@ cargo run --example router
 
 curl 'http://127.0.0.1:3000/users/42'
 curl -X POST 'http://127.0.0.1:3000/users' -d '{"name":"ada"}'
-curl 'http://127.0.0.1:3000/admin' -H 'authorization: secret'
+curl 'http://127.0.0.1:3000/admin' -H 'authorization: Bearer router-example-token'
 curl -c - 'http://127.0.0.1:3000/login'
 curl 'http://127.0.0.1:3000/data' -H 'accept: text/html'
 curl -N 'http://127.0.0.1:3000/events'         # Server-Sent Events
@@ -124,6 +128,51 @@ curl -b /tmp/jar 'http://127.0.0.1:3000/profile'
 ```
 
 Pairs with the [Lua API reference](./api/).
+
+## `validation`
+
+[Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/validation)
+· route input, checked before the handler
+
+A notes API whose routes declare what they accept. Bodies, query
+strings, path parameters and headers are checked in Rust before any Lua
+runs; the handlers read `req.valid` and contain no validation code. It
+also covers a custom format, an app-wide `on_invalid`, and an HTML form
+that carries an image upload.
+
+```sh
+cargo run --example validation --features all
+
+curl -s 'http://127.0.0.1:3000/api/notes?limit=500' -H 'x-team: core'
+#  422  query.limit: must be at most 100
+
+curl -si -X POST 'http://127.0.0.1:3000/api/notes' -H 'x-team: core' \
+     -H 'content-type: application/json' -d '{"text":"  "}'
+#  422  body.text: is required
+
+curl -s -X POST 'http://127.0.0.1:3000/profile' \
+     -F name='Ada' -F email='ADA@EXAMPLE.COM' -F avatar=@photo.png
+```
+
+Pairs with [Validation](./server/validation/).
+
+## `openapi`
+
+[Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/openapi)
+· the same API, documented
+
+The `validation` example plus `app:doc` and per-route `doc` tables: an
+OpenAPI 3.1 document at `/openapi.json` and a Swagger UI page at
+`/docs`, both generated from the route table and served from the binary.
+
+```sh
+cargo run --example openapi --features swagger
+
+curl -s 'http://127.0.0.1:3000/openapi.json' | jq .info
+xdg-open 'http://127.0.0.1:3000/docs'
+```
+
+Pairs with [OpenAPI](./server/openapi/).
 
 ## `extension`
 
