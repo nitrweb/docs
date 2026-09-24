@@ -1,83 +1,64 @@
 # Error Handling
 
-How failures behave, and what you can rely on.
+Failures fall into three groups:
 
-## Three layers, from most to least common
-
-| Failure                                                | What happens                                                                                                                        |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| A Lua error, timeout, or memory limit in your handler  | Classified into a structured error, offered to your `on_error` handler, otherwise answered with `500`                               |
-| Invalid input or an overloaded server                  | Rejected **in Rust before your code runs** (`404`, `405`, `413`, `414`, `429`, `503`, …)                                            |
-| A panic in Rust (a bug in Nitr or an extension module) | Contained at the request boundary: the response is `500`, the Lua state is recycled, the process and every other connection survive |
-
-`Result`-style errors are the normal currency; panic containment is a
-last-resort safety net for genuine bugs, not something an application
-can or should trigger deliberately. If you ever see `kind = "panic"`,
-[report it](../report-security-issues).
+| Failure                                                | What happens                                                                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| A Lua error, timeout, or memory limit in your handler  | Logged, passed to your `on_error` handler if you have one, otherwise answered with `500`                                        |
+| A bad or unwanted request                              | Answered by Nitr **before your code runs** (`404`, `405`, `413`, `429`, `503`, …); see the [table](#status-codes-nitr-produces) |
+| A panic in Rust (a bug in Nitr or an extension module) | Answered with `500`. The Lua state is replaced; the process and other connections keep running                                  |
 
 ## The error value
 
-Your error handler — and the structured log line — sees the failure as a
-table with a closed set of fields:
+`on_error` receives the failure as a table:
 
 ```lua
 {
   kind = "lua",            -- always present, see below
   message = "attempt to index a nil value (local 'user')",
-  source = "app.lua",      -- the failing chunk, when known
+  source = "app.lua",      -- the failing file, when known
   line = 42,               -- the failing line, when known
-  module = "nitr.db",      -- the failing module, when attributed
-  traceback = "...",       -- bounded Lua call stack (innermost first)
-  cause = { "...", ... },  -- bounded underlying Rust error chain
+  module = "nitr.db",      -- the failing module, when known
+  traceback = "...",       -- Lua call stack, innermost first
+  cause = { "...", ... },  -- underlying Rust errors
 }
 ```
 
 ### `err.kind`
 
-A **closed set**, so branching on it is stable in a way matching on
-message text never is.
+| `err.kind`  | Meaning                                                                           |
+| ----------- | --------------------------------------------------------------------------------- |
+| `"lua"`     | An error raised by your script, or by a Lua library it called                     |
+| `"nitr"`    | A `nitr.*` function failed or was called wrongly (bad argument, invalid response) |
+| `"module"`  | An extension module (`nitr.ext.*`) failed                                         |
+| `"timeout"` | The handler exceeded `[lua] exec_timeout_ms`                                      |
+| `"memory"`  | The Lua state hit `[lua] memory_limit`                                            |
+| `"panic"`   | A Rust panic. This is a Nitr bug; please [report it](#reporting-a-nitr-bug)       |
 
-| `err.kind`  | Meaning                                                                                 |
-| ----------- | --------------------------------------------------------------------------------------- |
-| `"lua"`     | An error raised by your script, or by a Lua library it called                           |
-| `"nitr"`    | A `nitr.*` builtin failed, or was called wrongly (bad argument, invalid response shape) |
-| `"module"`  | A registered extension module (`nitr.ext.*`) failed                                     |
-| `"timeout"` | The handler exceeded `[lua] exec_timeout_ms`                                            |
-| `"memory"`  | The state hit `[lua] memory_limit`                                                      |
-| `"panic"`   | A Rust panic was contained at the request boundary — a bug, not an application error    |
-
-> [!TIP] Branch on `kind`, never on `message`
->
-> Messages are diagnostics and may be reworded at any time. `kind` is
-> part of the [stability promise](../stability).
-
-> [!WARNING] `kind` is a classification, not a provenance claim
->
-> `"nitr"` and `"timeout"` are recognized by the **shape of the
-> message**, so a script that raises `"nitr.db: ..."` or the execution
-> budget's own wording verbatim lands in those kinds too. That is fine
-> for logging, for an error page, and for deciding which status to
-> answer — it is what the field is for. It is **not** a fact about who
-> raised the error, so no security decision may rest on it.
+Branch on `kind`, never on `message`: messages may change, the set of
+kinds is covered by the [stability promise](../stability). `"nitr"` and
+`"timeout"` are recognized from the message text, so a script can
+produce them with `error(...)`. Use `kind` for logging and choosing a
+status, not for security decisions.
 
 ## `on_error` handlers
 
-Register an app-wide handler, a per-route one, or both. **The per-route
-handler wins** where both exist.
+Register an app-wide handler, a per-route one, or both. The per-route
+handler wins.
 
 ```lua
 local app = nitr.app()
 
 app:on_error(function(err, req)
-    nitr.log.error("handler failed", {
+    nitr.log.error("request failed", {
         error = err.message, kind = err.kind,
-        source = err.source, line = err.line,
+        source = err.source, line = err.line, path = req.path,
     })
 
     if err.kind == "timeout" then
-        return nitr.error(504, { code = "TIMEOUT" })
+        return nitr.error(504, { code = "TIMEOUT", request_id = req.id })
     end
-    return nitr.error(500, { code = "INTERNAL" })
+    return nitr.error(500, { code = "INTERNAL", request_id = req.id })
 end)
 
 app:get("/report", generate_report, {
@@ -87,27 +68,28 @@ app:get("/report", generate_report, {
 })
 ```
 
-### The rules
+- It runs only for failures in your handler and middleware. Requests
+  Nitr rejects itself (`404`, `413`, …) never reach it.
+- It receives the error table and the request, and must return a
+  response.
+- Nitr logs the failure (with `error.kind`, `error.source`,
+  `error.line`, `error.module`) before calling it, so handling an error
+  never hides it.
+- If `on_error` itself fails or returns an invalid response, Nitr logs
+  that and sends its own `500`.
 
-- It runs **only for failures in your handler chain** — the first row of
-  the table above. Rust-side rejections such as `404` or `413` never
-  reach it: there is no application failure to explain.
-- It receives the error table and the original request, and must return
-  a response table.
-- **If the error handler itself fails**, or returns something that is
-  not a valid response, Nitr logs that and falls back to its own error
-  response. Error handling never recurses.
-- **The failure is logged before your handler runs**, structured, with
-  `error.kind`, `error.source`, `error.line` and `error.module` — so
-  handling an error does not hide it from the logs.
+Returning `req.id` helps: it appears on every log line for the request
+and in the client's `X-Request-ID` header.
+
+In `nitr test`, `resp.error` holds the same table (plus `handled`,
+true when `on_error` answered), so a failing test shows the cause. See
+[Testing](./testing#when-a-request-fails).
 
 ## `on_invalid`: when the input was wrong
 
-`on_error` answers _your code failed_. `on_invalid` answers _their
-request was wrong_ — a route whose
-[`input`](./validation/route-input) declaration was not satisfied. They
-are separate hooks because they are separate events, and confusing them
-is how a `422` becomes a `500`.
+`on_error` means _your code failed_. `on_invalid` means _the request
+was wrong_: it did not satisfy the route's
+[`input`](./validation/route-input) declaration.
 
 ```lua
 app:on_invalid(function(err, req)
@@ -119,51 +101,38 @@ app:on_invalid(function(err, req)
 end)
 ```
 
-|                    | `on_invalid`                        | `on_error`                               |
-| ------------------ | ----------------------------------- | ---------------------------------------- |
-| Fires on           | A request that failed its `input`   | A raised error anywhere in the chain     |
-| Receives           | `{ code, message, fields, errors }` | The [structured error](#the-error-value) |
-| Default answer     | A JSON `422`                        | `Internal Server Error` (a `500`)        |
-| Per-route override | `{ on_invalid = fn }`               | `{ on_error = fn }`                      |
+|                    | `on_invalid`                        | `on_error`                           |
+| ------------------ | ----------------------------------- | ------------------------------------ |
+| Fires on           | A request that failed its `input`   | An error raised in the handler chain |
+| Receives           | `{ code, message, fields, errors }` | The [error table](#the-error-value)  |
+| Default answer     | A JSON `422`                        | `500 Internal Server Error`          |
+| Per-route override | `{ on_invalid = fn }`               | `{ on_error = fn }`                  |
 
-> [!NOTE] A bug inside a `check` is still a `500`
->
-> A validation `check` function that _raises_ — a nil index, a typo — is
-> an application error, not invalid input. It reaches `on_error` and is
-> logged as a failure. Rejecting a value and crashing on one never get
-> confused.
-
-See [Messages & errors](./validation/messages) for the exact shape of
-`err`.
+A validation `check` function that raises (a nil index, a typo) is a
+bug, not invalid input, so it goes to `on_error`. See
+[Messages & errors](./validation/messages) for the shape of `err`.
 
 ## Returned errors vs raised errors
 
-Two different things, and the difference matters:
-
 ```lua
--- A RETURNED error: a deliberate response. on_error is NOT involved.
+-- Returned: a planned response. on_error is not involved.
 if not user then
     return nitr.error(404, { code = "NOT_FOUND" })
 end
 
--- A RAISED error: an unexpected failure. on_error IS involved.
+-- Raised: an unexpected failure. on_error handles it.
 local body = req:json()      -- raises on invalid JSON
 ```
 
-Use returned errors for the outcomes you planned for. Let raised errors
-raise — `on_error` and the structured log line exist precisely to give
-them one consistent treatment.
+Return errors for outcomes you planned for, and let unexpected ones
+raise so they are logged and handled in one place.
 
 ## Catching an error yourself
 
-`pcall` plus `nitr.errinfo` gives you the same structured form inside a
-handler:
+`pcall` plus `nitr.errinfo` gives you the same table inside a handler:
 
 ```lua
-local ok, caught = pcall(function()
-    return risky_operation()
-end)
-
+local ok, caught = pcall(risky_operation)
 if not ok then
     local err = nitr.errinfo(caught)
     nitr.log.warn("recovered", { kind = err.kind, message = err.message })
@@ -171,111 +140,55 @@ if not ok then
 end
 ```
 
-`nitr.errinfo(caught)` classifies a pcall-caught error into `kind`,
-`message`, `source`, `line`, `traceback`, `cause` and `pretty`.
-
-> [!WARNING] Do not `pcall` everything
->
-> A blanket `pcall` around your whole handler turns every bug into a
-> silent degraded response and hides it from `on_error` and from the
-> logs. Catch what you can genuinely recover from; let the rest raise.
+`nitr.errinfo` returns `kind`, `message`, `source`, `line`,
+`traceback`, `cause` and `pretty`. Only catch what you can recover
+from: a `pcall` around a whole handler hides bugs from `on_error` and
+the logs. Timeouts cannot be caught; `pcall` raises them again, so they
+always reach `on_error`.
 
 ## Status codes Nitr produces
 
-Responses your application never sees, answered in Rust:
+These are answered by Nitr; your handler never sees the request.
 
-| Status | When                                                                                                                               | Notes                                                                                        |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `404`  | No route or static mount matched                                                                                                   |                                                                                              |
-| `405`  | The path exists, the method does not                                                                                               | Carries `Allow`; a bare `OPTIONS` on a known path gets `204` + `Allow` instead               |
-| `408`  | No complete headers within `header_read_ms`, or a body read stalled beyond `body_read_ms`                                          | A stalled body gets `Connection: close`; an expired header read simply closes the connection |
-| `413`  | Body beyond `max_body_bytes` (declared or counted while reading)                                                                   | Also for multipart parts beyond their limits                                                 |
-| `414`  | URI beyond `max_uri_bytes`                                                                                                         |                                                                                              |
-| `415`  | The body's media type is not one the route's [`input`](./validation/route-input#bodies-and-content-types) accepts                  | Carries `Accept` and names the accepted types in the body                                    |
-| `422`  | A request failed the route's `input` declaration                                                                                   | Shaped by [`on_invalid`](#on-invalid-when-the-input-was-wrong) when you set one              |
-| `429`  | Per-IP budget exceeded (`[rate_limit]`)                                                                                            | Carries `Retry-After`                                                                        |
-| `500`  | A handler failure `on_error` did not answer — timeout, memory and contained panics included                                        | See the two modes below                                                                      |
-| `503`  | No free Lua state within `pool_wait_ms` (carries `Retry-After: 1`), streaming rejected at `max_streams`, or the server is draining | Shed **before** any Lua runs                                                                 |
+| Status | When                                                                                                              | Notes                                                                |
+| ------ | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `400`  | More than one `Authorization` header                                                                              |                                                                      |
+| `404`  | No route or static file matched                                                                                   |                                                                      |
+| `405`  | The path exists, the method does not                                                                              | Has `Allow`. `OPTIONS` on a known path gets `204` + `Allow` instead  |
+| `408`  | A body read stalled past `body_read_ms`                                                                           | Closes the connection. Slow headers (`header_read_ms`) just close it |
+| `413`  | Body over `max_body_bytes`                                                                                        | Checked from `Content-Length` and while reading                      |
+| `414`  | URI over `max_uri_bytes`                                                                                          |                                                                      |
+| `415`  | The body's media type is not one the route's [`input`](./validation/route-input#bodies-and-content-types) accepts | Has `Accept`; the JSON body lists the accepted types                 |
+| `422`  | The request failed the route's `input`                                                                            | Shaped by [`on_invalid`](#on-invalid-when-the-input-was-wrong)       |
+| `429`  | Per-IP rate limit exceeded (`[rate_limit]`)                                                                       | Has `Retry-After`                                                    |
+| `500`  | A handler failure that `on_error` did not answer                                                                  | See below                                                            |
+| `503`  | No free Lua state within `pool_wait_ms`, too many open streams, or the server is shutting down                    | `pool_wait_ms` answers carry `Retry-After: 1`                        |
+
+The limits behind these statuses (`max_body_bytes`, `pool_wait_ms`,
+`exec_timeout_ms`, …) and their defaults are listed in
+[Defaults](./defaults) and [`[limits]`](./configuration/file#limits).
+Multipart limits (`max_form_parts`, `max_field_bytes`,
+`max_file_bytes`) raise Lua errors instead, so they become a `500`
+unless you catch them; see [Upload limits](./requests#upload-limits).
 
 ## Development versus production
 
-The `500` body has two deliberately different faces, switched by
-`dev_mode`:
+The default `500` body depends on `dev_mode`:
 
-**Production** answers with exactly `Internal Server Error`. No message,
-no paths, no traceback. Failure details are for the operator and live in
-the structured log line — not in what an attacker can read by causing
-errors.
+- **Production:** exactly `Internal Server Error`. No message, paths or
+  traceback; the details go to the log.
+- **Development:** the error in context: `kind: message (source:line)`,
+  the failing source lines, the traceback and cause chain, as HTML when
+  the client accepts it, plain text otherwise.
 
-**Development** renders the error in context: the concise headline
-(`kind: message (source:line)`), the failing source with the line
-marked, the bounded traceback and the cause chain — as HTML when the
-client accepts it, plain text otherwise.
-
-Your own `on_error` responses are returned verbatim in **both** modes;
-withholding detail there is your call.
-
-## The configured limits
-
-Every limit that produces one of the statuses above:
-
-| Key                                                     | Section        | Default              | On violation                |
-| ------------------------------------------------------- | -------------- | -------------------- | --------------------------- |
-| `max_body_bytes`                                        | `[limits]`     | 1 MiB                | `413`                       |
-| `max_uri_bytes`                                         | `[limits]`     | 8 KiB                | `414`                       |
-| `max_header_bytes`                                      | `[limits]`     | 16 KiB               | connection-level rejection  |
-| `max_connections`                                       | `[limits]`     | 1024                 | listener stops accepting    |
-| `pool_wait_ms`                                          | `[limits]`     | 5000                 | `503` + `Retry-After`       |
-| `header_read_ms`                                        | `[limits]`     | 30000                | connection closed           |
-| `body_read_ms`                                          | `[limits]`     | 30000                | `408` + `Connection: close` |
-| `max_form_parts` / `max_field_bytes` / `max_file_bytes` | `[limits]`     | 64 / 64 KiB / 10 MiB | `413`                       |
-| `requests` per `window`                                 | `[rate_limit]` | off                  | `429` + `Retry-After`       |
-| `exec_timeout_ms`                                       | `[lua]`        | 30000                | `kind = "timeout"` → `500`  |
-| `memory_limit`                                          | `[lua]`        | 8 MiB                | `kind = "memory"` → `500`   |
-
-## A production-shaped error handler
-
-```lua
-app:on_error(function(err, req)
-    -- 1. Log everything, structured. This is the operator's copy.
-    nitr.log.error("request failed", {
-        error  = err.message,
-        kind   = err.kind,
-        source = err.source,
-        line   = err.line,
-        module = err.module,
-        path   = req.path,
-    })
-
-    -- 2. Answer with a stable, machine-readable shape. No internals.
-    if err.kind == "timeout" then
-        return nitr.error(504, { code = "TIMEOUT", request_id = req.id })
-    end
-    if err.kind == "memory" then
-        return nitr.error(503, { code = "OVERLOADED", request_id = req.id })
-    end
-    return nitr.error(500, { code = "INTERNAL", request_id = req.id })
-end)
-```
-
-> [!TIP] Return the request id
->
-> `req.id` is also on every log line for that request and in the
-> client's `X-Request-ID` header. A user quoting it lets you find the
-> exact failure in seconds.
+Responses from your own `on_error` are sent as you wrote them in both
+modes.
 
 ## Reporting a Nitr bug
 
-A `kind = "panic"` error, a process crash, or a `500` with no
-corresponding log line is a Nitr bug. An actionable report includes:
-
-- the structured log line (`error.kind` and friends), plus the panic
-  message if there is one;
-- Nitr's version and how it was built (release binary, `cargo install`,
-  distro package);
-- the smallest handler that reproduces it — the `source`/`line` fields
-  usually point straight at it.
-
-See [Report Security Issues](../report-security-issues) if it has a
-security dimension, otherwise
-[open an issue](https://github.com/nitrweb/nitr/issues).
+A `kind = "panic"` error, a process crash, or a `500` without a log
+line is a Nitr bug. Include the log line (and panic message), the Nitr
+version and how you installed it, and the smallest handler that
+reproduces it. [Open an issue](https://github.com/nitrweb/nitr/issues),
+or see [Report Security Issues](../report-security-issues) if it has a
+security side.

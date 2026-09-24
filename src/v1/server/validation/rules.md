@@ -1,7 +1,7 @@
 # Rules & Types
 
-A schema maps field names to **rules**. A rule always says what type the
-value is, and then what else must be true of it.
+A schema maps field names to **rules**. A rule names the value's type,
+then what else must be true of it.
 
 ```lua
 local S = nitr.validate
@@ -14,86 +14,73 @@ local schema = S.schema({
 
 ## The three spellings
 
-They compile to the same thing. Pick per field, not per schema.
+All three compile to the same thing, and you can choose per field.
 
 ```lua
--- Table form. Explicit, and the only way to nest.
+-- Table form. The only way to nest.
 { type = "string", trim = true, min_len = 1, max_len = 500, required = true }
 
--- Shorthand. The type comes first; the rest are `key` or `key:value`.
+-- Shorthand. The type comes first; then `key` or `key:value` tokens.
 "string|trim|min_len:1|max_len:500|required"
 
--- Mixed. Shorthand for the rules, table keys for what a string cannot hold.
+-- Mixed. Shorthand, plus table keys a string cannot hold.
 { "string|trim|min_len:1|required",
   description = "The note body",
   check = function(s) return s:match("%a") ~= nil, "must contain a letter" end }
 ```
 
-### The shorthand grammar
+### Shorthand syntax
 
-`type|token|token…`, where a token is a rule key on its own (a flag) or
-`key:value`.
+`type|token|token…`, where each token is a rule key with the same
+meaning it has in a table.
 
-| Token shape                          | Meaning                                                                                        | Example                            |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------- |
-| A bare key                           | The flag rules: `required`, `trim`, `unique`, `utf8`, `match_extension`, `allow_executables`   | `"string\|trim\|required"`         |
-| `key:number`                         | The numeric rules — `min`, `max_len`, `max_items`, `max_pixels`, …                             | `"integer\|min:1\|max:5"`          |
-| `key:a,b,c`                          | The list rules — `one_of`, `not_one_of`, `contains_any`, `contains_all`, `types`, `extensions` | `"string\|one_of:draft,published"` |
-| `key:text`                           | Everything else, as text                                                                       | `"string\|format:email"`           |
-| `default:` / `equals:` / `contains:` | Typed by the rule's own type: a number on `integer`/`number`, text otherwise                   | `"integer\|default:3"`             |
+| Token                                | Meaning                                                                                          | Example                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| A bare key                           | A flag: `required`, `trim`, `unique`, `utf8`, `match_extension`, `allow_executables`             | `"string\|trim\|required"`         |
+| `key:number`                         | A numeric rule: `min`, `max_len`, `max_items`, `max_pixels`, …                                   | `"integer\|min:1\|max:5"`          |
+| `key:a,b,c`                          | A list rule: `one_of`, `not_one_of`, `contains_any`, `contains_all`, `types`, `extensions`       | `"string\|one_of:draft,published"` |
+| `key:text`                           | Anything else, as text                                                                           | `"string\|format:email"`           |
+| `default:` / `equals:` / `contains:` | Read as the field's type: a number on `integer`/`number`, `true`/`false` on `boolean`, else text | `"integer\|default:3"`             |
 
-A literal `|` or `,` inside a value is escaped with a backslash:
+Escape a literal `|` or `,` with a backslash. `nitr.validate.expand`
+shows what a shorthand string means:
 
 ```lua
-S.expand([[string|one_of:a\,b,c]])
+nitr.dbg(nitr.validate.expand([[string|one_of:a\,b,c]]))
 -- { type = "string", one_of = { "a,b", "c" } }
-```
-
-Print any shorthand to see what it means:
-
-```lua
-nitr.dbg(nitr.validate.expand("array|max_items:5|unique"))
--- { type = "array", max_items = 5, unique = true }
 ```
 
 ## Keys every type accepts
 
-| Key           | Meaning                                                                                                        |
-| ------------- | -------------------------------------------------------------------------------------------------------------- |
-| `type`        | `string`, `number`, `integer`, `boolean`, `array`, `table`, `map`, `any`, `file`                               |
-| `required`    | The field must be present. Without it, an absent field is simply absent — but a _present_ one is still checked |
-| `default`     | Substituted when the field is absent. A default is not re-checked: give a value the rules would accept         |
-| `equals`      | Must equal this exact literal                                                                                  |
-| `one_of`      | An allow-list of exact values                                                                                  |
-| `not_one_of`  | A deny-list of exact values                                                                                    |
-| `description` | Prose. Reaches the [OpenAPI document](../openapi/); required when you write a `check`                          |
-| `example`     | An example value for the document                                                                              |
-| `label`       | The name to use for this field in messages instead of the key ([Messages](./messages#labels))                  |
-| `message`     | One message for every rule on this field ([Messages](./messages))                                              |
-| `messages`    | A message per rule code: `{ max_len = "Keep it under {max}" }`                                                 |
-| `check`       | `function(v) -> boolean, message?` — your own predicate, run after every Rust rule passed                      |
-| `transform`   | `function(v) -> v` — rewrites the value on its way into the output, after everything else                      |
+| Key           | Meaning                                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `type`        | `string`, `number`, `integer`, `boolean`, `array`, `table`, `map`, `any`, `file`                |
+| `required`    | The field must be present. An optional field may be absent, but is still checked when present   |
+| `default`     | Used when the field is absent. It is checked like a sent value                                  |
+| `equals`      | Must equal this exact value                                                                     |
+| `one_of`      | Allowed values                                                                                  |
+| `not_one_of`  | Forbidden values                                                                                |
+| `description` | Text for the [OpenAPI document](../openapi/). Required when the rule has a `check`              |
+| `example`     | An example value for the document                                                               |
+| `label`       | A display name, for the `{label}` placeholder and error entries ([Messages](./messages#labels)) |
+| `message`     | One message for every rule on this field ([Messages](./messages))                               |
+| `messages`    | A message per rule: `{ max_len = "Keep it under {max}" }`                                       |
+| `check`       | `function(v) -> boolean, reason?`: your own test, run after every built-in rule passed          |
+| `transform`   | `function(v) -> v`: rewrites the value in the output, after `check`                             |
 
 ```lua
 {
     status   = { "string|one_of:draft,published,archived", default = "draft" },
     currency = "string|format:currency_code|not_one_of:XXX",
-    bio      = "string|max_len:500",                    -- optional, bounded when given
+    bio      = "string|max_len:500",       -- optional, but at most 500 chars when sent
 }
 ```
 
-> [!TIP] `required` is about presence, nothing else
->
-> An optional field with rules is not a weaker field: it is a field that
-> may be missing, and must be correct when it is not. `bio` above
-> accepts absence and rejects 501 characters.
-
 ### `check` and `transform`
 
-`check` runs **last**, after every declarative rule on the field has
-already passed — so it never sees a value of the wrong type, and it costs
-nothing on input that failed earlier. It returns `false` (optionally with
-a message) to reject.
+`check` runs only after the field passed its other rules, so it always
+gets a value of the right type. Return `false` (and optionally a reason)
+to reject:
 
 ```lua
 pw = { "string|min_len:8",
@@ -101,33 +88,29 @@ pw = { "string|min_len:8",
        check = function(s) return not COMMON[s], "is too common" end }
 ```
 
-`transform` runs after `check` and rewrites the stored value:
+A `check` needs a `description`, because the API document cannot publish
+a Lua function; leaving it out is a load error.
+
+`transform` rewrites the value that ends up in the output:
 
 ```lua
 email = { "string|format:email", transform = function(s) return s:lower() end }
 ```
 
-> [!NOTE] A `check` needs a `description`
->
-> A predicate written in Lua cannot be published in an API document, so
-> its `description` is what the document says instead. Omitting it is a
-> load-time error — the alternative is a document that under-states what
-> the server enforces. See [OpenAPI](../openapi/#what-the-document-claims).
-
-Both run inside the request's execution budget, in the caller's
-coroutine, so a slow `check` is a slow request and the budget stops it.
+Both run in Lua, inside the request's time budget. A `check` that raises
+(a typo, a nil index) is a `500`, not a validation failure.
 
 ## `string`
 
-| Key                             | Meaning                                                         |
-| ------------------------------- | --------------------------------------------------------------- |
-| `trim`                          | Strip surrounding whitespace **before** every other rule        |
-| `case`                          | `"lower"` or `"upper"` — normalize before checking              |
-| `min_len` / `max_len` / `len`   | Character counts                                                |
-| `format`                        | One of the [built-in or custom formats](./formats)              |
-| `starts_with` / `ends_with`     | Literal prefix / suffix                                         |
-| `contains` / `does_not_contain` | Literal substring                                               |
-| `after` / `before`              | Time bounds — needs `format = "date"`, `"datetime"` or `"time"` |
+| Key                             | Meaning                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------ |
+| `trim`                          | Strip surrounding whitespace before the other rules                                  |
+| `case`                          | `"lower"` or `"upper"`: convert before the other rules                               |
+| `min_len` / `max_len` / `len`   | Length in characters                                                                 |
+| `format`                        | One of the [built-in or custom formats](./formats)                                   |
+| `starts_with` / `ends_with`     | Literal prefix / suffix                                                              |
+| `contains` / `does_not_contain` | Literal substring                                                                    |
+| `after` / `before`              | Time bounds: `"now"` or a literal. Needs `format = "date"`, `"datetime"` or `"time"` |
 
 ```lua
 {
@@ -139,12 +122,8 @@ coroutine, so a slow `check` is a slow request and the budget stops it.
 }
 ```
 
-`trim` and `case` are normalizations, not checks: they change the value
-that ends up in your output, and every later rule sees the normalized
-form. That is why `"string|trim|min_len:1"` rejects `"   "` — after
-trimming there is nothing left.
-
-`after`/`before` take `"now"` or a literal in the field's own format.
+`trim` and `case` change the value you get back, and later rules see the
+changed value. That is why `"string|trim|min_len:1"` rejects `"   "`.
 
 ## `number` and `integer`
 
@@ -164,9 +143,8 @@ trimming there is nothing left.
 }
 ```
 
-`integer` also rejects a value with a fractional part — `3.5` is not an
-integer, and neither is `3.0` arriving from JSON as a float with a
-fraction.
+`integer` rejects a number with a fractional part (`3.5`). A whole number
+sent as a float, like `3.0`, is accepted.
 
 ## `boolean`
 
@@ -174,19 +152,19 @@ fraction.
 { subscribed = "boolean|default:false" }
 ```
 
-No extra keys: a boolean is true or false. What varies is what counts as
-one on the way in — see [text coercion](./route-input#text-becomes-values).
+No extra keys. For which text counts as `true` in a query string or
+form, see [text conversion](./route-input#text-becomes-values).
 
 ## `array`
 
 | Key                             | Meaning                                                          |
 | ------------------------------- | ---------------------------------------------------------------- |
-| `items`                         | A rule applied to **every** element (any rule, nesting included) |
+| `items`                         | **Required.** The rule every element must pass (nesting allowed) |
 | `min_items` / `max_items`       | Length bounds                                                    |
 | `unique`                        | No duplicate elements                                            |
-| `contains`                      | Must include this literal                                        |
-| `contains_any` / `contains_all` | Must include one of / all of these literals                      |
-| `max_total_bytes`               | Ceiling on the combined size of the elements                     |
+| `contains`                      | Must include this value                                          |
+| `contains_any` / `contains_all` | Must include one of / all of these values                        |
+| `max_total_bytes`               | For an array of files: the combined size limit                   |
 
 ```lua
 {
@@ -196,17 +174,10 @@ one on the way in — see [text coercion](./route-input#text-becomes-values).
 }
 ```
 
-A failing element is reported by index, one-based:
+A failing element is reported by its position, counting from 1:
+`tags[2]`.
 
-```json
-{
-  "fields": {
-    "tags[2]": "must be a slug (lowercase letters, digits, hyphens)"
-  }
-}
-```
-
-## `table` — a nested object
+## `table`: a nested object
 
 ```lua
 local Address = nitr.validate.schema({
@@ -221,26 +192,20 @@ local schema = nitr.validate.schema({
 })
 ```
 
-`fields` takes a plain table of rules or a compiled schema — the second
-lets you reuse the same object shape in several places and publish it as
-one named component in the [OpenAPI document](../openapi/).
+`fields` takes a table of rules or a compiled schema. Reusing a schema
+is covered in [Composition](./composition#reusing-a-schema-as-a-field).
+Nested failures use dotted paths: `address.postcode`.
 
-Nested failures are reported by dotted path:
+## `map`: arbitrary keys
 
-```json
-{ "fields": { "address.postcode": "must be letters and digits only" } }
-```
-
-## `map` — arbitrary keys
-
-A `table` has a fixed set of fields; a `map` has a fixed _shape_ for keys
-and values you did not name in advance.
+A `table` has named fields; a `map` has keys you do not know in advance,
+all following one rule.
 
 | Key                     | Meaning                         |
 | ----------------------- | ------------------------------- |
-| `keys`                  | A rule every key must satisfy   |
-| `values`                | A rule every value must satisfy |
-| `min_keys` / `max_keys` | Entry-count bounds              |
+| `keys`                  | A rule every key must pass      |
+| `values`                | A rule every value must pass    |
+| `min_keys` / `max_keys` | Bounds on the number of entries |
 
 ```lua
 {
@@ -250,22 +215,18 @@ and values you did not name in advance.
 }
 ```
 
-## `any` — anything, bounded
+## `any`: anything, with a size limit
 
-For a field you genuinely pass through — a client-supplied blob you will
-store and hand back untouched.
+For a value you store and return untouched, such as a client's settings
+blob.
 
 ```lua
 { payload = { type = "any", max_bytes = "64kb" } }
 ```
 
-`max_bytes` is the only rule, and it is the point: "anything" without a
-size ceiling is a memory amplifier.
+`max_bytes` is the only type-specific rule.
 
-## `file` — an upload
-
-Files have a page of their own, because deciding what a file _is_ takes
-more than a type name.
+## `file`: an upload
 
 ```lua
 { avatar = nitr.validate.image({ max_bytes = "2mb", max_width = 4000 }) }
@@ -273,16 +234,16 @@ more than a type name.
 
 See [File uploads](./files).
 
-## Where a rule can go wrong at load time
+## Load-time errors
 
-Contradictions are caught when the schema compiles, not when a request
-arrives:
+A schema that cannot work fails when the app loads, naming the field:
 
 ```text
 invalid schema for `age`: `min` is greater than `max`
-invalid schema for `text`: unknown key `maxlen` for a string rule
+invalid schema for `text`: unknown rule `maxlen` for type `string` (allowed: type, required, …)
 invalid schema for `due`: `after` needs `format = "date"`, `"datetime"` or `"time"`
 invalid schema for `name`: unknown format `emial` (expected one of: alpha, alpha_dash, …)
+invalid schema for `tags`: type `array` requires `items`
 ```
 
-With `nitr check` in CI, none of these can reach a deploy.
+`nitr check` loads the app the same way, so CI catches these.

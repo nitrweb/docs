@@ -1,25 +1,21 @@
 # Lua API Reference
 
-The complete surface Nitr exposes to Lua — one namespace, `nitr`.
-Nothing else is registered as a global.
+Everything Nitr gives Lua lives in one global table, `nitr`. This page
+lists each function with its signature and a one-line description. The
+[Server guides](../server/) explain them with examples, and
+[Types](./types) covers the objects they return.
 
-This page is the **inventory**: every function, what it takes and what
-it returns. The [Server guides](../server/) are where each one is
-explained with worked examples.
-
-> [!NOTE] Entries marked with a _std feature_
->
-> A tag like _(std feature: `db`)_ means the module needs that name in
-> `[std] features` — and, for the heavier ones, the matching [Cargo
-> feature](../library/cargo-features) compiled into the binary. See
-> [Configuration → \[std\]](../server/configuration/file#std).
+A tag like _(std feature: `db`)_ means the module must be listed in
+[`[std] features`](../server/configuration/file#std). The `db`, `fetch`,
+`template` and `crypto` modules also need the matching [Cargo
+feature](../library/cargo-features) in the binary; the released `nitr`
+binary has all of them.
 
 > [!TIP] Editor completion
 >
-> `nitr init` writes `nitr-types.lua`: generated LuaCATS definitions
-> covering everything on this page. Any editor running the [Lua Language
-> Server](https://luals.github.io/) picks it up and gives you
-> completion, signatures and inline docs.
+> `nitr init` writes `nitr-types.lua`, type definitions for everything on
+> this page. Editors running the [Lua Language
+> Server](https://luals.github.io/) use it for completion and inline docs.
 
 ## Contents
 
@@ -44,24 +40,20 @@ explained with worked examples.
 `nitr.app() -> nitr.App`
 
 Creates the application object the handler script must return. See
-[`nitr.App`](./types#nitr-app) for its methods, and
-[Routing](../server/routing).
+[`nitr.App`](./types#nitr-app) and [Routing](../server/routing).
 
 ### `nitr.cfg`
 
 _(set when a `config_script` is configured)_
 
-The configuration snapshot returned by `config.lua` — `nil` without one.
-Plain data, snapshotted into every state. See
-[Project layout](../server/project-layout).
+The table returned by `config.lua`, or `nil` without one. See [Project
+layout](../server/project-layout).
 
 ### `nitr.ext`
 
-User-defined Rust extension modules registered with
-`ServerBuilder::module`, one level below the standard library so no
-future builtin can collide with them. Each module is a table:
-`nitr.ext.<name>`. Absent until a module is registered. See [Extension
-modules](../library/extension-modules).
+Your own Rust modules, registered with `ServerBuilder::module`. Each one
+is a table at `nitr.ext.<name>`; the table is absent until a module is
+registered. See [Extension modules](../library/extension-modules).
 
 ---
 
@@ -71,22 +63,20 @@ modules](../library/extension-modules).
 
 `nitr.json(value, status?) -> nitr.Response` — _(std feature: `json`)_
 
-As a function: a JSON response (`nitr.json({ ok = true })`). Also the
-codec:
+A JSON response (`nitr.json({ ok = true })`). It is also the codec:
 
 |                                     |                                        |
 | ----------------------------------- | -------------------------------------- |
 | `nitr.json:encode(value) -> string` | Encodes a value as JSON.               |
 | `nitr.json:decode(s) -> any`        | Decodes JSON; errors on invalid input. |
 
-> [!NOTE] A string that is not UTF-8 is refused, not re-shaped
+> [!NOTE] Strings must be UTF-8
 >
-> JSON strings are text. A Lua string holding raw bytes —
-> `nitr.crypto.random_bytes(16)`, a binary column — **raises** rather
-> than encoding as an array of byte values, as a key or as a value.
-> Encode it first with [`nitr.base64`](#nitr-base64). The same rule
-> covers every path that serializes a Lua value: JSON responses,
-> `nitr.cache`, sessions, JWT claims, SSE data and `fetch` bodies.
+> A string holding raw bytes (such as `nitr.crypto.random_bytes(16)`)
+> raises instead of encoding. Encode it with
+> [`nitr.base64`](#nitr-base64) first. This applies everywhere Nitr
+> serializes a value: JSON, the cache, sessions, JWT claims, SSE data and
+> `fetch` bodies.
 
 ### `nitr.text`
 
@@ -129,8 +119,8 @@ function values are called with the request. No match answers `406`.
 
 `nitr.etag(value, weak?) -> string` — _(std feature: `http`)_
 
-A well-formed entity tag for whatever identifies the resource — a row
-version, an `updated_at` — to pair with
+A well-formed entity tag for whatever identifies the resource (a row
+version, an `updated_at`). Pair it with
 [`req:fresh`](./types#nitr-request).
 
 ### `nitr.sse`
@@ -138,8 +128,7 @@ version, an `updated_at` — to pair with
 `nitr.sse(fn) -> nitr.Response` — _(std feature: `http`)_
 
 A Server-Sent Events stream: `fn(send)` calls `send(event, data)`; table
-data is JSON-encoded. An event **name** containing a line break raises —
-it would frame a second event. See
+data is JSON-encoded. An event name containing a line break raises. See
 [Streaming & SSE](../server/streaming).
 
 ---
@@ -148,227 +137,137 @@ it would frame a second event. See
 
 ### `nitr.crypto`
 
-_(std feature: `crypto`)_ — Crypto primitives from RustCrypto. Compose
-them; never reimplement them in Lua. See
-[Crypto & auth](../server/crypto-auth) and
-[Passwords](../server/passwords).
+_(std feature: `crypto`)_ — Hashing, passwords and encryption. See
+[Crypto & auth](../server/crypto-auth) and [Passwords](../server/passwords).
 
-|                                                                       |                                                                                              |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `nitr.crypto.sha256(data) -> string`                                  | SHA-256 digest, lowercase hex.                                                               |
-| `nitr.crypto.hmac_sha256(key, data) -> string`                        | HMAC-SHA256, lowercase hex.                                                                  |
-| `nitr.crypto.random_bytes(n) -> string`                               | `n` random bytes from the OS (1..=65536).                                                    |
-| `nitr.crypto.constant_time_eq(a, b) -> boolean`                       | Timing-safe comparison — what `==` on secrets is not.                                        |
-| `nitr.crypto.password_hash(password) -> string`                       | **Async.** argon2id hash for storage: `m=19456, t=2, p=1`. Raises past `max_password_bytes`. |
-| `nitr.crypto.password_verify(password, hash) -> boolean, string\|nil` | **Async.** Whether the password matches, plus a reason when the _stored hash_ is unusable.   |
-| `nitr.crypto.password_verify_dummy(password) -> boolean`              | **Async.** Spends one argon2 hash against a process-private decoy; always `false`.           |
-| `nitr.crypto.seal(key, plaintext, aad?) -> string`                    | Authenticated encryption (XChaCha20-Poly1305) under a 32-byte key; printable token.          |
-| `nitr.crypto.open(key, sealed, aad?) -> string\|nil`                  | Opens a sealed token; `nil` on any tampering.                                                |
-| `nitr.crypto.max_password_bytes: integer`                             | The password cap: 1024 bytes.                                                                |
+|                                                                       |                                                                                                                  |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `nitr.crypto.sha256(data) -> string`                                  | SHA-256 digest, lowercase hex.                                                                                   |
+| `nitr.crypto.hmac_sha256(key, data) -> string`                        | HMAC-SHA256, lowercase hex.                                                                                      |
+| `nitr.crypto.random_bytes(n) -> string`                               | `n` random bytes from the OS (1 to 65536).                                                                       |
+| `nitr.crypto.constant_time_eq(a, b) -> boolean`                       | Timing-safe comparison. Use it instead of `==` for secrets.                                                      |
+| `nitr.crypto.password_hash(password) -> string`                       | **Async.** argon2id hash for storage (`m=19456, t=2, p=1`). Raises above `max_password_bytes`.                   |
+| `nitr.crypto.password_verify(password, hash) -> boolean, string\|nil` | **Async.** Whether the password matches. The second value is set only when the _stored hash_ is unusable.        |
+| `nitr.crypto.password_verify_dummy(password) -> boolean`              | **Async.** Spends one argon2 hash and returns `false`. Call it when the user does not exist, so timing is equal. |
+| `nitr.crypto.seal(key, plaintext, aad?) -> string`                    | Authenticated encryption (XChaCha20-Poly1305) with a 32-byte key; returns a printable token.                     |
+| `nitr.crypto.open(key, sealed, aad?) -> string\|nil`                  | Opens a sealed token; `nil` if it was tampered with.                                                             |
+| `nitr.crypto.max_password_bytes: integer`                             | The password size limit: 1024 bytes. Check `#password` against it to answer `400` instead of raising.            |
 
-> [!WARNING] The three password calls yield — never at the top level
->
-> The argon2 work runs on the blocking pool, so `password_hash`,
-> `password_verify` and `password_verify_dummy` **yield**. Call them
-> from a handler or middleware. The top level of a handler script runs
-> outside the async executor, and a yield there fails — so do not hash a
-> seed credential at boot. Mint it once with `nitr hash-password` (see
-> [CLI](../server/cli)) and store the hash instead.
+The reasons `password_verify` can return are `"unsupported hash format"`,
+`"incomplete hash"`, `"unsupported hash algorithm"`,
+`"hash parameters out of range"` and `"unusable hash"`. A wrong password,
+even an oversized one, returns `false, nil`.
 
-> [!NOTE] `password_verify` returns two values
+> [!WARNING] Call the password functions from handlers or middleware
 >
-> ```lua
-> local ok, problem = nitr.crypto.password_verify(password, row.hash)
-> ```
->
-> `ok` is the answer. `problem` is set **only when the stored hash can
-> never verify anything** — a bcrypt row pasted in during a migration, a
-> truncated column, parameters that would allocate the machine away. It
-> is a closed set: `"unsupported hash format"`, `"incomplete hash"`,
-> `"unsupported hash algorithm"`, `"hash parameters out of range"`,
-> `"unusable hash"`. An ordinary wrong password leaves it `nil` — and so
-> does one over `max_password_bytes`, which is answered `false` by a
-> length comparison before argon2 ever runs, so `if problem then log` is
-> not a lever a stranger can pull.
-
-> [!TIP] Both branches of a login must cost one argon2 hash
->
-> Returning early when the user does not exist answers in microseconds;
-> a real user costs ~26 ms. That gap is measurable across a network, and
-> it turns the login form into a query interface over your user list.
-> Spend the hash on the no-such-user branch too:
->
-> ```lua
-> local row = nitr.db:query_row(
->     'select id, password_hash from users where email = ?', { email })
-> if not row then
->     nitr.crypto.password_verify_dummy(password)
->     return unauthorized()
-> end
-> ```
->
-> And size a registration field from the constant rather than a copied
-> `1024`, so a 400 replaces `password_hash`'s error:
->
-> ```lua
-> if #password > nitr.crypto.max_password_bytes then
->     return nitr.error(400, { error = 'password too long' })
-> end
-> ```
->
-> See [Passwords](../server/passwords).
+> They are async, so calling them at the top level of a script fails at
+> startup. To seed a credential, create the hash once with
+> [`nitr hash-password`](../server/cli) and store it.
 
 ### `nitr.crypto.jwt`
 
-_(std feature: `crypto`)_ — HMAC JWTs (HS256 / HS384 / HS512).
-Asymmetric algorithms are deliberately absent, and so is `alg: none`.
-See [JWT](../server/jwt).
+_(std feature: `crypto`)_ — HMAC JWTs (HS256, HS384, HS512). See
+[JWT](../server/jwt).
 
-|                                                                       |                                                                                                                                              |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `nitr.crypto.jwt.sign(claims, key, opts?) -> string`                  | Signs a token. `opts` takes `alg` (default `"HS256"`).                                                                                       |
-| `nitr.crypto.jwt.verify(token, key, opts) -> table\|nil, string\|nil` | The claims, or `nil` plus a short reason. `opts` **requires** `algorithms`; `leeway` in seconds is optional and must be a finite number ≥ 0. |
+|                                                                       |                                                                                                         |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `nitr.crypto.jwt.sign(claims, key, opts?) -> string`                  | Signs a token. `opts.alg` defaults to `"HS256"`.                                                        |
+| `nitr.crypto.jwt.verify(token, key, opts) -> table\|nil, string\|nil` | The claims, or `nil` plus a reason. `opts.algorithms` is required; `leeway` (seconds, ≥ 0) is optional. |
 
-> [!WARNING] What `verify` does **not** check
+> [!WARNING] `verify` checks only the signature, `alg`, `exp` and `nbf`
 >
-> It checks the signature, the token's `alg` against the allow-list you
-> pass, and `exp` / `nbf` **when the token carries them**. No other
-> claim, ever:
->
-> - `iss` and `aud` are never read. A token minted by another issuer,
->   for another audience, verifies here exactly like one minted for you
->   — comparing them is your job. Note `aud` may be a string **or an
->   array** (RFC 7519 §4.1.3).
-> - `typ` is written by `sign` and never verified. The asymmetry is the
->   trap: the field's presence suggests a check that does not exist.
-> - **A token with no `exp` never expires.** "The signature is valid"
->   and "the token is still good" are different questions. If yours must
->   expire, require `exp` yourself.
+> It never reads `iss` or `aud` (which may be a string or an array);
+> compare them yourself. A token without `exp` never expires, so require
+> `exp` if your tokens must expire.
 
 ### `nitr.auth`
 
 _(std feature: `crypto`)_ — `Authorization` header parsing. Both take
 the request, or the raw header value as a string.
 
-|                                                    |                                    |
-| -------------------------------------------------- | ---------------------------------- |
-| `nitr.auth.basic(req) -> string\|nil, string\|nil` | The user and password, or nothing. |
-| `nitr.auth.bearer(req) -> string\|nil`             | The bearer token, or `nil`.        |
+|                                                    |                                  |
+| -------------------------------------------------- | -------------------------------- |
+| `nitr.auth.basic(req) -> string\|nil, string\|nil` | The user and password, or `nil`. |
+| `nitr.auth.bearer(req) -> string\|nil`             | The bearer token, or `nil`.      |
 
-> [!NOTE] `basic` is stricter than RFC 7617, and it fails closed
->
-> Credentials must be **UTF-8** (a latin-1 payload reads as absent), and
-> the scheme must be separated from the value by **at least one space**
-> — extra spaces are trimmed, but a tab is not a separator. Anything the
-> parser rejects reads as **no credentials, never a partial one**, so
-> `if not user then` is the whole check. See
-> [`basic-auth`](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/basic-auth).
+`basic` accepts only UTF-8 credentials, with at least one space (not a
+tab) after the scheme. Anything it cannot parse returns `nil`, never a
+partial result.
 
-> [!DANGER] Compare a bearer token with `constant_time_eq`, not `==`
+> [!WARNING] Compare a bearer token with `constant_time_eq`
 >
-> `bearer` hands you a secret, and `==` on a secret is not a
-> constant-time compare. `constant_time_eq` still returns early on a
-> **length** mismatch, though — length is not hidden — so a secret whose
-> length varies must be compared as a digest:
->
-> ```lua
-> local ok = nitr.crypto.constant_time_eq(
->     nitr.crypto.sha256(token), nitr.crypto.sha256(expected))
-> ```
->
-> See [`bearer-auth`](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/bearer-auth).
+> `==` leaks timing. `constant_time_eq` still returns early when the
+> lengths differ, so for a secret whose length varies, compare digests:
+> `constant_time_eq(nitr.crypto.sha256(token), nitr.crypto.sha256(expected))`.
 
 ### `nitr.csrf`
 
 `nitr.csrf(opts) -> fun` — _(std feature: `http`)_
 
-As a function: the CSRF middleware factory for `app:use` — a signed
-double-submit cookie; unsafe methods must echo the token in
-`X-CSRF-Token` or a `_csrf` field.
+CSRF middleware for `app:use`, using a signed double-submit cookie.
+Unsafe methods must send the token back in the `X-CSRF-Token` header or
+a `_csrf` form field. A request the browser marks
+`Sec-Fetch-Site: cross-site` is refused before the token is checked,
+unless `cookie_opts.same_site = "None"`. See
+[Cookies & sessions](../server/cookies-sessions).
 
-| Option        | Default             | What it is                                   |
-| ------------- | ------------------- | -------------------------------------------- |
-| `secret`      | required, 16+ bytes | Signing key for the token cookie.            |
-| `cookie`      | `"_csrf"`           | The cookie **name** — a string, not a table. |
-| `header`      | `"x-csrf-token"`    | Header the token may arrive in.              |
-| `field`       | `"_csrf"`           | Form field the token may arrive in.          |
-| `cookie_opts` | see below           | The cookie **attributes**.                   |
+| Option        | Default             | What it is                                                               |
+| ------------- | ------------------- | ------------------------------------------------------------------------ |
+| `secret`      | required, 16+ bytes | Signing key for the token cookie.                                        |
+| `cookie`      | `"_csrf"`           | The cookie **name**.                                                     |
+| `header`      | `"x-csrf-token"`    | Header the token may arrive in.                                          |
+| `field`       | `"_csrf"`           | Form field the token may arrive in.                                      |
+| `cookie_opts` | —                   | The cookie **attributes**, merged over the [defaults](#cookie-defaults). |
 
 |                                  |                                                                       |
 | -------------------------------- | --------------------------------------------------------------------- |
 | `nitr.csrf.token(req) -> string` | The request's token, for a form or meta tag. Requires the middleware. |
 
-Here `cookie` is the **name** and `cookie_opts` the attributes.
-[`nitr.session`](#nitr-session) below spells the pair the other way
-round — the two asides under it cover both.
-
-> [!NOTE] A browser-flagged cross-site request is refused before the token
->
-> An unsafe request carrying `Sec-Fetch-Site: cross-site` is rejected
-> without looking at the token at all — a double-submit token proves the
-> sender could read _a_ cookie, not that the cookie was yours. The one
-> exception is `cookie_opts.same_site = "None"`, which is the setting
-> that _means_ to accept cross-site posts. Clients too old to send the
-> header fall back to the token alone.
-
 ### `nitr.session`
 
 `nitr.session(req, opts) -> nitr.Session` — _(std feature: `http`)_
 
-Loads (or starts) the stateless signed-cookie session: the whole session
-lives in the cookie, so there is no store to provision. See
+Loads or starts a session stored entirely in a signed cookie. See
 [`nitr.Session`](./types#nitr-session) and
 [Sessions](../server/cookies-sessions#sessions).
 
-| Option    | Default             | What it is                          |
-| --------- | ------------------- | ----------------------------------- |
-| `secret`  | required, 16+ bytes | Signing key for the session cookie. |
-| `name`    | `"session"`         | The cookie **name**.                |
-| `max_age` | none                | `Max-Age`, in seconds.              |
-| `cookie`  | see below           | The cookie **attributes** table.    |
+| Option    | Default             | What it is                                                               |
+| --------- | ------------------- | ------------------------------------------------------------------------ |
+| `secret`  | required, 16+ bytes | Signing key for the session cookie.                                      |
+| `name`    | `"session"`         | The cookie **name**.                                                     |
+| `max_age` | none                | Lifetime in seconds, also checked on the server.                         |
+| `cookie`  | —                   | The cookie **attributes**, merged over the [defaults](#cookie-defaults). |
 
-> [!WARNING] `cookie` means two different things
+> [!WARNING] `cookie` means different things in `nitr.csrf` and `nitr.session`
 >
-> The two modules spell the same pair of ideas differently, and swapping
-> them issues the wrong cookie without complaining:
->
-> |                       | `nitr.csrf(opts)`          | `nitr.session(req, opts)`  |
-> | --------------------- | -------------------------- | -------------------------- |
-> | cookie **name**       | `cookie` (default `_csrf`) | `name` (default `session`) |
-> | cookie **attributes** | `cookie_opts`              | `cookie`                   |
->
-> So `nitr.csrf({ secret = ..., cookie = { path = '/admin' } })` sets no
-> path at all — it names the cookie after a table.
+> In `nitr.csrf`, `cookie` is the name and `cookie_opts` the attributes.
+> In `nitr.session`, `name` is the name and `cookie` the attributes.
+> Mixing them up gives the wrong cookie without an error.
 
-> [!NOTE] The attribute tables extend the defaults, they do not replace them
->
-> Both start from `path = "/"`, `HttpOnly` and `SameSite=Lax`, and your
-> table is merged over that, so a default you did not mention survives.
-> **`http_only` cannot be un-set** — a session or CSRF cookie readable
-> from page scripts is not a choice Nitr offers. `same_site` stays
-> overridable, because a legitimate cross-site form needs `"None"`.
->
-> `secure` is decided by the `[cookies] secure` policy when you leave it
-> out: the default `"auto"` means Secure whenever
-> [TLS](../server/tls) is enabled for this process. An explicit `secure`
-> from Lua always wins, in both directions.
+#### Cookie defaults
+
+Both cookies start from `path = "/"`, `HttpOnly` and `SameSite=Lax`, and
+your attribute table is merged over them. `http_only` cannot be turned
+off. When you leave `secure` out, the [`[cookies] secure`](../server/configuration/file#cookies)
+setting decides; its default `"auto"` sets it whenever
+[TLS](../server/tls) is on.
 
 ### `nitr.cookie`
 
-_(std feature: `http`)_ — HMAC-SHA256 cookie signing, the same scheme
-`res.cookies:set_signed` and `req.cookies:verify` use. Useful when a
-signed value travels outside a cookie header, or when a test forges a
-signed cookie.
+_(std feature: `http`)_ — The HMAC-SHA256 signing that
+`res.cookies:set_signed` and `req.cookies:verify` use. Useful for a
+signed value sent outside a cookie, or to forge a signed cookie in a
+test.
 
-|                                                           |                                                                                                         |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `nitr.cookie.sign(name, value, secret) -> string`         | Signs `value`. The cookie name is part of the MAC, so a signed value cannot be moved to another cookie. |
-| `nitr.cookie.verify(name, signed, secret) -> string\|nil` | The original value, or `nil` when the signature does not match (constant-time comparison).              |
+|                                                           |                                                                                               |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `nitr.cookie.sign(name, value, secret) -> string`         | Signs `value`. The name is part of the signature, so the value cannot move to another cookie. |
+| `nitr.cookie.verify(name, signed, secret) -> string\|nil` | The original value, or `nil` when the signature does not match.                               |
 
 ```lua
 local signed = nitr.cookie.sign("prefs", "dark", secret)
 nitr.cookie.verify("prefs", signed, secret)   -- "dark"
-nitr.cookie.verify("other", signed, secret)   -- nil: bound to "prefs"
+nitr.cookie.verify("other", signed, secret)   -- nil
 ```
 
 ---
@@ -377,82 +276,57 @@ nitr.cookie.verify("other", signed, secret)   -- nil: bound to "prefs"
 
 ### `nitr.db`
 
-_(std feature: `db`)_ — SQLite (`[database] path`): WAL, busy timeout,
-foreign keys on. See [Database](../server/database).
+_(std feature: `db`)_ — The SQLite database from `[database] path`. See
+[Database](../server/database).
 
-|                                                     |                                                                                                                                 |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `nitr.db:execute(sql, params?) -> integer`          | Runs a statement; returns the affected row count.                                                                               |
-| `nitr.db:query(sql, params?) -> table[]`            | All rows, each a column→value table. A result larger than `[database] max_rows` **raises** rather than truncating.              |
-| `nitr.db:query_row(sql, params?) -> table\|nil`     | The first row as a column→value table, or `nil` when the query returns no rows.                                                 |
-| `nitr.db:query_one(sql, params?) -> table`          | The row of a query that must return **exactly one** — also a column→value table. Raises when it returns none, or more than one. |
-| `nitr.db:transaction(fn) -> any`                    | Runs `fn(tx)` atomically; rolls back on error. Nestable via savepoints. Use `tx`, not the outer `nitr.db`.                      |
-| `nitr.db:query_async(sql, params?, kind?) -> table` | An unsent query, to run alongside fetches in `nitr.await_all`.                                                                  |
-
-> [!WARNING] `query_one` returns a **row**, not a scalar
->
-> A single-column query still answers a table, so read the column by
-> name — and alias an expression, which SQLite would otherwise name
-> after its own text:
->
-> ```lua
-> local row = nitr.db:query_one("SELECT count(*) AS n FROM users")
-> local count = row.n
-> ```
->
-> Use it where "exactly one row" is the invariant you want enforced.
-> Where "none" is an ordinary answer, use `query_row` and test for
-> `nil`.
+|                                                     |                                                                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `nitr.db:execute(sql, params?) -> integer`          | Runs a statement; returns the number of affected rows.                                                             |
+| `nitr.db:query(sql, params?) -> table[]`            | All rows, each a column→value table. Raises when the result exceeds `[database] max_rows` (default 10000).         |
+| `nitr.db:query_row(sql, params?) -> table\|nil`     | The first row, or `nil` when there is none.                                                                        |
+| `nitr.db:query_one(sql, params?) -> table`          | The only row. Raises when there are none or more than one. It returns a row, so read a column: `query_one(...).n`. |
+| `nitr.db:transaction(fn) -> any`                    | Runs `fn(tx)` in a transaction; rolls back on error. Can be nested. Use `tx` inside, not `nitr.db`.                |
+| `nitr.db:query_async(sql, params?, kind?) -> table` | An unsent query, to run alongside fetches in `nitr.await_all`.                                                     |
 
 ### `nitr.cache`
 
-_(std feature: `cache`)_ — The bounded TTL + LRU cache shared by every
-state. Entries are plain data; per-process, so **not** a session store.
-See [Cache](../server/cache).
+_(std feature: `cache`)_ — An in-memory cache with TTL and LRU eviction,
+shared by all workers of one process. See [Cache](../server/cache).
 
-|                                              |                                                                                                      |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `nitr.cache:get(key) -> any`                 | The cached value, or `nil`.                                                                          |
-| `nitr.cache:set(key, value, opts?)`          | Stores a value. `opts` is a **table**: `{ ttl = seconds }`.                                          |
-| `nitr.cache:delete(key) -> boolean`          | Removes a key; answers whether it was there.                                                         |
-| `nitr.cache:clear()`                         | Empties the cache.                                                                                   |
-| `nitr.cache:remember(key, opts?, fn) -> any` | The cached value, or `fn()`'s result, stored and returned. Call it `(key, fn)` or `(key, opts, fn)`. |
-| `nitr.cache:stats() -> table`                | Hit / miss / entry counters.                                                                         |
+|                                              |                                                                                           |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `nitr.cache:get(key) -> any`                 | The cached value, or `nil`.                                                               |
+| `nitr.cache:set(key, value, opts?)`          | Stores a value. `opts` is `{ ttl = seconds }`.                                            |
+| `nitr.cache:delete(key) -> boolean`          | Removes a key; returns whether it existed.                                                |
+| `nitr.cache:clear()`                         | Empties the cache.                                                                        |
+| `nitr.cache:remember(key, opts?, fn) -> any` | The cached value, or `fn()`'s result, stored and returned. `opts` is `{ ttl = seconds }`. |
+| `nitr.cache:stats() -> table`                | Hit, miss and entry counts.                                                               |
 
-> [!WARNING] The TTL travels in a table, not as a bare number
->
-> ```lua
-> nitr.cache:set("user:42", user, { ttl = 600 })          -- ✅
-> nitr.cache:remember("user:42", { ttl = 600 }, load)     -- ✅
-> nitr.cache:remember("user:42", load)                    -- ✅ [cache] default_ttl
-> ```
->
-> A bare integer in either position raises. Keys are bounded to 1024
-> bytes, and a key counts toward `[cache] max_bytes` alongside its value
-> — hash a long, request-derived key before using it.
+The TTL is always a table (`{ ttl = 600 }`); a bare number raises. Keys
+are limited to 1024 bytes.
 
 ### `nitr.validate`
 
-_(std feature: `validate`)_ — Declarative validation, compiled once and
-checked in Rust. See [Validation](../server/validation/).
+_(std feature: `validate`)_ — Declarative validation, checked in Rust.
+See [Validation](../server/validation/).
 
 A rule is a table (`{ type = "string", min_len = 1 }`), a shorthand
-string (`"string|trim|min_len:1|required"`), the mixed form
+string (`"string|trim|min_len:1|required"`), a mix of both
 (`{ "string|required", message = "…" }`) or a compiled schema. Types:
 `string`, `integer`, `number`, `boolean`, `array`, `table`, `map`, `any`,
 `file`.
 
-|                                                      |                                                                                                                             |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `nitr.validate.schema(fields, opts?) -> nitr.Schema` | Compiles a schema. `opts`: `title`, `strict`, `messages`, the cross-field groups, `checks`.                                 |
-| `nitr.validate.expand(shorthand) -> table`           | The table form of a shorthand rule string.                                                                                  |
-| `nitr.validate.format(name, spec)`                   | Registers a [custom string format](../server/validation/formats#custom-formats). Per state, before the schemas that use it. |
-| `nitr.validate.formats() -> string[]`                | Every format name, built in and custom, sorted.                                                                             |
-| `nitr.validate.messages(messages)`                   | App-wide default messages per rule code. **Load time only** — a call after the app compiled raises.                         |
-| `nitr.validate.media_types() -> table`               | The media types a `file` rule may name, with their extensions and whether dimensions are readable.                          |
+|                                                      |                                                                                                                 |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `nitr.validate.schema(fields, opts?) -> nitr.Schema` | Compiles a schema. Call it at the top level of a file, not per request. Unknown rule keys fail at load.         |
+| `nitr.validate.expand(shorthand) -> table`           | The table form of a shorthand rule string.                                                                      |
+| `nitr.validate.format(name, spec)`                   | Registers a [custom string format](../server/validation/formats#custom-formats) before the schemas that use it. |
+| `nitr.validate.formats() -> string[]`                | Every format name, built in and custom, sorted.                                                                 |
+| `nitr.validate.messages(messages)`                   | App-wide default messages per rule. Load time only.                                                             |
+| `nitr.validate.media_types() -> table`               | The media types a `file` rule accepts: `{ ["image/png"] = { extensions, family, tier, dimensions } }`.          |
 
 [File-rule presets](../server/validation/files#presets). Each returns a
-plain rule table; `opts` overrides any key in it.
+rule table; `opts` overrides any key.
 
 |                                    |                                                                              |
 | ---------------------------------- | ---------------------------------------------------------------------------- |
@@ -462,16 +336,9 @@ plain rule table; `opts` overrides any key in it.
 | `nitr.validate.text_file(opts?)`   | txt, csv, md, json, xml, yaml; UTF-8 required; `max_bytes = "1mb"`           |
 | `nitr.validate.archive(opts?)`     | zip, gzip, tar, bz2, xz, zstd, 7z; `max_bytes = "50mb"`                      |
 | `nitr.validate.audio(opts?)`       | mp3, wav, ogg, flac, m4a; `max_bytes = "50mb"`                               |
-| `nitr.validate.video(opts?)`       | mp4, mov, webm, mkv; `max_bytes = "500mb"` — above `[limits] max_file_bytes` |
+| `nitr.validate.video(opts?)`       | mp4, mov, webm, mkv; `max_bytes = "500mb"` (above `[limits] max_file_bytes`) |
 | `nitr.validate.font(opts?)`        | woff, woff2, ttf, otf; `max_bytes = "5mb"`                                   |
-| `nitr.validate.any_file(opts)`     | Any type; executables still refused. `max_bytes` required                    |
-
-> [!TIP] Compile at load time, not per request
->
-> `schema(...)` walks the rule tables and builds the checker. Call it at
-> file scope, where it runs once per pooled Lua state — inside a handler
-> it recompiles on every request and spends the request's execution
-> budget doing it.
+| `nitr.validate.any_file(opts)`     | Any type except executables; `max_bytes` required                            |
 
 ---
 
@@ -481,17 +348,18 @@ plain rule table; `opts` overrides any key in it.
 
 `nitr.fetch(method, url, opts?) -> nitr.FetchHandle` — _(std feature: `fetch`)_
 
-An outbound HTTP request — SSRF-guarded, redirect-checked. Options:
-`headers`, `query`, `json`, `body`, `timeout`, `retry`. Returns an
-**unsent** handle. See [Outbound HTTP](../server/fetch).
+An outbound HTTP request, with SSRF protection and checked redirects.
+Options: `headers`, `query`, `json`, `body`, `timeout`, `retry`. Returns
+an **unsent** [handle](./types#nitr-fetchhandle). See
+[Outbound HTTP](../server/fetch).
 
 ### `nitr.await_all`
 
 `nitr.await_all(...) -> ...` — _(std feature: `fetch`)_
 
-Runs fetch handles (and `db:query_async` handles) concurrently. Handles
-are passed as **separate arguments** and the results come back as
-**multiple values**, in the same order:
+Runs fetch handles and `db:query_async` handles concurrently. Pass them
+as separate arguments; the results come back as multiple values in the
+same order. At most `[fetch] max_concurrent` run at once.
 
 ```lua
 local profile, stats = nitr.await_all(
@@ -500,29 +368,18 @@ local profile, stats = nitr.await_all(
 )
 ```
 
-Capped by `[fetch] max_concurrent`.
-
 ### `nitr.template`
 
-_(std feature: `template`)_ — The minijinja template engine, loading
-from `[templating] dir`. See [Templates](../server/templates).
+_(std feature: `template`)_ — minijinja templates from
+`[templating] dir`. See [Templates](../server/templates).
 
-|                                               |                                                                                          |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `nitr.template:render(name, data?) -> string` | **Async.** Renders a template. HTML auto-escaping is on unless the name says plain text. |
+|                                               |                                |
+| --------------------------------------------- | ------------------------------ |
+| `nitr.template:render(name, data?) -> string` | **Async.** Renders a template. |
 
-> [!NOTE] Auto-escaping follows the template's name
->
-> Every template escapes by default. The exception is a name whose
-> extension — after stripping a trailing `.j2`, `.jinja` or `.jinja2` —
-> is `.txt`, `.text`, `.md`, `.csv`, `.json`, `.yaml`, `.yml` or
-> `.toml`; those render verbatim, because escaping HTML into a CSV is
-> not an improvement. So `mail.txt.j2` does **not** escape, and
-> `page.j2` does.
->
-> `render` also loads and renders off the async worker, which makes it
-> **yielding**: call it from a handler or middleware, never from a
-> script's top level.
+HTML escaping is on, except for names ending (before any `.j2`, `.jinja`
+or `.jinja2`) in `.txt`, `.text`, `.md`, `.csv`, `.json`, `.yaml`,
+`.yml` or `.toml`. So `mail.txt.j2` is not escaped and `page.j2` is.
 
 ---
 
@@ -530,73 +387,66 @@ from `[templating] dir`. See [Templates](../server/templates).
 
 ### `nitr.time`
 
-_(std feature: `time`)_ — Safe clocks and time formatting (UTC), so
-scripts never need the `os` library for a date.
+_(std feature: `time`)_ — Clocks and date formatting in UTC.
 
-|                                                            |                                                                        |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `nitr.time.now() -> integer`                               | Unix seconds.                                                          |
-| `nitr.time.monotonic() -> number`                          | Monotonic seconds, sub-second precision — for measuring durations.     |
-| `nitr.time.format(ts, fmt) -> string`                      | Formats a timestamp in UTC.                                            |
-| `nitr.time.parse(value, fmt) -> integer\|nil, string\|nil` | Parses per a strftime format (UTC unless the input carries an offset). |
-| `nitr.time.http(ts) -> string`                             | IMF-fixdate (`Tue, 15 Nov 1994 08:12:31 GMT`).                         |
-| `nitr.time.parse_http(value) -> integer\|nil`              | Parses the three HTTP date forms.                                      |
-| `nitr.time.iso8601(ts) -> string`                          | RFC 3339 in UTC (`1994-11-15T08:12:31Z`).                              |
+|                                                            |                                                                       |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| `nitr.time.now() -> integer`                               | Unix seconds.                                                         |
+| `nitr.time.monotonic() -> number`                          | Monotonic seconds with sub-second precision, for measuring durations. |
+| `nitr.time.format(ts, fmt?) -> string`                     | Formats a timestamp in UTC with a strftime format.                    |
+| `nitr.time.parse(value, fmt) -> integer\|nil, string\|nil` | Parses with a strftime format (UTC unless the input has an offset).   |
+| `nitr.time.http(ts) -> string`                             | HTTP date (`Tue, 15 Nov 1994 08:12:31 GMT`).                          |
+| `nitr.time.parse_http(value) -> integer\|nil`              | Parses the three HTTP date forms.                                     |
+| `nitr.time.iso8601(ts) -> string`                          | RFC 3339 in UTC (`1994-11-15T08:12:31Z`).                             |
 
 ### `nitr.base64`
 
 _(std feature: `base64`)_
 
-|                                                                |                                                                |
-| -------------------------------------------------------------- | -------------------------------------------------------------- |
-| `nitr.base64.encode(data, opts?) -> string`                    | Encodes bytes. `{ url = true }` selects the URL-safe alphabet. |
-| `nitr.base64.decode(value, opts?) -> string\|nil, string\|nil` | Decodes; forgiving about padding, never about the alphabet.    |
+|                                                                |                                                             |
+| -------------------------------------------------------------- | ----------------------------------------------------------- |
+| `nitr.base64.encode(data, opts?) -> string`                    | Encodes bytes. `{ url = true }` uses the URL-safe alphabet. |
+| `nitr.base64.decode(value, opts?) -> string\|nil, string\|nil` | Decodes. Padding is optional; invalid characters fail.      |
 
 ### `nitr.path`
 
-_(std feature: `path`)_ — Lexical path manipulation, POSIX and Windows
-styles. Pure text: **nothing touches the filesystem**.
+_(std feature: `path`)_ — Path string handling, POSIX and Windows
+styles. It never touches the filesystem.
 
-|                                            |                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------- |
-| `nitr.path.join(...) -> string`            | Joins segments; a later absolute segment never discards the base.   |
-| `nitr.path.basename(path) -> string`       | The final component.                                                |
-| `nitr.path.dirname(path) -> string`        | The directory part.                                                 |
-| `nitr.path.extension(path) -> string\|nil` | The extension without the dot; `nil` for none, dotfiles included.   |
-| `nitr.path.normalize(path) -> string`      | Resolves `.` and `..` lexically; `..` cannot climb out of the root. |
-| `nitr.path.is_absolute(path) -> boolean`   | Whether the path is absolute (`/x`, `C:\x`, UNC).                   |
-
-> [!WARNING] `normalize` is text-only
->
-> Before real file access on Windows, also reject segments with trailing
-> dots or spaces, or colons — Win32 rewrites those.
+|                                            |                                                                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `nitr.path.join(...) -> string`            | Joins segments; a later absolute segment does not replace the base.                                                                   |
+| `nitr.path.basename(path) -> string`       | The final component.                                                                                                                  |
+| `nitr.path.dirname(path) -> string`        | The directory part.                                                                                                                   |
+| `nitr.path.extension(path) -> string\|nil` | The extension without the dot; `nil` for none (including dotfiles).                                                                   |
+| `nitr.path.normalize(path) -> string`      | Resolves `.` and `..`; `..` cannot go above the root. On Windows, also reject trailing dots, spaces and colons before opening a file. |
+| `nitr.path.is_absolute(path) -> boolean`   | Whether the path is absolute (`/x`, `C:\x`, UNC).                                                                                     |
 
 ### `nitr.url`
 
-_(std feature: `url`)_ — Percent-encoding, query strings, and a lexical
-URL splitter.
+_(std feature: `url`)_ — Percent-encoding, query strings and a simple URL
+splitter.
 
-|                                                        |                                                                                                                        |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `nitr.url.encode(value) -> string`                     | Percent-encodes a component (like `encodeURIComponent`).                                                               |
-| `nitr.url.decode(value) -> string`                     | Percent-decodes; `+` is left alone — that is a form convention.                                                        |
-| `nitr.url.query_parse(query) -> table<string, string>` | Parses a query string; `+` as space, last duplicate wins.                                                              |
-| `nitr.url.query_build(params) -> string`               | Builds a query string, keys sorted.                                                                                    |
-| `nitr.url.parse(value) -> table\|nil, string\|nil`     | Splits a URL lexically — not a WHATWG parser. Returns `{ scheme?, userinfo?, host?, port?, path, query?, fragment? }`. |
+|                                                        |                                                                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `nitr.url.encode(value) -> string`                     | Percent-encodes a component (like `encodeURIComponent`).                                                     |
+| `nitr.url.decode(value) -> string`                     | Percent-decodes; leaves `+` as is.                                                                           |
+| `nitr.url.query_parse(query) -> table<string, string>` | Parses a query string; `+` is a space and the last duplicate wins.                                           |
+| `nitr.url.query_build(params) -> string`               | Builds a query string with sorted keys.                                                                      |
+| `nitr.url.parse(value) -> table\|nil, string\|nil`     | Splits a URL into `{ scheme?, userinfo?, host?, port?, path, query?, fragment? }`. Not a full WHATWG parser. |
 
 ### `nitr.env`
 
-_(std feature: `env`)_ — Read-only environment access. Opt-in; reads are
-filtered by `[env] allow`, and `NITR_*` internals are never visible.
-Getters only: no setter, no enumeration. See
+_(std feature: `env`)_ — Read-only environment variables, limited to the
+names `[env] allow` permits. `NITR_*` variables are never visible. See
 [Environment variables](../server/configuration/env#the-nitr-env-builtin).
 
-|                                                  |                                                                                                                                             |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `nitr.env.get(name, default?) -> string\|nil`    | Reads one variable.                                                                                                                         |
-| `nitr.env.has(name) -> boolean`                  | Whether it is set **and readable**; a policy-hidden name reports `false`.                                                                   |
-| `nitr.env.number(name, default?) -> number\|nil` | Reads and parses a number; unset or unparseable answers the default.                                                                        |
-| `nitr.env.bool(name, default?) -> boolean\|nil`  | Reads a flag: `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`, any case. An **empty** value is `false`; anything else answers the default. |
+|                                                  |                                                                                                                  |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `nitr.env.get(name, default?) -> string\|nil`    | The value, or the default when unset or not allowed.                                                             |
+| `nitr.env.has(name) -> boolean`                  | Whether it is set and allowed.                                                                                   |
+| `nitr.env.number(name, default?) -> number\|nil` | The value as a number; the default when unset or not a number.                                                   |
+| `nitr.env.bool(name, default?) -> boolean\|nil`  | `1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off` (any case). Empty is `false`; anything else returns the default. |
 
 ---
 
@@ -604,8 +454,8 @@ Getters only: no setter, no enumeration. See
 
 ### `nitr.log`
 
-_(std feature: `log`)_ — Structured logging into the request span.
-Fields become real keys in JSON log output. See
+_(std feature: `log`)_ — Structured logging, tied to the current
+request. `fields` become keys in JSON logs. See
 [Logging](../server/logging).
 
 |                                |                     |
@@ -619,16 +469,15 @@ Fields become real keys in JSON log output. See
 
 `nitr.dbg(value) -> any` — _(std feature: `dbg`)_
 
-Debug-prints a value, structure included, to the log; returns it
-unchanged.
+Logs a value, including nested tables, and returns it unchanged.
 
 ### `nitr.errinfo`
 
 `nitr.errinfo(caught) -> table`
 
-Classifies a `pcall`-caught error into its structured form: `kind`,
-`message`, `source`, `line`, `traceback`, `cause`, `pretty`. See
-[Errors](../server/errors).
+Turns an error caught with `pcall` into the [error
+table](./types#the-error-table): `kind`, `message`, `source`, `line`,
+`traceback`, `cause`, `pretty`. See [Errors](../server/errors).
 
 ---
 
@@ -636,23 +485,25 @@ Classifies a `pcall`-caught error into its structured form: `kind`,
 
 ### `nitr.test`
 
-_(available in `nitr test` files only)_ — See
-[Testing](../server/testing) for a guided tour. Below, `t` is
-`nitr.test` (`local t = nitr.test`).
+_(available in `nitr test` files only)_ — The test framework. See
+[Testing](../server/testing) for a guide. Below, `t` is `nitr.test`
+(`local t = nitr.test`).
 
 #### Structure
 
-|                                          |                                                                                                                                              |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `t.describe(name, fn)`                   | Groups tests. Names are prefixed, and hooks registered inside apply to the group. A throw in the body fails that group; the file carries on. |
-| `t.it(name, fn)`                         | Registers one test.                                                                                                                          |
-| `t.skip(name, fn_or_reason?)`            | Registers a skipped test.                                                                                                                    |
-| `t.todo(name)`                           | A test not written yet.                                                                                                                      |
-| `t.only(name, fn)`                       | Skips the file's other tests. The run exits `1` while any `only` is left.                                                                    |
-| `t.each(cases)(name, fn)`                | One test per case: a list is formatted into `name` and unpacked into `fn`; a table with a `name` field is passed whole.                      |
-| `t.fail(message?)`                       | Fails the current test.                                                                                                                      |
-| `t.before_each(fn)` / `t.after_each(fn)` | Around every test registered after it in this group (and nested ones). `after_each` runs even when the test failed.                          |
-| `t.before_all(fn)` / `t.after_all(fn)`   | Once around the group's tests that run.                                                                                                      |
+|                               |                                                                                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `t.describe(name, fn)`        | Groups tests. Names get the group prefix, and hooks inside apply to the group. An error in the body fails the group; the file continues. |
+| `t.it(name, fn)`              | Registers one test.                                                                                                                      |
+| `t.skip(name, fn_or_reason?)` | Registers a skipped test.                                                                                                                |
+| `t.todo(name)`                | A test not written yet.                                                                                                                  |
+| `t.only(name, fn)`            | Skips the file's other tests. The run exits `1` while any `only` remains.                                                                |
+| `t.each(cases)(name, fn)`     | One test per case. A list case is formatted into `name` and unpacked into `fn`; a table case is passed whole.                            |
+| `t.fail(message?)`            | Fails the current test.                                                                                                                  |
+| `t.before_each(fn)`           | Runs before every later test in this group and nested groups.                                                                            |
+| `t.after_each(fn)`            | Runs after every later test in this group, even when it failed.                                                                          |
+| `t.before_all(fn)`            | Runs once before the group's first test that runs.                                                                                       |
+| `t.after_all(fn)`             | Runs once after the group's last test that runs.                                                                                         |
 
 #### Assertions
 
@@ -668,47 +519,42 @@ response: `to_have_status(n)`, `to_have_header(name, value_or_pattern?)`,
 
 #### Requests
 
-|                                                                                                |                                                                                                                                                                                                 |
-| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `t.request(method, path, opts?) -> nitr.test.Response`                                         | Dispatches through the real protection / router / middleware / handler path. Options: `headers`, `query`, `cookies`, `auth`, one of `json`/`form`/`multipart`/`body`, `remote_addr`, `timeout`. |
-| `t.get` · `t.post` · `t.put` · `t.patch` · `t.delete` · `t.head` · `t.options` `(path, opts?)` | Shortcuts for `t.request`.                                                                                                                                                                      |
-| `t.client(opts?) -> nitr.test.Client`                                                          | A client with defaults: `{ base?, headers?, cookies = true?, remote_addr? }`. With `cookies = true`, `client.jar` keeps cookies across calls.                                                   |
-| `t.session_cookie(data, { secret, name?, max_age? }) -> string`                                | The value `session:save` would write for `data`.                                                                                                                                                |
+|                                                                                                |                                                                                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `t.request(method, path, opts?) -> nitr.test.Response`                                         | Sends a request through the full server path (protection, router, middleware, handler). Options: `headers`, `query`, `cookies`, `auth`, one of `json`/`form`/`multipart`/`body`, `remote_addr`, `timeout`. |
+| `t.get` · `t.post` · `t.put` · `t.patch` · `t.delete` · `t.head` · `t.options` `(path, opts?)` | Shortcuts for `t.request`.                                                                                                                                                                                 |
+| `t.client(opts?) -> nitr.test.Client`                                                          | A client with defaults: `{ base?, headers?, cookies = true?, remote_addr? }`. With `cookies = true`, its `jar` keeps cookies between calls.                                                                |
+| `t.session_cookie(data, { secret, name?, max_age? }) -> string`                                | The cookie value `session:save` would write for `data`.                                                                                                                                                    |
 
-`nitr.test.Response` has `status`, `headers` (lowercase name → last
-value), `raw_headers`, `cookies` (parsed `Set-Cookie`s), `body`, `error`
-(the handler's classified error plus `handled`, when it raised),
-`:json()`, `:text()`, `:header(name)` and `:sse()`.
-`nitr.test.Client` has `:request(method, path, opts?)`, the method
-shortcuts and `jar`. `nitr.test.Jar` has `:get(name)`,
-`:set(name, value, { path? })` and `:clear()`.
+The returned objects are described in [Types →
+Testing](./types#nitr-test-response).
 
 #### Unit tools
 
-|                                         |                                                                                                                                                      |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `t.fake_request(spec?) -> nitr.Request` | A real request object built from `{ method?, path?, params?, valid?, ... }` plus the request options. No protection layer, body guard or validation. |
-| `t.app() -> nitr.test.App`              | The application compiled into the test state: `app:handler(method, path)`, `app:dispatch(method, path, req)`, `app:routes()`.                        |
+|                                         |                                                                                                                                          |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `t.fake_request(spec?) -> nitr.Request` | A request object from `{ method?, path?, params?, valid?, ... }` plus the request options. Skips protection, body limits and validation. |
+| `t.app() -> nitr.test.App`              | The application compiled into the test state. See [`nitr.test.App`](./types#nitr-test-app).                                              |
 
 #### Doubles
 
 Reset before every test.
 
-|                                                           |                                                                                                                              |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `t.fetch.mock(rule, ...)`                                 | Canned answers for `nitr.fetch`: `{ url, method?, status?, headers?, json? \| body?, times? }`, `url` exact or a `*` prefix. |
-| `t.fetch.strict(on?)`                                     | An unmatched request raises instead of going out.                                                                            |
-| `t.fetch.calls() -> table[]`                              | Every outbound call: `{ method, url, headers, body?, json?, mocked }`.                                                       |
-| `t.fetch.reset()`                                         | Drops the rules, the calls and the strict flag.                                                                              |
-| `t.clock.set(ts)` / `advance(secs)` / `now()` / `reset()` | Moves the clock behind `nitr.time`, session/JWT expiry, cache TTLs and the rate limiter.                                     |
-| `t.env.set(name, value)` / `unset(name)` / `reset()`      | Overrides `nitr.env`, after the `[env]` policy.                                                                              |
-| `t.logs() -> table[]` / `t.logs.clear()`                  | The current test's captured log entries: `{ level, target, message, fields?, request_id? }`.                                 |
+|                                                           |                                                                                                                               |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `t.fetch.mock(rule, ...)`                                 | Canned answers for `nitr.fetch`: `{ url, method?, status?, headers?, json? \| body?, times? }`; `url` exact or ending in `*`. |
+| `t.fetch.strict(on?)`                                     | A request no rule matches raises instead of going out.                                                                        |
+| `t.fetch.calls() -> table[]`                              | Every outbound call: `{ method, url, headers, body?, json?, mocked }`.                                                        |
+| `t.fetch.reset()`                                         | Drops the rules, the calls and the strict flag.                                                                               |
+| `t.clock.set(ts)` / `advance(secs)` / `now()` / `reset()` | Controls the clock behind `nitr.time`, session and JWT expiry, cache TTLs and the rate limiter.                               |
+| `t.env.set(name, value)` / `unset(name)` / `reset()`      | Overrides `nitr.env`; names `[env] allow` hides stay hidden.                                                                  |
+| `t.logs() -> table[]` / `t.logs.clear()`                  | The current test's log entries: `{ level, target, message, fields?, request_id? }`.                                           |
 
 #### Database fixtures
 
 |                          |                                                                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------- |
-| `t.db.reset()`           | Restores the snapshot taken after the migrations, the config script and `[testing] seed`. |
+| `t.db.reset()`           | Restores the database as it was after migrations, the config script and `[testing] seed`. |
 | `t.db.truncate(tables?)` | Empties the named tables (all application tables without an argument).                    |
-| `t.db.seed(spec)`        | A SQL file under `[testing] dir`, or `{ table = { row, ... } }`, in one transaction.      |
-| `t.db.isolate()`         | Calls `reset()` after every test of the file.                                             |
+| `t.db.seed(spec)`        | Runs a SQL file under `[testing] dir`, or inserts `{ table = { row, ... } }`.             |
+| `t.db.isolate()`         | Calls `reset()` after every test in the file.                                             |

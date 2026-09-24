@@ -1,20 +1,17 @@
 # Quick Start
 
-Build and run a small JSON API backed by SQLite. Ten minutes, start to
-finish, no prior Lua required.
+Build and run a small JSON API backed by SQLite. It takes about ten
+minutes, and you do not need to know Lua.
 
 > [!TIP] Before you start
 >
-> You need the `nitr` binary. If you do not have it yet, install it from
-> crates.io:
+> Install the `nitr` binary with Cargo:
 >
 > ```sh
-> cargo install nitr-cli
+> cargo install nitr-cli --version 0.0.0-beta.5
 > ```
 >
-> The crate is `nitr-cli`; the binary it installs is `nitr`. See
-> [Download & Install](./download-install) for pinning a version,
-> trimming the build with Cargo features, or building from a git tag.
+> See [Download & Install](./download-install) for other options.
 
 ## Step 1 — Scaffold the application
 
@@ -22,8 +19,8 @@ finish, no prior Lua required.
 nitr init my-app && cd my-app
 ```
 
-`nitr init` takes an optional directory (default: the current one) and
-creates it if it is missing. It writes a complete, working application:
+`nitr init` writes a complete, working application into the directory
+(the current one if you leave it out):
 
 ```
 my-app/
@@ -31,7 +28,7 @@ my-app/
 ├── config.lua             runs once at startup → nitr.cfg
 ├── app.lua                routes and middleware (returns nitr.app())
 ├── routes/
-│   └── notes.lua          one route module
+│   └── notes.lua          the notes API routes
 ├── lib/
 │   └── notes.lua          plain module: the note schemas
 ├── migrations/
@@ -39,7 +36,7 @@ my-app/
 ├── templates/
 │   └── hello.j2           minijinja templates
 ├── public/
-│   └── index.html         static files, served by Rust
+│   └── index.html         static files
 ├── tests/
 │   ├── notes_test.lua     runs with `nitr test`
 │   └── helpers/notes.lua  test data the tests `require`
@@ -49,12 +46,7 @@ my-app/
 └── nitr-types.lua         editor completion for the whole nitr.* API
 ```
 
-One more file, `openapi.json`, appears on the first `nitr dev`: the
-generated [API document](./server/openapi/), kept current while you
-work.
-
-It prints a `created …` line per file and then the path through the rest
-of this page:
+It ends by printing the next steps, which the rest of this page follows:
 
 ```
 Next steps:
@@ -64,27 +56,15 @@ Next steps:
   nitr dev   # then open http://127.0.0.1:3000/docs
 ```
 
-> [!NOTE] `init` never overwrites
->
-> If any of those paths already exists, `nitr init` refuses the whole
-> scaffold rather than merging into a directory it did not write. Run it
-> in an empty directory, or in a scratch one and copy across what you
-> want.
-
-> [!TIP] Want the minimal version?
->
-> `nitr init --minimal` writes four application files — `nitr.toml`,
-> `app.lua`, `public/index.html` and `tests/app_test.lua` — plus
-> `nitr-types.lua`. No database, no templates, no config script. The
-> full scaffold exists because it is most people's first and most-copied
-> example, so it demonstrates the patterns worth copying: middleware,
-> validation, `on_error`, a migration, a test.
+`nitr init` never overwrites a file: if any of these paths exists, it
+stops without writing anything. For a smaller start, `nitr init --minimal`
+writes only `nitr.toml`, `app.lua`, `public/index.html`,
+`tests/app_test.lua` and `nitr-types.lua`.
 
 ## Step 2 — Create the database
 
-The scaffold ships a migration, and Nitr **refuses to start while a
-migration is pending** — so this step is not optional, it is the server
-refusing to let the schema and the code disagree.
+Nitr refuses to start while a migration is pending, so apply the one the
+scaffold ships:
 
 ```sh
 nitr migrate
@@ -95,9 +75,8 @@ ok: applied 1 migration(s)
   001_init.sql
 ```
 
-`nitr migrate --status` reports what has run and what is pending without
-applying anything — including a migration whose file changed after it
-was applied, which it flags as `MODIFIED SINCE APPLIED`.
+`nitr migrate --status` shows what has run and what is pending without
+changing anything.
 
 ## Step 3 — Check it
 
@@ -106,15 +85,20 @@ nitr check
 ```
 
 ```
-ok: configuration and scripts load cleanly (8 worker(s) configured)
+ok: configuration and scripts load cleanly (4 worker(s) configured)
 ```
 
-`check` loads the configuration and every script, then exits. It catches
-typos in `nitr.toml`, missing files, syntax errors and unknown
-configuration keys **without binding a port** — which makes it the right
-thing to run in CI and right before a deploy. Add `--print-config` to
-see the effective configuration after the file, the environment and the
-flags have layered.
+`check` loads the configuration and every script, then exits without
+opening a port. It catches typos, unknown keys, missing files and syntax
+errors, so it is a good step for CI and before each deploy. The worker
+count matches your CPU cores.
+
+> [!NOTE] The `Secure` cookie warning
+>
+> `check` and `test` log a warning that session and CSRF cookies will be
+> sent without `Secure`. That is expected while you serve plain HTTP
+> locally. In production, enable [`[tls]`](./server/tls), or set
+> `[cookies] secure = "always"` behind an HTTPS proxy.
 
 ## Step 4 — Run the tests
 
@@ -138,13 +122,11 @@ notes_test.lua
 10 passed, 0 failed (1 file(s), 0.09 s)
 ```
 
-The scaffolded file shows both kinds of test. The `lib.notes (unit)`
-tests call a plain module directly. The `notes API` tests are real
-requests: `api:post(...)` dispatches through the actual router,
-validation and middleware, against a private test database that
-`t.db.reset` restores before each test. `nitr test --filter notes`
-narrows by test or file name, and `nitr test --watch` re-runs on save.
-See [Testing](./server/testing).
+The `lib.notes (unit)` tests call a plain module directly. The
+`notes API` tests send real requests through the router, validation and
+middleware, against a private test database. `nitr test --filter notes`
+runs only matching tests, and `nitr test --watch` re-runs on save. See
+[Testing](./server/testing).
 
 ## Step 5 — Start the dev server
 
@@ -152,13 +134,10 @@ See [Testing](./server/testing).
 nitr dev
 ```
 
-Development mode gives you two things: **hot reload** (a file watcher
-rebuilds the Lua pool when you save a `.lua` file or anything under the
-templates directory) and **error details in the response** instead of a
-bare `500`. Static files need no watching — they are read from disk per
-request.
+Development mode reloads your Lua and templates when you save them, and
+shows error details in responses instead of a bare `500`.
 
-Try it:
+Try it from another terminal:
 
 ```sh
 curl http://127.0.0.1:3000/api/notes
@@ -167,12 +146,12 @@ curl http://127.0.0.1:3000/api/notes
 curl -X POST http://127.0.0.1:3000/api/notes \
   -H 'content-type: application/json' \
   -d '{"text":"hello nitr"}'
-# {"id":1,"text":"hello nitr","created_at":1766400000}
+# {"id":1,"text":"hello nitr","created_at":1790249137}
 
 curl -X POST http://127.0.0.1:3000/api/notes \
   -H 'content-type: application/json' -d '{}'
 # 422 {"code":"VALIDATION_FAILED","message":"validation failed",
-#      "fields":{"body.text":"is required"}, "errors":[…]}
+#      "fields":{"body.text":"is required"},"errors":[…]}
 
 curl http://127.0.0.1:3000/hello/ada
 # <!doctype html>
@@ -180,12 +159,12 @@ curl http://127.0.0.1:3000/hello/ada
 # <p>Served by my-app.</p>
 
 curl http://127.0.0.1:3000/
-# the static public/index.html, served by Rust without running Lua
+# public/index.html, served without running Lua
 ```
 
-The `422` is the route's `input` declaration in `routes/notes.lua`,
-enforced **in Rust before the handler ran** — so the handler contains no
-validation code at all:
+The `422` comes from the route's `input` declaration in
+`routes/notes.lua`. Nitr checks the request before the handler runs, so
+the handler has no validation code:
 
 ```lua
 app:post("/api/notes", function(req)
@@ -198,31 +177,23 @@ See [Validation](./server/validation/).
 
 ## Step 6 — Open the API docs
 
-The same declaration that rejected that request also documents it.
-While `nitr dev` is running:
+With `nitr dev` running, open <http://127.0.0.1:3000/docs> for the
+Swagger UI, or fetch the document itself:
 
 ```sh
-open http://127.0.0.1:3000/docs        # Swagger UI, served from the binary
 curl -s http://127.0.0.1:3000/openapi.json | jq '.paths | keys'
 # [ "/api/notes", "/hello/{name}" ]
 ```
 
-Nothing generated that by hand: the request schemas come from each
-route's `input`, the prose from its `doc`, and the two cannot drift
-apart because the same table does both jobs. The scaffold also sets
-`[openapi] output`, so `openapi.json` in your project directory is
-rewritten whenever a route changes — commit it, and let
-`nitr openapi --check` keep CI honest.
-
-```sh
-nitr openapi --check     # exits 1 when the committed document is stale
-```
-
-See [OpenAPI](./server/openapi/).
+The request schemas come from each route's `input` and the descriptions
+from its `doc`, so the document always matches what the server enforces.
+`nitr dev` also keeps an `openapi.json` file in your project up to date.
+Commit it, and run `nitr openapi --check` in CI: it exits with `1` when
+the committed file is out of date. See [OpenAPI](./server/openapi/).
 
 ## Step 7 — Add a route
 
-Open `app.lua` and add a route before the `return app` line:
+Open `app.lua` and add this before the `return app` line:
 
 ```lua
 app:get("/api/notes/:id", function(req)
@@ -240,7 +211,7 @@ end, {
 })
 ```
 
-Save the file. The dev server reloads on its own — no restart:
+Save the file. The dev server reloads on its own:
 
 ```sh
 curl http://127.0.0.1:3000/api/notes/1
@@ -248,8 +219,7 @@ curl -i http://127.0.0.1:3000/api/notes/999   # 404 {"code":"NOT_FOUND"}
 curl -i http://127.0.0.1:3000/api/notes/abc   # 422 params.id: must be an integer
 ```
 
-Reload `/docs` and the new operation is there, with its parameter, its
-type and its bound — because you declared them once.
+Reload `/docs` and the new operation is there.
 
 ## Step 8 — Ship it
 
@@ -257,23 +227,20 @@ type and its bound — because you declared them once.
 nitr build --output my-app
 ```
 
-One executable containing the binary, `nitr.toml`, every Lua source,
-your templates, static files and migrations. Copy it to a server and run
-it — the database stays external, on purpose, and so does a TLS private
-key. See [Single-file deploys](./server/deployment/single-file).
+This writes one executable that contains the `nitr` binary,
+`nitr.toml`, your Lua, templates, static files and migrations. Copy it
+to a server and run it. The SQLite database stays outside the file. See
+[Single-file deploys](./server/deployment/single-file).
 
 ## What just happened
 
-Three things are worth understanding before you go further:
-
-1. **`app.lua` runs once per Lua state, not once per request.** It
-   _builds_ the application. Routes and middleware are compiled at load
-   time; only a matching request runs any of your Lua.
-2. **`config.lua` runs exactly once**, at startup, before any request.
-   Whatever it returns is snapshotted into every state as `nitr.cfg`.
-3. **Requests run in parallel across a pool of independent Lua states.**
-   Two requests never share a Lua value. [How Nitr
-   works](./how-it-works) explains what follows from that.
+1. **`config.lua` runs once**, at startup. What it returns is available
+   to every handler as `nitr.cfg`.
+2. **`app.lua` runs once per Lua state**, not once per request. It
+   builds the routes and middleware; requests only run your handlers.
+3. **Requests run in parallel** across a pool of independent Lua states
+   that never share Lua values. [How Nitr works](./how-it-works)
+   explains what that means for your code.
 
 ## Where to go next
 
@@ -281,5 +248,4 @@ Three things are worth understanding before you go further:
 - [Project layout](./server/project-layout) — what every scaffolded file does
 - [Routing & Middleware](./server/routing) — paths, parameters, chains
 - [Configuration](./server/configuration/) — `nitr.toml`, env vars, flags
-- [TLS termination](./server/tls) — serve HTTPS without a proxy
 - [Lua API reference](./api/) — every `nitr.*` function

@@ -1,92 +1,62 @@
 # Download & Install
 
-> [!WARNING] Pre-release
->
-> Nitr is at `0.0.0-beta.5`. The crates **are published on crates.io**,
-> so installing is one `cargo install` — but **pre-built binaries are
-> not published yet**. The [planned release
-> channels](#planned-release-channels) are listed at the bottom of this
-> page.
+Nitr is at `0.0.0-beta.5`. Install it from crates.io with Cargo.
+Pre-built binaries are not published yet.
 
 ## Install with Cargo <Badge type="tip" text="recommended" />
 
-You need a Rust toolchain at or above the project's MSRV (**1.88.0**).
-Get one from [rustup.rs](https://rustup.rs/) if you do not have it.
+You need Rust **1.88.0** or newer. Get it from
+[rustup.rs](https://rustup.rs/).
 
 ```sh
 cargo install nitr-cli --version 0.0.0-beta.5
 ```
 
 The crate is `nitr-cli`; the binary it installs into `~/.cargo/bin` is
-called `nitr`. Verify it:
+`nitr`. Check it:
 
 ```sh
 nitr --version
 # nitr 0.0.0-beta.5
 ```
 
-> [!WARNING] `--version` is not optional yet
+> [!WARNING] Keep the `--version` flag
 >
-> A bare `cargo install <crate>` resolves against the version
-> requirement `*`, and by semver rules `*` never matches a pre-release.
-> Every published `nitr-cli` version is one, so omitting the flag fails
-> before anything is downloaded:
->
-> ```text
-> error: could not find `nitr-cli` in registry `crates-io` with version `*`
-> ```
->
-> That is a property of pre-1.0 versioning, not of Nitr — the flag stops
-> being necessary the day a non-pre-release version ships.
-> `--version '^0.0.0-beta.5'` works too and follows later betas in the
-> same series.
->
-> `cargo add` does not have this problem: it picks the newest version
-> including pre-releases, so `cargo add nitr` writes
-> `nitr = "0.0.0-beta.5"` for you.
+> Every published version is a pre-release, and a bare
+> `cargo install nitr-cli` only looks for stable versions, so it fails
+> with an error saying it could not find `nitr-cli` with version `*`. Use
+> `--version '^0.0.0-beta.5'` to accept later betas too.
 
-> [!TIP] What you get
->
-> The `nitr` **binary** is built with the `all` Cargo feature —
-> `compression`, `crypto`, `db`, `fetch`, `multipart`, `template` and
-> `tls` — so every builtin (`nitr.db`, `nitr.fetch`, `nitr.template`,
-> `nitr.crypto`, compression, multipart, TLS termination) is compiled
-> in. Someone installing a server expects the whole standard library to
-> be there. The **library crate** is the opposite: nothing is enabled by
-> default. See [Cargo features](./library/cargo-features).
+The binary includes every optional feature: SQLite, templates, the HTTP
+client, crypto, compression, multipart uploads, TLS, OpenAPI and
+Swagger UI.
 
 ### A smaller binary
 
-If you know which builtins your application uses, drop the rest. The
-CLI's own feature names mirror the library's:
+To leave out what you do not use, pick the features yourself:
 
 ```sh
 cargo install nitr-cli --version 0.0.0-beta.5 \
   --no-default-features --features template
 ```
 
-Configuring a builtin that was not compiled in is a **startup error
-naming the Cargo feature to enable**, so a wrong guess surfaces at
-`nitr check` time, not at the first request. [Building from
-source](./building-from-source#a-smaller-binary) has the details.
+If your configuration uses a feature that was not compiled in, Nitr
+refuses to start and names the feature to enable, so `nitr check`
+catches it. The feature list is in [Cargo
+features](./library/cargo-features).
 
-### From a git revision
+### From git
 
-Released betas lag the default branch. To install unreleased work:
+Released betas lag behind the default branch. To install unreleased
+work, or pin an exact tag or commit:
 
 ```sh
 cargo install --git https://github.com/nitrweb/nitr nitr-cli
-```
-
-`--git` tracks the default branch, which moves. Pin it when you want the
-same binary twice:
-
-```sh
 cargo install --git https://github.com/nitrweb/nitr --tag v0.0.0-beta.5 nitr-cli
 cargo install --git https://github.com/nitrweb/nitr --rev <commit-sha> nitr-cli
 ```
 
-### Uninstalling
+### Uninstall
 
 ```sh
 cargo uninstall nitr-cli
@@ -94,9 +64,8 @@ cargo uninstall nitr-cli
 
 ## Using Nitr as a library
 
-The server binary is one way to run Nitr; the other is embedding it in
-your own Rust program. That crate is `nitr`, and it enables nothing by
-default:
+To embed Nitr in your own Rust program, add the `nitr` crate. It enables
+no optional features by default:
 
 ```sh
 cargo add nitr                          # minimal
@@ -108,9 +77,6 @@ See [Library → Getting started](./library/getting-started).
 
 ## Build from a clone
 
-Useful when you want to run the tests, the examples or the benchmarks
-alongside the binary:
-
 ```sh
 git clone https://github.com/nitrweb/nitr
 cd nitr
@@ -118,62 +84,44 @@ cargo build --release
 ./target/release/nitr --version
 ```
 
-Full details — the workspace layout, the `make` entry points CI
-mirrors, the examples, the benchmarks and the fuzzers — are in
-[Building from source](./building-from-source).
+See [Building from source](./building-from-source) for tests, examples
+and benchmarks.
 
 ## First run
 
-Nitr needs no configuration to start. In an empty directory:
-
 ```sh
-nitr init
+nitr init my-app && cd my-app
 nitr migrate
 nitr dev
 ```
 
-`nitr init` scaffolds the full documented layout: `nitr.toml`,
-`config.lua`, `app.lua`, `routes/notes.lua`, `migrations/001_init.sql`,
-`templates/hello.j2`, `public/index.html`, `tests/notes_test.lua`, a
-`.gitignore` and a `data/` directory. `nitr init --minimal` writes only
-`nitr.toml`, `app.lua`, `public/index.html` and one test. Both also
-emit `nitr-types.lua`, the generated LuaCATS definitions that give your
-editor completion over the whole `nitr.*` surface. Either way, the
-command refuses to overwrite a file that already exists.
-
-The server listens on `127.0.0.1:3000`. Without any `nitr.toml` at all,
-`nitr` still runs, serving `scripts/handler.lua` on the same address —
-see [Server defaults](./server/defaults).
+The server listens on `http://127.0.0.1:3000`. The [Quick
+Start](./quick-start) walks through each step. Without any `nitr.toml`,
+`nitr` still starts and serves `scripts/handler.lua` — see [Server
+defaults](./server/defaults).
 
 ## Docker
 
-There is no published image yet. Until there is, the reference
+There is no published image yet. The repository's reference
 [`Dockerfile`](https://github.com/nitrweb/nitr/blob/master/deploy/docker/Dockerfile)
-in the repository builds one: a `rust:1-slim` stage that installs
-`nitr-cli` from crates.io, then a `debian:stable-slim` runtime image
-carrying just the binary and your application files, running as a
-dedicated non-root user with `/app/data` declared as a volume for the
-SQLite database and a `HEALTHCHECK` wired to `/healthz`.
+builds one from your application directory. It runs `nitr` as a
+non-root user, keeps the SQLite database on a `/app/data` volume, and
+checks `/healthz`.
 
-> [!WARNING] The reference Dockerfile needs the version flag too
+> [!WARNING] Add the version flag to the Dockerfile
 >
-> Its build stage runs a bare `cargo install nitr-cli`, which hits the
-> pre-release resolution rule described above. While every release is a
-> pre-release, change that line to
+> Its build stage runs a bare `cargo install nitr-cli`, which fails for
+> the reason above. Change it to
 > `cargo install nitr-cli --version 0.0.0-beta.5`.
 
-[Docker deployment](./server/deployment/docker) explains the two
-settings that actually matter: an exec-form `ENTRYPOINT`, so `nitr` is
-PID 1 and sees the `SIGTERM` `docker stop` sends, and a stop timeout
-longer than the drain (`docker stop --time 40`, above the default
-`[shutdown] grace` of 30s plus `stream_grace` of 5s).
+See [Docker deployment](./server/deployment/docker) for signals and stop
+timeouts.
 
 ## Planned release channels
 
-The release workflow already cross-compiles the binary for the targets
-below and attaches the archives to a **draft** GitHub release. What is
-missing is a published release, a download channel and an install
-script.
+The release workflow already builds binaries for the targets below and
+attaches them to a **draft** GitHub release. Published releases and an
+install script are still to come.
 
 | Platform          | Targets                                                             |
 | ----------------- | ------------------------------------------------------------------- |
@@ -186,12 +134,7 @@ script.
 | **illumos**       | `x86_64`                                                            |
 | **Android**       | `aarch64`                                                           |
 
-> [!NOTE] Platform caveats
+> [!NOTE] Windows
 >
-> `nitr reload` shells out to `kill -HUP`, so it needs Unix signals and
-> fails on Windows with an explicit message rather than pretending to
-> work; restart the process there instead. It also needs a `pidfile` set
-> in `nitr.toml` — that is how it finds the running server. Everything
-> else, including the SQLite builtin (SQLite is bundled and compiled in,
-> never linked against a system copy), is portable across the whole
-> list.
+> `nitr reload` uses Unix signals, so it does not work on Windows.
+> Restart the process instead.

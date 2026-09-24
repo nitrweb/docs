@@ -1,72 +1,58 @@
 # Project Layout
 
-The conventional layout the `nitr` CLI works with, and what each file
-is for. `nitr init` writes all of it.
+What `nitr init` creates, and what each file is for.
 
 ## The full scaffold
 
 ```
 my-app/
-├── nitr.toml              server + application configuration
+├── nitr.toml              configuration
 ├── config.lua             runs once at startup → nitr.cfg
 ├── app.lua                routes and middleware; returns nitr.app()
 ├── routes/
 │   └── notes.lua          a route module
 ├── lib/
-│   └── notes.lua          plain module: schemas, no `req` — unit-tested
+│   └── notes.lua          plain module (validation schemas)
 ├── migrations/
-│   └── 001_init.sql       plain SQL, applied by `nitr migrate`
+│   └── 001_init.sql       SQL, applied by `nitr migrate`
 ├── templates/
 │   └── hello.j2           minijinja templates
 ├── public/
-│   └── index.html         static files, served by Rust
+│   └── index.html         static files
 ├── tests/
-│   ├── notes_test.lua     *.lua files, run by `nitr test`
+│   ├── notes_test.lua     tests, run by `nitr test`
 │   └── helpers/
-│       └── notes.lua      test data; `require("helpers.notes")`
+│       └── notes.lua      test data: require("helpers.notes")
 ├── data/
-│   └── .gitkeep           app.db lands here after `nitr migrate`
+│   └── .gitkeep           app.db is created here by `nitr migrate`
 ├── .gitignore             ignores data/*.db*
-└── nitr-types.lua         generated editor completions
+└── nitr-types.lua         editor completions
 ```
 
-One more file appears on the first `nitr dev`: **`openapi.json`**, the
-generated [API document](./openapi/). The scaffold sets
-`[openapi] output`, so it is rewritten whenever a route changes and
-`nitr openapi --check` in CI keeps the committed copy honest. Commit it.
+The first `nitr dev` also writes **`openapi.json`**, the generated
+[API document](./openapi/), and keeps it up to date. Commit it;
+`nitr openapi --check` in CI tells you when it is stale.
 
-`nitr init` refuses to overwrite: if any of those paths already exists
-it writes nothing at all, rather than merging into a directory it did
-not create.
+Every path is set in `nitr.toml`, so you can rename or move any of them:
 
-Nothing here is magic. Every path is a configuration key you can change:
-
-| Path           | Configured by                             | Required?                                      |
-| -------------- | ----------------------------------------- | ---------------------------------------------- |
-| `app.lua`      | `handler_script`                          | **yes**                                        |
-| `config.lua`   | `config_script`                           | no                                             |
-| `routes/`      | nothing — it is `require`d from `app.lua` | no                                             |
-| `lib/`         | nothing — it is `require`d where needed   | no                                             |
-| `migrations/`  | `[database] migrations_dir`               | no                                             |
-| `templates/`   | `[templating] dir`                        | only if you use `nitr.template`                |
-| `public/`      | `[static] dir` + `mount`                  | no                                             |
-| `tests/`       | `[testing] dir`                           | only for `nitr test`                           |
-| `data/app.db`  | `[database] path`                         | only if you use `nitr.db`                      |
-| `openapi.json` | `[openapi] output`                        | no — written in dev mode                       |
-| `uploads/`     | `[multipart] upload_dir`                  | only if you call `part:save`, or a `file` rule |
-
-The last row is the one `nitr init` does _not_ write: uploads need a
-directory you chose deliberately, and the section on them below explains
-why nothing is guessed for you.
+| Path           | Set by                       | Needed?                          |
+| -------------- | ---------------------------- | -------------------------------- |
+| `app.lua`      | `handler_script`             | **yes**                          |
+| `config.lua`   | `config_script`              | no                               |
+| `routes/`      | a `require` in `app.lua`     | no                               |
+| `lib/`         | a `require` where it is used | no                               |
+| `migrations/`  | `[database] migrations_dir`  | only with a database             |
+| `templates/`   | `[templating] dir`           | only for `nitr.template`         |
+| `public/`      | `[static] dir` and `mount`   | no                               |
+| `tests/`       | `[testing] dir`              | only for `nitr test`             |
+| `data/app.db`  | `[database] path`            | only for `nitr.db`               |
+| `openapi.json` | `[openapi] output`           | no                               |
+| `uploads/`     | `[multipart] upload_dir`     | only to save uploads (see below) |
 
 ## `nitr.toml`
 
-The one file that says what the server does: the address it binds, the
-scripts it loads, the builtins it exposes, and every limit and policy.
-It is validated strictly — an unknown key, a contradiction, or a missing
-path **refuses to start**.
-
-The scaffolded one is deliberately short; everything else has a default:
+Says what the server does: the address, the scripts, the enabled
+builtins, and any limits. The scaffolded file:
 
 ```toml
 listen = "127.0.0.1:3000"
@@ -86,35 +72,24 @@ features = ["json", "http", "log", "time", "validate", "base64", "path", "url", 
 dir = "public"
 mount = "/"
 
-# The OpenAPI document, generated from the routes' `input` and `doc`
-# tables: served at /openapi.json, and kept current in openapi.json
-# while `nitr dev` runs.
 [openapi]
 enabled = true
 output = "openapi.json"
 
-# Swagger UI at /docs, rendered from this binary (no CDN).
 [swagger]
 enabled = true
 try_it_out = true
 ```
 
-See [Configuration → nitr.toml](./configuration/file) for every
-section, and [`nitr check --print-config`](./cli#check) for what the
-layering actually produced.
+It enables the OpenAPI document and the Swagger UI page at `/docs` for
+development. In production you may want them off:
+`NITR_OPENAPI_ENABLED=false NITR_SWAGGER_ENABLED=false`. Every key is in
+[nitr.toml](./configuration/file).
 
-> [!TIP] Turn the docs off where they should not be public
->
-> The scaffold enables both because the audience is you. In production
-> that is a decision — `NITR_OPENAPI_ENABLED=false
-NITR_SWAGGER_ENABLED=false` is the one-line version, and
-> `nitr openapi --ui` publishes the same page as a static site instead.
-> See [OpenAPI](./openapi/).
+## `config.lua`
 
-## `config.lua` — the startup script
-
-Runs **exactly once**, before any request is served, in its own state.
-The scaffolded version just publishes a couple of values:
+Runs **once** at startup, before any request, and on every reload. Its
+returned table becomes `nitr.cfg` in every handler:
 
 ```lua
 return {
@@ -123,167 +98,97 @@ return {
 }
 ```
 
-When a `[database]` is configured, its connection arrives as the
-script's vararg, which is what makes one-off schema work possible here:
+With a `[database]`, the connection is passed in as `...`:
 
 ```lua
 local db = ...
-
 db:execute("CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY)")
-
-return {
-    app_name = "my-app",
-    started_at = nitr.time.iso8601(nitr.time.now()),
-    feature_flags = { beta_search = true },
-}
+return { app_name = "my-app" }
 ```
 
-The returned table becomes `nitr.cfg` in every handler.
+Use it for work you want to do once: reading environment variables,
+building lookup tables, one-off setup. Return plain data only (tables,
+strings, numbers, booleans); functions and userdata are an error.
+Without a config script, `nitr.cfg` is `nil`.
 
-> [!WARNING] It must return plain data
->
-> Tables, strings, numbers, booleans. The result is **serialized and
-> snapshotted** into each pooled state, so a function, a coroutine or a
-> userdata in there is an error — not a value that silently behaves
-> strangely later.
+## `app.lua`
 
-> [!WARNING] No yielding builtins at this level
->
-> This chunk runs outside the async executor, so a builtin that yields
-> cannot run in it. That covers the argon2 password functions
-> (`nitr.crypto.password_hash`, `password_verify`,
-> `password_verify_dummy`) and `nitr.template:render`, all of which do
-> their work off the async worker. Mint hashes with
-> [`nitr hash-password`](./passwords) and store the result instead of
-> hashing at boot; render templates from a handler.
-
-Use it for: one-off schema setup, precomputed lookup tables, values
-derived from the environment, anything expensive you want to pay for
-once rather than once per state.
-
-Omit it entirely and `nitr.cfg` is `nil`.
-
-## `app.lua` — the handler script
-
-Runs **once per Lua state**, and again on every reload. It builds the
-application and returns it. This is the scaffolded file, trimmed:
+Runs **once per Lua state** (and on every reload). It builds the
+application and returns it. The scaffolded file, trimmed:
 
 ```lua
 local app = nitr.app()
 
-app:doc({                                -- names the OpenAPI document
-    title = "My App",
-    version = "0.1.0",
-    tags = { { name = "notes", description = "Notes" } },
-})
+app:doc({ title = "My App", version = "0.1.0" })   -- OpenAPI document info
 
-app:use(function(next)
+app:use(function(next)                               -- middleware
     return function(req)
         local started = nitr.time.monotonic()
         local resp = next(req)
         nitr.log.info("request", {
             path = req.path,
-            status = type(resp) == "table" and resp.status or 200,
             ms = math.floor((nitr.time.monotonic() - started) * 1000),
         })
         return resp
     end
 end)
 
-require("routes.notes")(app)             -- route modules
+require("routes.notes")(app)                         -- route modules
 
-app:get("/hello/:name", function(req)    -- inline routes
+app:get("/hello/:name", function(req)                -- an inline route
     return nitr.html(nitr.template:render("hello.j2", {
         name = req.params.name,
         app = nitr.cfg.app_name,
     }))
 end)
 
-app:on_error(function(err, req)          -- the app-wide error response
-    nitr.log.error("handler failed", {
-        error = err.message, kind = err.kind, source = err.source, line = err.line,
-    })
+app:on_error(function(err, req)                      -- the error response
+    nitr.log.error("handler failed", { error = err.message, kind = err.kind })
     return nitr.error(500, { code = "INTERNAL" })
 end)
 
-return app                               -- ← forgetting this is a startup error
+return app                                           -- required
 ```
 
-The order matters: `app:use` must precede the routes it should wrap.
-`err` is a structured table — `kind` is one of `"lua"`, `"nitr"`,
-`"module"`, `"timeout"`, `"memory"` or `"panic"` — so an error handler
-can branch on _why_ the handler failed. See [Errors](./errors).
+- `app:use` must come before the routes it should wrap.
+- Code at the top of the file runs once per state, so compile schemas
+  and build tables there. Only handler functions run per request.
+- Async builtins such as `nitr.crypto.password_hash` cannot run at the
+  top level of `app.lua`; call them inside a handler, or in
+  `config.lua`.
 
-> [!TIP] Where to put expensive work
->
-> The body of `app.lua` runs once per state — compiling a
-> [validation schema](./validation/), building a lookup table or reading
-> `nitr.cfg` all belong here, at file scope. Only the innermost handler
-> function runs per request.
+See [Routing](./routing), [Middleware](./middleware) and
+[Errors](./errors).
 
-## `routes/` — route modules
+## `routes/` and `lib/`
 
-Route files are wired with an explicit `require` in `app.lua`. There is
-no auto-discovery, deliberately: the application's shape stays visible in
-one file, and a route module is plain Lua rather than a convention you
-have to learn.
-
-A module is just a function that takes the app:
+Route files are plain modules, wired with an explicit `require` in
+`app.lua`; there is no auto-discovery. A route module is a function that
+takes the app:
 
 ```lua
 -- routes/notes.lua
---
--- A route's `input` is validated in Rust before the handler runs, and
--- the same declaration documents the operation in /openapi.json.
 local notes = require("lib.notes")
-local NoteInput, Note = notes.NoteInput, notes.Note
 
 return function(app)
-    app:get("/api/notes", function(req)
-        return nitr.json(nitr.db:query(
-            "SELECT id, text, created_at FROM notes ORDER BY id LIMIT ?",
-            { req.valid.query.limit }
-        ))
-    end, {
-        input = { query = { limit = "integer|min:1|max:100|default:50" } },
-        doc = {
-            summary = "List notes", tags = { "notes" },
-            responses = { [200] = { description = "The newest notes",
-                                    schema = { type = "array", items = Note } } },
-        },
-    })
-
     app:post("/api/notes", function(req)
-        local data = req.valid.body        -- checked, trimmed, stripped
+        local data = req.valid.body            -- already validated
         nitr.db:execute(
             "INSERT INTO notes (text, created_at) VALUES (?, ?)",
             { data.text, nitr.time.now() }
         )
-        local note = nitr.db:query_row("SELECT id, text, created_at FROM notes ORDER BY id DESC")
-        return nitr.json(note, 201)
+        return nitr.json(nitr.db:query_row(
+            "SELECT id, text, created_at FROM notes ORDER BY id DESC"
+        ), 201)
     end, {
-        input = { body = NoteInput },
-        doc = {
-            summary = "Create a note", tags = { "notes" },
-            responses = { [201] = { description = "The created note", schema = Note } },
-        },
+        input = { body = notes.NoteInput },    -- checked before the handler runs
+        doc = { summary = "Create a note", tags = { "notes" } },
     })
 end
 ```
 
-```lua
--- app.lua
-require("routes.notes")(app)
-```
-
-Note where the schemas live: in `lib/notes.lua`, loaded at file scope,
-so they are compiled once per state rather than once per request.
-
-## `lib/` — plain modules
-
-Code that does not take `req` goes in a module like `lib/notes.lua`.
-Routes `require` it, and so do the tests, which can unit test it
-without a server:
+Code that does not need `req` goes in `lib/`, where both routes and
+tests can `require` it:
 
 ```lua
 -- lib/notes.lua
@@ -293,28 +198,17 @@ M.NoteInput = nitr.validate.schema({
     text = "string|trim|min_len:1|max_len:500|required",
 }, { title = "NoteInput" })
 
--- Documentation only: responses are never checked.
-M.Note = nitr.validate.schema({
-    id         = "integer|required",
-    text       = "string|required",
-    created_at = "integer|required",
-}, { title = "Note" })
-
 return M
 ```
 
-> [!NOTE] `require` is sandboxed
->
-> It resolves only inside the handler script's directory, and it cannot
-> load native Lua modules. `routes.notes` means `routes/notes.lua`
-> relative to `app.lua` — nothing outside can be reached.
+`require("routes.notes")` loads `routes/notes.lua` relative to
+`app.lua`. It can only load `.lua` files inside that directory. See
+[Validation](./validation/).
 
-## `migrations/` — schema changes
+## `migrations/`
 
-Plain `.sql` files whose names start with a version number, applied in
-numeric order by `nitr migrate`, each inside a transaction. Nitr
-**refuses to start while a migration is pending**, so the schema and the
-code can never quietly disagree.
+SQL files named with a version number (`001_init.sql`), applied in order
+by `nitr migrate`. The server refuses to start while one is pending.
 
 ```sql
 -- migrations/001_init.sql
@@ -325,16 +219,13 @@ CREATE TABLE notes (
 );
 ```
 
-Never edit an applied migration — write a new one. Nitr checksums what
-it applied, so a changed file shows up in `nitr migrate --status` as
-`MODIFIED SINCE APPLIED` rather than being silently re-run. See
+Never edit an applied migration; add a new one. See
 [Database → Migrations](./database#migrations).
 
-## `templates/` — minijinja templates
+## `templates/`
 
-Loaded by `nitr.template:render(name, data)` from `[templating] dir`.
-Without that key the builtin is unavailable: there is no default
-location to guess.
+Minijinja templates for `nitr.template:render(name, data)`. See
+[Templates](./templates).
 
 ::: v-pre
 
@@ -347,21 +238,17 @@ location to guess.
 
 :::
 
-See [Templates](./templates).
+## `public/`
 
-## `public/` — static files
+Static files, served without running Lua. The scaffold mounts the
+folder at `/`, so `public/index.html` answers `/`. See
+[Static files](./static-files).
 
-Served entirely in Rust — content types, ETag, `Last-Modified`, `304`,
-range requests and traversal protection included — without running any
-Lua. The scaffold mounts it at `/`, so `public/index.html` answers the
-root. See [Static files](./static-files).
+## `tests/`
 
-## `tests/` — the test suite
-
-Every `*.lua` file directly in `[testing] dir` is a test file.
-Subdirectories are not searched, so `tests/helpers/` holds modules that
-tests `require` (`require("helpers.notes")`). Tests can also `require`
-the application's own modules (`require("lib.notes")`).
+Every `*.lua` file directly inside `tests/` is a test file. Subfolders
+are not searched, so `tests/helpers/` holds modules that tests
+`require`. Tests can also `require` your app's modules.
 
 ```lua
 -- tests/notes_test.lua
@@ -369,8 +256,8 @@ local t = nitr.test
 local notes = require("lib.notes")
 local fixtures = require("helpers.notes")
 
-t.describe("lib.notes (unit)", function()
-    t.it("trims the text it accepts", function()
+t.describe("lib.notes", function()
+    t.it("trims the text", function()
         local data = notes.NoteInput:check({ text = "  hi  " })
         t.expect(data).to_equal({ text = "hi" })
     end)
@@ -386,81 +273,50 @@ t.describe("notes API", function()
 end)
 ```
 
-Integration tests dispatch through the real router and middleware,
-against a server built from the same `nitr.toml` the production run
-uses, but on a private test database. `t.db.reset` restores that
-database to its migrated state before each test. See
-[Testing](./testing).
+Tests run against a separate test database, never the one in
+`[database] path`. See [Testing](./testing).
 
-## `data/` — mutable state
+## `data/`
 
-The SQLite database and its WAL sidecars live here, git-ignored. The
-scaffold writes only `data/.gitkeep`; `app.db` appears the first time
-you run `nitr migrate`. Keeping mutable state in one directory makes the
-systemd `ReadWritePaths` and the Docker volume obvious, and makes it
-obvious what a backup has to capture.
+Mutable state, ignored by git. `app.db` appears after the first
+`nitr migrate`. Keeping state in one folder makes backups, Docker
+volumes and systemd `ReadWritePaths` simple.
 
-> [!WARNING] WAL changes what "copy the database" means
+> [!WARNING] Back up all three database files
 >
-> With WAL on (the default), the on-disk set is `app.db`, `app.db-wal`
-> and `app.db-shm`. Copying only `app.db` from a running server does
-> **not** give you a consistent snapshot — use `VACUUM INTO` or stop the
-> server.
+> SQLite in WAL mode (the default) uses `app.db`, `app.db-wal` and
+> `app.db-shm`. Copying only `app.db` from a running server is not a
+> consistent backup; use `VACUUM INTO` or stop the server.
 
-## Uploads: where `part:save` may write
+## Uploads
 
-`[multipart] upload_dir` is the root every `part:save(path)` resolves
-inside. It is not scaffolded, because there is no safe directory to
-guess — the same call `[templating] dir` makes. **Unset, `part:save` is
-unavailable.**
+`nitr init` does not create an upload folder. To save uploaded files
+with `part:save`, choose one and set it:
 
 ```toml
 [multipart]
 upload_dir = "uploads"
 ```
 
-The directory must exist and be writable at startup. Paths handed to
-`part:save` are **relative to it**: an absolute path, or one climbing
-out with `..`, is **refused rather than re-rooted**, so where a file
-lands always follows from the source you can read.
+It must exist and be writable, and must **not** be inside the directory
+of `app.lua` or `[templating] dir` (Nitr refuses to start). See
+[`[multipart]`](./configuration/file#multipart) and
+[Requests → File uploads](./requests#file-uploads).
 
-> [!DANGER] Never point it inside the handler script's directory
->
-> `require` is pinned to that directory, so an uploaded `.lua` file
-> would be a loadable module — remote code execution by upload. Nitr
-> **refuses to boot** on that combination. Pointing it inside
-> `[static] dir` only warns, because serving uploads back is a real
-> choice; it is just one to make on purpose.
+## `nitr-types.lua`
 
-Prefer `part.safe_filename` over the raw `part.filename` when building
-the path — it is the client's name reduced to a plain file name, with
-no separators and no control characters. See
-[Requests → Uploads](./requests).
+Type definitions for the whole `nitr.*` API. Editors using the
+[Lua Language Server](https://luals.github.io/) pick it up
+automatically for completion and inline docs.
 
-## `nitr-types.lua` — editor completion
-
-Generated LuaCATS type definitions covering the entire `nitr.*` surface,
-written by `nitr init` and generated from the same API description as
-the [Lua API reference](../api/) — a test fails if an undocumented
-builtin ships. Any editor running the [Lua Language
-Server](https://luals.github.io/) picks the file up automatically and
-gives you completion, signatures and inline documentation.
-
-Regenerate it after upgrading Nitr by running `nitr init` in a scratch
-directory and copying the file over, since `init` refuses to overwrite
-existing files. The current copy is also published in the repository at
+After upgrading Nitr, refresh it by running `nitr init` in an empty
+folder and copying the file over (`init` never overwrites files). It is
+also published at
 [`resources/nitr-types.lua`](https://github.com/nitrweb/nitr/blob/master/resources/nitr-types.lua).
-
-## `.gitignore`
-
-One line, `data/*.db*`, so the database, the WAL and the shared-memory
-file stay out of version control while `data/.gitkeep` keeps the
-directory itself.
 
 ## The minimal layout
 
-`nitr init --minimal` writes four application files instead, plus the
-same generated types:
+`nitr init --minimal` writes only:
 
 ```
 my-app/
@@ -471,7 +327,5 @@ my-app/
 └── nitr-types.lua
 ```
 
-No database, no templates, no config script — and no migration, so
-there is nothing to run before `nitr check`. Good for a single-purpose
-JSON endpoint; grow into the full layout by adding the sections you need
-to `nitr.toml`.
+No database, templates or config script. Add sections to `nitr.toml` as
+you need them.

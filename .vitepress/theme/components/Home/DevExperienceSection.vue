@@ -50,6 +50,7 @@ const STAGES: Stage[] = [
       { kind: 'out', text: 'created config.lua' },
       { kind: 'out', text: 'created app.lua' },
       { kind: 'out', text: 'created routes/notes.lua' },
+      { kind: 'out', text: 'created lib/notes.lua' },
       { kind: 'out', text: 'created migrations/001_init.sql' },
       { kind: 'out', text: 'created tests/notes_test.lua' },
       { kind: 'out', text: 'created nitr-types.lua' },
@@ -94,21 +95,22 @@ const STAGES: Stage[] = [
     icon: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3',
     title: 'Tests that go through the real router',
     blurb:
-      '<code>nitr test</code> runs your Lua tests against an in-process server. Requests dispatch through the actual middleware chain — nothing is mocked.',
+      '<code>nitr test</code> runs unit tests of plain modules and integration tests through the real router, middleware and validation — in-process, no port bound.',
     points: [
-      '<code>describe</code> / <code>it</code> / <code>expect</code>, with <code>before_each</code> and <code>after_each</code> per file.',
-      'A failure names the assertion, both values, and the <code>file:line</code>.',
-      'Never your configured database: tests get a migrated, throwaway one, so a <code>DELETE FROM</code> in <code>before_each</code> is safe.',
-      '<code>--filter</code> runs one test while you iterate.'
+      'A failed request shows its status, body, the handler\'s error and the logs it wrote.',
+      'Mock <code>nitr.fetch</code>, move the clock, override env vars — all reset per test.',
+      'A private, migrated test database; <code>t.db.reset</code> restores it between tests.',
+      '<code>--watch</code>, <code>--bail</code>, <code>--list</code>, and JUnit/JSON reports for CI.'
     ],
     lines: [
       { kind: 'cmd', text: 'nitr test --filter notes' },
-      { kind: 'ok', text: 'notes API › starts empty              ok' },
-      { kind: 'ok', text: 'notes API › creates a note            ok' },
-      { kind: 'err', text: 'notes API › rejects an empty note     FAILED' },
-      { kind: 'dim', text: '  tests/notes_test.lua:22: expected 422, got 201' },
+      { kind: 'ok', text: '  ok   notes API > starts empty  (3 ms)' },
+      { kind: 'ok', text: '  ok   notes API > creates a note  (3 ms)' },
+      { kind: 'err', text: '  FAIL notes API > rejects an empty note  (2 ms)' },
+      { kind: 'dim', text: '       tests/notes_test.lua:22: expected status 422, got 201' },
+      { kind: 'dim', text: '       body: {"id":3,"text":"","created_at":1735689600}' },
       { kind: 'blank', text: '' },
-      { kind: 'out', text: '2 passed, 1 failed' }
+      { kind: 'out', text: '2 passed, 1 failed (1 file(s), 0.04 s)' }
     ]
   },
   {

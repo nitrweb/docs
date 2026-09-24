@@ -1,24 +1,27 @@
 # Logging
 
-What Nitr's logs contain, and what they promise.
+Nitr writes structured logs. At the default level you get one line per
+request, and every line a request produces carries its id, method and
+path.
 
 ## Configuration
 
 ```toml
 [log]
-format = "text"     # "text" for humans, "json" for a log shipper
+format = "text"     # "text" for people, "json" for a log shipper
 level = "info"      # default: info (debug in dev mode)
 ```
 
-`RUST_LOG` overrides `level` and takes the usual `tracing` filter
+`RUST_LOG` overrides `level` and accepts the usual `tracing` filter
 syntax:
 
 ```sh
 RUST_LOG=info,nitr_http=debug nitr run
 ```
 
-`format = "json"` emits one JSON object per line with every field below
-as a real key.
+Text output is coloured only in a terminal; piped output and JSON are
+plain. Set `NO_COLOR` to turn colour off. For production, use
+`format = "json"`: one JSON object per line.
 
 ## Logging from Lua
 
@@ -29,188 +32,162 @@ nitr.log.warn("upstream slow", { host = "api.example.com", ms = 2300 })
 nitr.log.error("payment failed", { order_id = id, reason = reason })
 ```
 
-The second argument's fields become **real keys** in JSON output — not
-interpolated text. That is the difference between a log you can query
-and a log you can only grep:
+The optional second argument is encoded as JSON into a `fields` value.
+Lines from Lua have the target `lua`. In text format:
+
+```text
+INFO request{id=01a0d32f-… method=POST path=/api/orders}:lua_handler: lua: order created fields={"order_id":1042,"total":39.9}
+```
+
+In JSON format:
 
 ```json
 {
-  "timestamp": "2026-08-22T10:15:00Z",
+  "timestamp": "2026-09-24T11:31:53.176814Z",
   "level": "INFO",
-  "message": "order created",
-  "order_id": 1042,
-  "total": 39.9,
-  "id": "018f...",
-  "method": "POST",
-  "path": "/api/orders"
+  "fields": {
+    "message": "order created",
+    "fields": "{\"order_id\":1042,\"total\":39.9}"
+  },
+  "target": "lua",
+  "span": { "name": "lua_handler" },
+  "spans": [
+    {
+      "id": "01a0d32f-…",
+      "method": "POST",
+      "path": "/api/orders",
+      "name": "request"
+    },
+    { "name": "lua_handler" }
+  ]
 }
 ```
 
-Note that `id`, `method` and `path` arrived on their own: every log
-event inside the `request` span carries the span's fields as context, so
-your lines are correlated with the request without you passing anything
-around.
+You never pass the request id around: every line logged while handling
+a request is inside its `request` span.
 
 ## Spans
 
-Nitr instruments the request path with a small, fixed hierarchy. A span
-contributes twice: events inside it carry its fields, and the span emits
-one **close** line when it ends, carrying its fields plus `time.busy` /
+Nitr wraps each request in a small, fixed set of spans. Each span logs
+one `close` line when it ends, with its fields plus `time.busy` and
 `time.idle`.
 
-| Span            | Level | Opened around                                | Fields                                                                        |
-| --------------- | ----- | -------------------------------------------- | ----------------------------------------------------------------------------- |
-| `request`       | INFO  | the whole request, dispatch to response      | `id`, `method`, `path`, `status` (recorded at completion)                     |
-| `pool_checkout` | DEBUG | waiting for a free Lua state                 | `wait_ms`, `outcome` (`hit` / `shed`)                                         |
-| `lua_handler`   | DEBUG | the script's middleware + handler chain      | `elapsed_ms`                                                                  |
-| `db_query`      | DEBUG | one SQL statement (`nitr.db`)                | `kind` (`query` / `query_row` / `query_one` / `execute` / `tx`), `elapsed_ms` |
-| `fetch`         | DEBUG | one outbound network exchange (`nitr.fetch`) | `host`, `method`, `status`, `ip`, `elapsed_ms`                                |
+| Span            | Level | Covers                                     | Fields                                                                            |
+| --------------- | ----- | ------------------------------------------ | --------------------------------------------------------------------------------- |
+| `request`       | INFO  | The whole request                          | `id`, `method`, `path`, `status`                                                  |
+| `pool_checkout` | DEBUG | Waiting for a free Lua state               | `wait_ms`, `outcome` (`hit` or `shed`)                                            |
+| `lua_handler`   | DEBUG | Your middleware and handler                | `elapsed_ms`                                                                      |
+| `db_query`      | DEBUG | One SQL statement                          | `kind` (`query`, `query_row`, `query_one`, `execute`, `tx`), `stmt`, `elapsed_ms` |
+| `fetch`         | DEBUG | One outbound exchange (per redirect/retry) | `host`, `method`, `status`, `ip`, `elapsed_ms`                                    |
 
-Everything nests under `request`, so any line — including a `fetch` SSRF
-denial — arrives already correlated with the request id, method and
-path.
+At `info`, you see one `request` close line per request, which works as
+an access log. At `debug` the inner spans show where the time went:
 
-### What you see at each level
-
-At the default `info` level, exactly **one close line per request**: the
-`request` span, which reads as an access-log entry.
-
-At `debug` (the dev-mode default) the inner spans appear too, and
-decompose where the time went — pool wait vs. script execution vs.
-database vs. upstream calls:
-
-```
-pool_checkout{wait_ms=0 outcome=hit} close
-db_query{kind=query elapsed_ms=3} close
-fetch{host=api.example.com method=GET status=200 ip=93.184.216.34 elapsed_ms=142} close
-lua_handler{elapsed_ms=149} close
-request{id=018f... method=GET path=/dashboard status=200} close time.busy=151ms
+```text
+DEBUG request{…}:pool_checkout{wait_ms=0 outcome="hit"}: close time.busy=38µs time.idle=77µs
+DEBUG request{…}:lua_handler:db_query{kind="query" stmt="26d8ca3f" elapsed_ms=3}: close …
+DEBUG request{…}:lua_handler{elapsed_ms=4}: close time.busy=3.9ms time.idle=564µs
+ INFO request{id=01a0d32f-… method=GET path=/dashboard status=200}: close time.busy=6.7ms time.idle=588µs
 ```
 
-`level = "warn"` silences the spans wholesale; there is no separate
-switch.
+Notes:
 
-### Notes on individual spans
-
-- **`pool_checkout`.** `outcome = "shed"` pairs with the `503` the
-  request was answered with. A damaged state being replaced logs a
-  separate `outcome = "rebuilt"` event from the pool.
-- **`fetch`.** One span **per network exchange** — a call that redirects
-  twice (or retries) produces one span per hop, each with the status
-  that hop answered. `ip` is the address the SSRF-vetted resolution
-  actually connected to: the security-relevant fact for an audit trail.
-- **Durations.** `elapsed_ms` and `wait_ms` are explicit integer fields.
-  Prefer them over parsing the human-formatted `time.busy` /
-  `time.idle`.
+- `stmt` is a short hash of the SQL text, so you can group repeats of
+  the same statement without logging the SQL.
+- `outcome = "shed"` matches a `503` answer: no Lua state became free in
+  time. When a damaged Lua state is replaced, the pool logs a separate
+  event with `outcome = "rebuilt"`.
+- `ip` on `fetch` is the address actually connected to, after the
+  [SSRF checks](./fetch#the-ssrf-policy).
+- Prefer the integer `elapsed_ms` and `wait_ms` fields over parsing
+  `time.busy`.
 
 ## Request ids
 
-Every request gets a UUIDv7, available as `req.id`, echoed to the client
-as `X-Request-ID`, and present on every log line for that request.
+Every request gets a UUIDv7. It is `req.id` in Lua, sent back to the
+client as `X-Request-ID`, and on every log line for that request.
 
 ```lua
 return nitr.error(500, { code = "INTERNAL", request_id = req.id })
 ```
 
-A user quoting that id lets you find the exact failure immediately.
-
-```toml
-trust_request_id = false     # default
-```
-
-Set it to `true` **only behind a proxy** that sets or sanitizes the
-header — otherwise a client chooses its own id, and can collide with
-someone else's on purpose.
+When a user quotes that id, you can find the exact failure. To reuse an
+id set by your proxy, see `trust_request_id` in the
+[configuration reference](./configuration/file#top-level).
 
 ## Redaction rules
 
-Enforced by review. The vocabulary of span fields is deliberately
-closed:
+What Nitr itself logs is limited to hosts, methods, status codes, ids,
+durations and counts:
 
-- **No SQL text and no bind values.** Statements can embed secrets, and
-  logs outlive them. `db_query` carries only the statement kind and its
-  duration.
-- **No full URLs.** Query strings carry tokens. `fetch` carries the host
-  (and connected IP), never the path or query.
-- **No header values, no cookie or session material**, anywhere.
-- Hosts, methods, status codes, ids, durations and counts are the whole
-  vocabulary. A new span field must fit that list or state why not.
+- **No SQL text and no bound values.** `db_query` logs only the kind, a
+  hash of the statement and the duration.
+- **No full URLs.** Query strings carry tokens. `fetch` logs the host and
+  connected IP, never the path or query.
+- **No header values, cookies or session data.**
 
-> [!WARNING] Your own logs are your own responsibility
+Control characters in a log message (such as a `\n` from a request path)
+are escaped, so request data cannot fake an extra log line.
+
+> [!WARNING] Your own fields are your responsibility
 >
-> These rules bind what **Nitr** emits. `nitr.log.*` will faithfully log
-> whatever you hand it:
+> `nitr.log.*` logs whatever you pass it.
 >
 > ```lua
 > nitr.log.info("login", { password = form.password })   -- ❌ never
 > nitr.log.info("login", { user_id = user.id })          -- ✅
 > ```
 
-> [!NOTE] A message cannot forge a log line
->
-> The message you pass is often request data, and the text subscriber
-> writes it out verbatim — so control characters in it are escaped
-> before it is emitted: a `\n` in a request path cannot append a
-> plausible-looking second line, and a `\r` or an ANSI escape cannot
-> overwrite or recolour one on a terminal. Tabs survive, being
-> formatting rather than line structure. The JSON format escapes on its
-> own, so both agree.
->
-> This covers the message. **Field values are still yours** — see the
-> warning above.
-
 ## Error logging
 
-A handler failure is logged **before** your `on_error` runs, structured,
-with `error.kind`, `error.source`, `error.line` and `error.module` — so
-handling an error never hides it from the logs.
+A failing handler is logged **before** your `on_error` runs, so handling
+an error never hides it from the logs:
 
 ```json
 {
   "level": "ERROR",
-  "message": "handler failed",
-  "error.kind": "lua",
-  "error.message": "attempt to index a nil value (local 'user')",
-  "error.source": "app.lua",
-  "error.line": 42,
-  "id": "018f...",
-  "method": "GET",
-  "path": "/dashboard"
+  "fields": {
+    "message": "handler failed: attempt to index a nil value (local 'user')",
+    "error.kind": "lua",
+    "error.source": "app.lua",
+    "error.line": 42
+  },
+  "target": "nitr_http::handler",
+  "span": {
+    "id": "01a0d32f-…",
+    "method": "GET",
+    "path": "/dashboard",
+    "name": "request"
+  }
 }
 ```
 
-## Production setup
+`error.module` names the failing module (such as `nitr.db`) when it is known. In dev mode
+the stack traceback follows at `debug` level.
 
-```toml
-[log]
-format = "json"
-level = "info"
-```
+## What to alert on
 
-One object per line, ready for a shipper. In a terminal, output is
-coloured; through a pipe it is byte-clean plain text, and JSON never
-carries ANSI. `NO_COLOR` disables colouring explicitly.
-
-**Fields worth alerting on:**
-
-| Signal          | Field                                                    |
+| Signal          | Where to look                                            |
 | --------------- | -------------------------------------------------------- |
 | Error rate      | `level = "ERROR"`, or `status >= 500` on `request`       |
 | Latency         | `time.busy` on `request`                                 |
 | Overload        | `outcome = "shed"` on `pool_checkout`, or `status = 503` |
 | Rate limiting   | `status = 429`                                           |
 | Upstream health | `status` and `elapsed_ms` on `fetch`                     |
-| Recycled states | `outcome = "rebuilt"` from the pool                      |
+| Recycled states | `outcome = "rebuilt"`                                    |
 
 ## Debugging
 
-`nitr.dbg(value)` pretty-prints a value's structure to the log and
-returns it unchanged, so it can be dropped into an expression:
+`nitr.dbg(value)` prints a value's structure to the log at `debug` level
+and returns it unchanged, so it fits inside an expression:
 
 ```lua
 local data = nitr.dbg(req:json())        -- logs it, then carries on
 ```
 
-It needs `"dbg"` in `[std] features`. Keep it out of production
-configurations — it is a debugging tool, and it will happily print a
-password field.
+It needs `"dbg"` in `[std] features`. Leave it out of production: it
+prints everything, passwords included.
+
+In `nitr test`, each test's log lines are captured and printed only when
+it fails; `t.logs()` returns them for assertions. See
+[Testing](./testing#logs).

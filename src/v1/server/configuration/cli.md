@@ -1,127 +1,57 @@
 # Command-Line Flags
 
-CLI flags are the **strongest** configuration layer: they beat
-`NITR_*` environment variables, which beat `nitr.toml`, which beats the
-built-in defaults.
-
-Nitr keeps the flag surface deliberately small. Anything that belongs in
-a deployment's configuration belongs in [`nitr.toml`](./file) or an
-[environment variable](./env), where it can be reviewed and diffed.
+Flags are the strongest configuration layer: they beat `NITR_*`
+environment variables, which beat `nitr.toml`, which beats the built-in
+defaults. The flag list is short on purpose; everything else lives in
+[`nitr.toml`](./file) or [environment variables](./env).
 
 ## Global flags
 
-Declared globally, so they are accepted on every command.
+Accepted by every command.
 
-| Flag                    | Description                                                                                                                                  |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-c`, `--config <PATH>` | The TOML configuration file. Default: `./nitr.toml` — and if that file does not exist, Nitr runs with built-in defaults rather than failing. |
-| `--dev`                 | Development mode: hot reload and error details in responses. Equivalent to `dev_mode = true` and to the `nitr dev` command.                  |
-| `-v`, `--version`       | Print the version and exit.                                                                                                                  |
-| `-h`, `--help`          | Print help. Works per command: `nitr build --help`.                                                                                          |
-
-```sh
-nitr --config /srv/app/nitr.toml run
-nitr -c /srv/app/nitr.toml --dev
-```
-
-> [!NOTE] `init` and `hash-password` ignore `--config`
->
-> Both return before the configuration is loaded — `init` is what
-> _writes_ a `nitr.toml`, and `hash-password` has to work when the one
-> on disk is broken. `--config` is accepted on them because it is a
-> global flag, and has no effect. Every other command loads and
-> validates the configuration first.
-
-## Per-command flags
-
-| Command         | Flag                    | Description                                                                    |
-| --------------- | ----------------------- | ------------------------------------------------------------------------------ |
-| `check`         | `--print-config`        | Print the effective configuration after file + env + flag layering, then exit. |
-| `test`          | `--filter <SUBSTRING>`  | Run only tests whose name or file name contains the substring.                 |
-| `test`          | `--bail`                | Stop at the first failing test.                                                |
-| `test`          | `--list`                | Print every test with its `file:line`, without running any.                    |
-| `test`          | `--watch`               | Run again whenever a Lua source, template or test file changes, until Ctrl-C.  |
-| `test`          | `--reporter <FORMAT>`   | `pretty` (default), `json` or `junit`.                                         |
-| `test`          | `-o`, `--output <FILE>` | Write the JSON/JUnit report to a file instead of standard output.              |
-| `test`          | `--nocapture`           | Stream log lines instead of printing them under a failed test.                 |
-| `migrate`       | `--status`              | Report applied, pending and modified migrations, applying nothing.             |
-| `init`          | `[DIR]`                 | Directory to scaffold into. Default: the current directory.                    |
-| `init`          | `--minimal`             | Write the bare-minimum scaffold instead of the full layout.                    |
-| `build`         | `-o`, `--output <PATH>` | **Required.** Path of the single-file artifact to write.                       |
-| `hash-password` | —                       | None. The password comes from a prompt or from stdin, never from `argv`.       |
-
-`run`, `dev` and `reload` have no flags of their own either: everything
-they need is in the configuration.
-
-Full descriptions of each command are in [CLI commands](../cli).
-
-## Signals
-
-Not flags, but the other half of the runtime control surface:
-
-| Signal               | Effect                                                                                                                                                                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SIGHUP`             | Zero-downtime reload: rebuilds the Lua runtime pool and, with TLS enabled, re-reads the certificate and key. The process, listener and keep-alive connections survive. Also reachable as [`nitr reload`](../cli#reload). |
-| `SIGTERM` / `SIGINT` | Graceful shutdown: stop accepting → flip `/readyz` to `503 draining` → let in-flight work finish within `[shutdown] grace` → exit. A truncated drain exits non-zero.                                                     |
-
-## Worked examples
-
-**Run a specific application from anywhere.** Paths inside the file
-resolve against the file's own directory:
+| Flag                    | Description                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `-c`, `--config <PATH>` | The configuration file. Default: `./nitr.toml`. If that file does not exist, the defaults are used. |
+| `--dev`                 | Development mode. Same as `nitr dev` or `dev_mode = true`.                                          |
+| `-v`, `--version`       | Print the version and exit.                                                                         |
+| `-h`, `--help`          | Print help. Also per command: `nitr build --help`.                                                  |
 
 ```sh
 nitr -c /srv/app/nitr.toml run
-```
-
-**Develop against production-shaped configuration**, without editing it:
-
-```sh
 nitr --dev -c nitr.production.toml
 ```
 
-**Validate in CI**, no port bound:
+`--config` does not change how relative paths inside the file resolve:
+they are relative to the working directory. See
+[nitr.toml](./file). `init` and `hash-password` never read the
+configuration, so `--config` has no effect on them.
 
-```sh
-nitr -c nitr.toml check
-```
+## Per-command flags
 
-**Debug the layering**, when a value is not what you expected:
+| Command   | Flag                    | Description                                                         |
+| --------- | ----------------------- | ------------------------------------------------------------------- |
+| `check`   | `--print-config`        | Print the final configuration after all layers, then exit.          |
+| `test`    | `--filter <SUBSTRING>`  | Run only tests whose name or file name contains the text.           |
+| `test`    | `--bail`                | Stop at the first failing test.                                     |
+| `test`    | `--list`                | List tests with their `file:line`, without running them.            |
+| `test`    | `--watch`               | Run again on file changes, until Ctrl-C.                            |
+| `test`    | `--reporter <REPORTER>` | `pretty` (default), `json` or `junit`.                              |
+| `test`    | `-o`, `--output <FILE>` | Write the JSON/JUnit report to a file.                              |
+| `test`    | `--nocapture`           | Print log lines as they happen.                                     |
+| `openapi` | `-o`, `--output <PATH>` | Write the document to a file instead of stdout.                     |
+| `openapi` | `--check`               | Exit 1 if the generated document differs from the saved one.        |
+| `openapi` | `--ui <DIR>`            | Write a static Swagger UI site.                                     |
+| `migrate` | `--status`              | Show applied, pending and modified migrations without applying any. |
+| `init`    | `[DIR]`                 | Directory to create the app in. Default: the current directory.     |
+| `init`    | `--minimal`             | Write the bare-minimum app.                                         |
+| `build`   | `-o`, `--output <PATH>` | **Required.** Path of the executable to write.                      |
 
-```sh
-NITR_WORKERS=8 nitr check --print-config | grep workers
-# workers = 8
-```
+`run`, `dev`, `reload` and `hash-password` have no flags of their own.
+Each command is described in [CLI commands](../cli).
 
-**Run one test while iterating:**
+## Signals
 
-```sh
-nitr test --filter "rejects an empty note"
-nitr test --filter notes --watch --bail   # re-run on save, stop at the first failure
-```
-
-**Mint a credential before the application exists.** This is the one
-command that needs neither an application nor a configuration file:
-
-```sh
-printf %s "$ADMIN_PASSWORD" | nitr hash-password
-# $argon2id$v=19$m=19456,t=2,p=1$...
-```
-
-Store that string; never store the password. See
-[Passwords](../passwords).
-
-**Point a deployment at its own certificate**, keeping one `nitr.toml`
-for every environment:
-
-```sh
-NITR_TLS_ENABLED=true \
-NITR_TLS_CERT=/etc/nitr/tls/fullchain.pem \
-NITR_TLS_KEY=/etc/nitr/tls/privkey.pem \
-  nitr run
-```
-
-**Build the deployable artifact:**
-
-```sh
-nitr -c nitr.production.toml build --output myapp
-```
+| Signal               | Effect                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `SIGHUP`             | Reload the Lua scripts (and TLS certificate) without dropping connections. Same as [`nitr reload`](../cli#reload).       |
+| `SIGTERM` / `SIGINT` | Graceful shutdown: stop accepting, report `/readyz` as `503`, finish in-flight requests within `[shutdown] grace`, exit. |

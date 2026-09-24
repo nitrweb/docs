@@ -1,18 +1,12 @@
 # Examples
 
-Nitr ships **17 runnable examples**, one per subject. Each is a small
-`main.rs` plus the Lua it serves, and every one runs with a single
-command against a real server you can `curl`.
+Nitr ships **17 runnable examples**, one per topic. Each is a small
+`main.rs` plus the Lua it serves, and runs with one command against a
+real server you can `curl`.
 
 Browse them on GitHub:
 **[crates/nitr/examples](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples)**
-
-> [!TIP] `examples/` at the repo root is a symlink
->
-> The files live in `crates/nitr/examples/`. The root `examples/` entry
-> is a convenience symlink, which GitHub shows as a link rather than a
-> browsable folder — so the URL above is the one to follow. Locally
-> either path works.
+(the root `examples/` folder is a symlink to it).
 
 ## Run them
 
@@ -22,17 +16,12 @@ cd nitr
 cargo run --example hello
 ```
 
-Every command below runs **from the repository root**. Every path inside
-an example — `handler_script`, a static directory, a migrations folder —
-is written relative to that root, so the working directory matters.
+Run every command **from the repository root**: the paths inside each
+example are relative to it.
 
-> [!NOTE] Some examples need a Cargo feature
->
-> The `nitr` crate ships with `default = []`: nothing optional is
-> compiled in unless you ask. An example that needs a feature declares
-> it, and Cargo refuses to run it otherwise, naming what is missing. The
-> commands below carry the right flag; `--features all` works for every
-> one of them.
+Some examples need a Cargo feature, and Cargo names the missing one if
+you forget it. The commands below include the right flag, and
+`--features all` works for all of them.
 
 | Example                     | Needs                          |
 | --------------------------- | ------------------------------ |
@@ -44,9 +33,7 @@ is written relative to that root, so the working directory matters.
 | `validation`                | `multipart` (the upload route) |
 | `openapi`                   | `swagger`                      |
 
-Everything else — `hello`, `router`, `extension`, `streaming`, `sse`,
-`static-site` and `observability` — builds on a plain `cargo run`.
-`app-package` is not a Cargo example at all; it runs through the CLI.
+The rest need no flag. `app-package` runs through the CLI instead.
 
 ## Where to start
 
@@ -72,9 +59,8 @@ Everything else — `hello`, `router`, `extension`, `streaming`, `sse`,
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/hello)
 · the minimal embedding
 
-A Lua-scripted backend with a custom Rust extension module mounted at
-`nitr.ext.hello`. **Start here** if you are embedding Nitr for the first
-time.
+A Lua backend with one custom Rust module at `nitr.ext.hello`. **Start
+here** if you are embedding Nitr.
 
 ```sh
 cargo run --example hello
@@ -86,9 +72,8 @@ curl 'http://127.0.0.1:3000/?name=Nitr'
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/router)
 · routing and middleware
 
-`nitr.app()` routes with path parameters, global and per-route
-middleware, response helpers, signed cookies and content negotiation —
-plus streaming and SSE endpoints in the same app.
+Path parameters, global and per-route middleware, response helpers,
+signed cookies, content negotiation, and streaming and SSE endpoints.
 
 ```sh
 cargo run --example router
@@ -101,18 +86,14 @@ curl 'http://127.0.0.1:3000/data' -H 'accept: text/html'
 curl -N 'http://127.0.0.1:3000/events'         # Server-Sent Events
 ```
 
-Pairs with [Routing](./server/routing) and
-[Middleware](./server/middleware).
+See [Routing](./server/routing) and [Middleware](./server/middleware).
 
 ## `stdlib`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/stdlib)
 · a tour of `nitr.*`
 
-Everything Nitr offers Lua lives on the single `nitr` namespace table —
-response helpers, JSON, logging, and the crypto/auth primitives. There
-are no other globals, so scripts never collide with the Lua standard
-library.
+Response helpers, JSON, logging, and the crypto and auth functions.
 
 ```sh
 cargo run --features crypto,fetch --example stdlib
@@ -127,18 +108,16 @@ curl -c /tmp/jar -X POST 'http://127.0.0.1:3000/login'
 curl -b /tmp/jar 'http://127.0.0.1:3000/profile'
 ```
 
-Pairs with the [Lua API reference](./api/).
+See the [Lua API reference](./api/).
 
 ## `validation`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/validation)
 · route input, checked before the handler
 
-A notes API whose routes declare what they accept. Bodies, query
-strings, path parameters and headers are checked in Rust before any Lua
-runs; the handlers read `req.valid` and contain no validation code. It
-also covers a custom format, an app-wide `on_invalid`, and an HTML form
-that carries an image upload.
+A notes API whose routes declare what they accept, so the handlers read
+`req.valid` and contain no validation code. Also shows a custom format,
+an app-wide `on_invalid`, and an HTML form with an image upload.
 
 ```sh
 cargo run --example validation --features all
@@ -154,7 +133,7 @@ curl -s -X POST 'http://127.0.0.1:3000/profile' \
      -F name='Ada' -F email='ADA@EXAMPLE.COM' -F avatar=@photo.png
 ```
 
-Pairs with [Validation](./server/validation/).
+See [Validation](./server/validation/).
 
 ## `openapi`
 
@@ -162,8 +141,7 @@ Pairs with [Validation](./server/validation/).
 · the same API, documented
 
 The `validation` example plus `app:doc` and per-route `doc` tables: an
-OpenAPI 3.1 document at `/openapi.json` and a Swagger UI page at
-`/docs`, both generated from the route table and served from the binary.
+OpenAPI 3.1 document at `/openapi.json` and Swagger UI at `/docs`.
 
 ```sh
 cargo run --example openapi --features swagger
@@ -172,18 +150,16 @@ curl -s 'http://127.0.0.1:3000/openapi.json' | jq .info
 xdg-open 'http://127.0.0.1:3000/docs'
 ```
 
-Pairs with [OpenAPI](./server/openapi/).
+See [OpenAPI](./server/openapi/).
 
 ## `extension`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/extension)
 · your own Rust at `nitr.ext.*`
 
-The boundary that lets you build _Nitr plus your own domain functions_
-without forking Nitr. A **stateful** `kv` module shares one handle across
-every Lua state; a **stateless** `slug` module does string work that
-would be slow in Lua. A third-party extension crate is nothing more than
-a public function shaped like `kv_module`.
+Add your own Rust functions without forking Nitr. A `kv` module shares
+one handle across every Lua state; a `slug` module does string work
+that would be slow in Lua.
 
 ```sh
 cargo run --example extension
@@ -193,22 +169,19 @@ curl -X PUT 'http://127.0.0.1:3000/inventory/widgets' -d '7'
 curl 'http://127.0.0.1:3000/slugify?title=Hello%20World'
 ```
 
-Pairs with [Extension modules](./library/extension-modules).
+See [Extension modules](./library/extension-modules).
 
 ## `data-io`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/data-io)
-· SQLite, migrations, cache, resilient fetch
+· SQLite, migrations, cache, fetch
 
-SQLite that behaves under concurrency, SQL migrations, the shared
-`nitr.cache`, and a `fetch` that retries, is bounded per request, and
-cannot be tricked into a private address. It runs its own flaky upstream
-that fails one request in three, so the retry path is visible rather
-than theoretical.
+SQLite with migrations, the shared `nitr.cache`, and a `fetch` that
+retries and refuses private addresses. It runs its own flaky upstream so
+you can see the retries.
 
 ```sh
-# Migrations are an explicit step: the server refuses to start with a
-# pending one.
+# Apply the migrations first: the server will not start with one pending.
 cargo run -- migrate --status -c crates/nitr/examples/data-io/nitr.toml
 cargo run -- migrate          -c crates/nitr/examples/data-io/nitr.toml
 
@@ -220,7 +193,7 @@ curl -s 'http://127.0.0.1:3000/upstream'     # retried if flaky
 curl -s 'http://127.0.0.1:3000/ssrf'         # metadata endpoint refused
 ```
 
-Pairs with [Database](./server/database), [Cache](./server/cache) and
+See [Database](./server/database), [Cache](./server/cache) and
 [Outbound HTTP](./server/fetch).
 
 ## `aggregate`
@@ -228,9 +201,9 @@ Pairs with [Database](./server/database), [Cache](./server/cache) and
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/aggregate)
 · concurrency and transactions
 
-`nitr.await_all` fans out concurrent `nitr.fetch` requests, and
-`nitr.db:transaction` groups SQLite statements atomically — including a
-transfer that rolls back when the balance will not cover it.
+`nitr.await_all` runs several `nitr.fetch` calls at once, and
+`nitr.db:transaction` groups statements, including a transfer that rolls
+back when the balance is too low.
 
 ```sh
 cargo run --features db,fetch --example aggregate
@@ -240,40 +213,37 @@ curl -X POST 'http://127.0.0.1:3000/transfer?from=alice&to=bob&amount=30'
 curl -X POST 'http://127.0.0.1:3000/transfer?from=alice&to=bob&amount=9999'
 ```
 
-> [!WARNING] It opts into private-network fetches
+> [!WARNING] Do not copy its fetch policy
 >
-> The fetch policy refuses loopback targets by default. This example
-> aggregates _itself_ over loopback, so it explicitly allows them. Do not
-> copy that setting into an application that fetches user-supplied URLs —
-> see [Outbound HTTP](./server/fetch).
+> This example fetches from itself over loopback, so it allows private
+> addresses. Do not do that in an app that fetches user-supplied URLs.
+> See [Outbound HTTP](./server/fetch).
 
 ## `streaming`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/streaming)
 · streaming response bodies
 
-A writer-callback CSV download and a coroutine-iterator body. Chunks
-reach the client as they are produced, with real backpressure when the
-client reads slowly.
+A CSV download written chunk by chunk, and a coroutine-based body. A
+slow client slows the producer down instead of filling memory.
 
 ```sh
 cargo run --example streaming
 
 curl 'http://127.0.0.1:3000/report.csv'                  # writer callback
 curl 'http://127.0.0.1:3000/chunks'                      # coroutine iterator
-curl --limit-rate 1K 'http://127.0.0.1:3000/report.csv'  # backpressure
+curl --limit-rate 1K 'http://127.0.0.1:3000/report.csv'  # slow client
 ```
 
-Pairs with [Streaming & SSE](./server/streaming).
+See [Streaming & SSE](./server/streaming).
 
 ## `sse`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/sse)
 · Server-Sent Events
 
-A live ticker paced by a custom Rust `time` module mounted through the
-`module()` extension point — the async-sleep pattern that makes pacing
-cost no execution budget.
+A live ticker paced by a custom async Rust `time` module, so waiting
+between events does not use up the execution time limit.
 
 ```sh
 cargo run --example sse
@@ -283,12 +253,12 @@ curl -N 'http://127.0.0.1:3000/events'
 ## `basic-auth`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/basic-auth)
-· HTTP Basic auth, done right
+· HTTP Basic auth
 
-`nitr.auth.basic` for the header, `nitr.crypto.password_verify` for the
-stored argon2id hash, and `nitr.crypto.password_verify_dummy` for the
-unknown-user branch that would otherwise leak the account list through
-response time. The credentials in `app.lua` came from
+`nitr.auth.basic` reads the header, `nitr.crypto.password_verify` checks
+the stored argon2id hash, and `nitr.crypto.password_verify_dummy` makes
+an unknown user take as long as a wrong password, so response times do
+not reveal which users exist. The stored hashes came from
 `nitr hash-password`.
 
 ```sh
@@ -298,22 +268,17 @@ curl -u 'ada:lovelace' 'http://127.0.0.1:3000/private'   # 200
 curl -u 'ada:wrong'    'http://127.0.0.1:3000/private'   # 401
 curl -u 'nobody:wrong' 'http://127.0.0.1:3000/private'   # 401, same cost
 curl -i 'http://127.0.0.1:3000/private'                  # 401 + WWW-Authenticate
-
-# The two paths that must cost the same. A naive handler answers the
-# second in microseconds, and that gap is the user list.
-curl -s -o /dev/null -w '%{time_total}\n' -u 'ada:wrong'    'http://127.0.0.1:3000/private'
-curl -s -o /dev/null -w '%{time_total}\n' -u 'nobody:wrong' 'http://127.0.0.1:3000/private'
 ```
 
-Pairs with [Passwords & Basic Auth](./server/passwords).
+See [Passwords & Basic Auth](./server/passwords).
 
 ## `bearer-auth`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/bearer-auth)
 · shared-token auth
 
-`nitr.auth.bearer` for the header and `nitr.crypto.constant_time_eq` for
-the comparison — the two-line pattern for protecting an internal API.
+`nitr.auth.bearer` reads the header and `nitr.crypto.constant_time_eq`
+compares the token: the two-line pattern for an internal API.
 
 ```sh
 cargo run --features crypto --example bearer-auth
@@ -324,72 +289,60 @@ curl -H "Authorization: Bearer wrong"  'http://127.0.0.1:3000/private'  # 401
 curl -i 'http://127.0.0.1:3000/private'                # 401 + WWW-Authenticate
 ```
 
-Pairs with [JWT](./server/jwt) and
-[Crypto & Auth](./server/crypto-auth).
+See [JWT](./server/jwt) and [Crypto & Auth](./server/crypto-auth).
 
 ## `tls`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/tls)
 · HTTPS in-process
 
-The same server, one `[tls]` section away from speaking HTTPS. The
-example mints a throwaway self-signed certificate on every run, so there
-is nothing to install and no key material in the repository — that is
-the _only_ example-specific part. A real deployment points `[tls] cert`
-and `key` at files an ACME client produced and changes nothing else.
+A server with a `[tls]` section. The example creates a throwaway
+self-signed certificate on each run; a real deployment points
+`[tls] cert` and `key` at real certificate files.
 
 ```sh
 cargo run --example tls --features tls
 
-# `-k` because the certificate is self-signed and trusted by nobody.
-curl -k 'https://127.0.0.1:3000/'
+curl -k 'https://127.0.0.1:3000/'        # -k: the certificate is self-signed
 curl -k 'https://127.0.0.1:3000/whoami'
-
-# …and the failure that matters: plaintext to a TLS port is refused,
-# never quietly served in the clear.
-curl 'http://127.0.0.1:3000/'
+curl 'http://127.0.0.1:3000/'            # plain HTTP is refused
 ```
 
-Pairs with [TLS](./server/tls).
+See [TLS](./server/tls).
 
 ## `standards`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/standards)
 · the rest of HTTP, in Rust
 
-Range requests, response compression, CORS, form and multipart bodies,
-and conditional dynamic responses. Everything is enforced in Rust; the
-Lua side only declares intent — which resource identity, where an upload
-goes.
+Range requests, compression, CORS, form and multipart bodies, and
+conditional responses, all handled in Rust.
 
 ```sh
 cargo run --features compression,multipart --example standards
 
-# Range: a media player seeking into a file.
 curl -i -H 'Range: bytes=0-15' 'http://127.0.0.1:3000/media/alphabet.txt'
 curl -i -H 'Range: bytes=9999-' 'http://127.0.0.1:3000/media/alphabet.txt'  # 416
 
-# Precompressed sidecar: app.js.gz served as-is, no runtime CPU.
+# app.js.gz is sent as-is, with no compression work at request time.
 curl -i --compressed 'http://127.0.0.1:3000/media/app.js'
 
-# CORS: a preflight answered in Rust, without a Lua state.
+# A CORS preflight, answered without running Lua.
 curl -i -X OPTIONS 'http://127.0.0.1:3000/api/notes' \
      -H 'Origin: https://app.example' \
      -H 'Access-Control-Request-Method: POST' \
      -H 'Access-Control-Request-Headers: content-type'
 ```
 
-Pairs with [Responses](./server/responses) and
-[Requests](./server/requests).
+See [Responses](./server/responses) and [Requests](./server/requests).
 
 ## `static-site`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/static-site)
 · static and dynamic in one process
 
-Files under `public/` are served entirely in Rust — ETag/304, content
-types, traversal protection — while `/api/*` routes run in Lua. A second
-mount shows per-mount options.
+Files under `public/` are served in Rust while `/api/*` routes run in
+Lua. A second mount shows per-mount options.
 
 ```sh
 cargo run --example static-site
@@ -400,16 +353,15 @@ curl -i 'http://127.0.0.1:3000/api/time'          # Lua route
 curl -i 'http://127.0.0.1:3000/../etc/passwd'     # 404, not a leak
 ```
 
-Pairs with [Static files](./server/static-files).
+See [Static files](./server/static-files).
 
 ## `observability`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/observability)
 · logs, request ids, limits
 
-Structured logging from Lua (`nitr.log.*`), request ids on every
-response, per-client rate limiting and request-size limits — the last
-three enforced in Rust before Lua runs.
+Structured logging from Lua, a request id on every response, per-client
+rate limiting and request-size limits.
 
 ```sh
 RUST_LOG=info,lua=debug cargo run --example observability
@@ -420,21 +372,23 @@ for i in $(seq 1 6); do
 done                                     # 5 pass, then 429
 ```
 
-Pairs with [Logging](./server/logging).
+See [Logging](./server/logging).
 
 ## `app-package`
 
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/app-package)
-· the CLI layout, not an embedding
+· the CLI layout, no Rust
 
-The conventional layout the `nitr` CLI works with — no `main.rs` at all:
+What an application looks like when you use the `nitr` binary instead
+of embedding it:
 
 ```
 app-package/
 ├── nitr.toml       server + app configuration
 ├── app.lua         routes and middleware (returns nitr.app())
 ├── config.lua      runs once at startup; result → nitr.cfg
-├── public/         static files, served by Rust
+├── lib/            plain Lua modules the app `require`s
+├── public/         static files
 └── tests/          *.lua files for `nitr test`
 ```
 
@@ -444,8 +398,6 @@ cargo run -p nitr-cli -- -c crates/nitr/examples/app-package/nitr.toml test
 cargo run -p nitr-cli -- -c crates/nitr/examples/app-package/nitr.toml run
 ```
 
-In your own project you would simply run `nitr check` / `nitr test` /
-`nitr dev` next to `nitr.toml` — scaffold one with
-[`nitr init`](./server/cli#init).
-
-Pairs with [Project layout](./server/project-layout).
+In your own project, run `nitr check`, `nitr test` or `nitr dev` next to
+`nitr.toml`. [`nitr init`](./server/cli#init) creates one. See [Project
+layout](./server/project-layout).

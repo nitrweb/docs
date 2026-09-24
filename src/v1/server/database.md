@@ -1,9 +1,8 @@
 # Database
 
-`nitr.db` is SQLite — bundled, not linked from the system — with WAL, a
-busy timeout and foreign keys on by default. Queries run on a blocking
-thread pool with a prepared-statement cache, so they never block the
-async runtime.
+`nitr.db` is SQLite, built into the binary. WAL mode, a busy timeout and
+foreign keys are on by default. Queries run on a background thread pool,
+so a slow query delays its own request, not the server.
 
 ## Enabling it
 
@@ -15,12 +14,12 @@ path = "data/app.db"
 features = ["json", "http", "log", "db"]     # ← "db"
 ```
 
-Both are needed. Listing `"db"` without a `[database]` section is a
-startup error, not a surprise at the first query.
+You need both. Listing `"db"` without a `[database]` section fails at
+startup.
 
 ## Querying
 
-Four methods, differing only in what they give back:
+Four methods, differing only in what they return:
 
 ```lua
 -- All rows: an array of column→value tables
@@ -32,41 +31,27 @@ end
 -- The first row, or nil when there are none
 local user = nitr.db:query_row("SELECT * FROM users WHERE id = ?", { 42 })
 
--- The one row a query must return: raises on none, and on more than one
+-- Exactly one row: raises on none, and on more than one
 local total = nitr.db:query_one("SELECT count(*) AS n FROM users").n
 
--- A statement: returns the affected row count
+-- A statement: returns the number of affected rows
 local n = nitr.db:execute("UPDATE users SET active = 0 WHERE last_seen < ?", { cutoff })
 ```
 
-> [!WARNING] `query_one` returns a row, not a scalar
+> [!WARNING] `query_one` returns a row, not a value
 >
-> It is "exactly one row" — not "the first column". The result is a
-> column→value table like `query_row`'s, and it **raises** when the
-> query returns no rows or more than one. So a single-column query
-> still needs the column read out, and an expression needs an alias,
-> because SQLite otherwise names the column after the expression text:
->
-> ```lua
-> local row = nitr.db:query_one("SELECT count(*) AS n FROM users")
-> local count = row.n
-> ```
->
-> Reach for it when "exactly one" is the invariant you want enforced —
-> a lookup by primary key that must exist. Where "none" is a normal
-> answer, `query_row` and `if not row then` is the shape.
+> The result is a column→value table, so read the column out and give
+> expressions an alias (`count(*) AS n`). Use it where a missing row is a
+> bug. Where "none" is a normal answer, use `query_row` and check for
+> `nil`.
 
-> [!NOTE] `query` will not hand you an unbounded result
->
-> Every row is materialized in memory and then copied into the Lua
-> state, so a result larger than `[database] max_rows` (10 000 by
-> default) **raises** rather than being silently truncated — a
-> truncation would be a wrong answer that looks like a right one. Page
-> with `LIMIT`/`OFFSET`, or raise the setting if you mean it.
+`query` raises, rather than truncating, when a result has more rows than
+`[database] max_rows` (10 000 by default). Page with `LIMIT`/`OFFSET`, or
+raise the setting.
 
 ## Parameters
 
-Always pass values as parameters. Never build SQL by concatenation.
+Always pass values as parameters. Never build SQL by joining strings.
 
 ```lua
 -- ✅
@@ -76,102 +61,64 @@ nitr.db:query_row("SELECT * FROM users WHERE email = ?", { email })
 nitr.db:query_row("SELECT * FROM users WHERE email = '" .. email .. "'")
 ```
 
-Parameters are positional `?` placeholders, supplied as an array:
+Parameters are positional `?` placeholders, passed as an array. A `LIKE`
+pattern is a parameter too: build it in Lua and pass the finished string.
 
 ```lua
-nitr.db:execute(
-    "INSERT INTO notes (text, author, created_at) VALUES (?, ?, ?)",
-    { data.text, req.user, nitr.time.now() }
-)
+nitr.db:query("SELECT * FROM users WHERE name LIKE ?", { "%" .. q .. "%" })
 ```
-
-> [!TIP] `LIKE` patterns are parameters too
->
-> ```lua
-> nitr.db:query("SELECT * FROM users WHERE name LIKE ?", { "%" .. q .. "%" })
-> ```
->
-> Build the pattern in Lua; pass the finished string as a parameter.
 
 ## Transactions
 
 ```lua
-local id = nitr.db:transaction(function(tx)
+local order_id = nitr.db:transaction(function(tx)
     tx:execute("INSERT INTO orders (user_id, total) VALUES (?, ?)", { user_id, total })
-    local order_id = tx:query_one("SELECT last_insert_rowid() AS id").id
+    local id = tx:query_one("SELECT last_insert_rowid() AS id").id
 
     for _, item in ipairs(items) do
         tx:execute(
             "INSERT INTO order_items (order_id, sku, qty) VALUES (?, ?, ?)",
-            { order_id, item.sku, item.qty }
+            { id, item.sku, item.qty }
         )
     end
 
-    return order_id
+    return id
 end)
 ```
 
-The block commits when it returns and **rolls back on any error** —
-including one raised deep inside a helper function. Whatever the block
-returns becomes the value of `transaction(...)`.
+The block commits when it returns and **rolls back on any error**, even
+one raised deep inside a helper. Whatever the block returns is the
+result of `transaction(...)`. Transactions nest (as savepoints), so a
+helper that opens its own transaction works inside a larger one.
 
-> [!WARNING] Use `tx`, not the outer `nitr.db`
+> [!WARNING] Use `tx`, not `nitr.db`
 >
-> ```lua
-> nitr.db:transaction(function(tx)
->     tx:execute(...)          -- ✅ inside the transaction
->     nitr.db:execute(...)     -- ❌ refused while a transaction is open
-> end)
-> ```
->
-> The outer handle **refuses to run** rather than silently joining the
-> transaction — which is how you get half-committed writes in systems
-> that allow it.
-
-Transactions nest via savepoints, so a helper that opens its own
-transaction composes correctly inside a larger one.
-
-> [!WARNING] The `tx` handle dies with its block
->
-> Stashing `tx` in an upvalue and using it after `transaction(...)`
-> returned raises: that transaction is over, and the statement would run
-> outside every guarantee the block gave. A `tx:query_async` handle
-> awaited after the block raises for the same reason — and a
-> `nitr.db:query_async` handle awaited _inside_ one is refused too,
-> since running it would join or roll back the live transaction. Build
-> the handle from `tx` when it belongs to the transaction.
+> While the block runs, a statement on `nitr.db` raises instead of
+> quietly joining the transaction. The `tx` handle only works inside its
+> block; keeping it and using it later raises too.
 
 ## Concurrent queries
 
 `query_async` returns an unsent query that `nitr.await_all` can run
-alongside a `fetch` — turning a series of waits into one:
+alongside outbound requests:
 
 ```lua
 local user, profile = nitr.await_all(
     nitr.db:query_async("SELECT * FROM users WHERE id = ?", { id }, "query_row"),
     nitr.fetch("GET", "https://api.example.com/profile/" .. id)
 )
-
-local body = profile:json()
 ```
 
-Handles go in as separate arguments and the results come back as
-multiple values, in the same order.
-
-The optional third argument is the shape you want back —
-`"query"`, `"query_row"`, `"query_one"` or `"execute"` — matching the
-four synchronous methods.
-
-Concurrency is capped by `[fetch] max_concurrent`. See
+The third argument picks the result shape: `"query"` (the default),
+`"query_row"`, `"query_one"` or `"execute"`. Inside a transaction, build
+the handle from `tx`. See
 [Outbound HTTP](./fetch#running-requests-concurrently).
 
 ## Migrations
 
-Plain SQL files. No DSL, no ORM, no down-migrations — rolling a
-production schema back by script is a decision, not something a
-framework should do on your behalf.
+Migrations are plain SQL files. There is no DSL and no down-migrations.
 
-```
+```text
 migrations/
 ├── 001_init.sql
 ├── 002_add_email_index.sql
@@ -179,13 +126,10 @@ migrations/
 ```
 
 A migration is a `.sql` file whose name **starts with a number**. They
-run in numeric order, each inside a transaction, and each is recorded in
-a `_nitr_migrations` table so it never runs twice.
-
-```sql
--- migrations/002_add_email_index.sql
-CREATE UNIQUE INDEX idx_users_email ON users (email);
-```
+run in numeric order, each in its own transaction, and each is recorded
+in a `_nitr_migrations` table so it never runs twice. Two files with the
+same number are an error. Nitr looks in `migrations/` unless
+`[database] migrations_dir` says otherwise.
 
 ### Applying them
 
@@ -194,7 +138,7 @@ nitr migrate            # apply everything pending
 nitr migrate --status   # report, apply nothing
 ```
 
-```
+```text
 $ nitr migrate --status
   applied    001_init.sql
   applied    002_add_email_index.sql
@@ -202,31 +146,25 @@ $ nitr migrate --status
 2 applied, 1 pending, 0 modified
 ```
 
-**The server refuses to start while a migration is pending.** That is
-what keeps the schema and the code from quietly disagreeing.
-
-> [!NOTE] Why `migrate` is a separate command
->
-> Applying schema changes at boot means a rolling deployment has two
-> instances racing to change the same schema, each believing it is
-> alone. Run `nitr migrate` once, then start the new instances.
+**The server (and `nitr check`) refuses to start while a migration is
+pending.** Migrations never run on boot, so in a rolling deploy two
+instances cannot race to change the schema: run `nitr migrate` once,
+then start the new instances. `nitr test` applies them to its own
+scratch database; see [Testing](./testing#tests-and-the-database).
 
 ### Never edit an applied migration
 
-Each applied migration is recorded with a **SHA-256 checksum of its
-contents**. Editing a file that already ran shows up as `MODIFIED`:
+Each applied migration is stored with a checksum of its contents.
+Editing a file that already ran shows up as modified:
 
+```text
+  MODIFIED SINCE APPLIED 001_init.sql
 ```
-  MODIFIED SINCE APPLIED    001_init.sql
-```
 
-A modified migration is **not re-run**. Restore the file, or write a new
-migration that makes the change you wanted. The checksum exists because
-editing an applied file is the single easiest way to make two
-deployments disagree about what the schema is — and it is invisible
-without one.
+A modified migration is not re-run, and the server will not start until
+you restore the file. To change the schema, write a new migration.
 
-## Configuration and pragmas
+## Configuration
 
 ```toml
 [database]
@@ -234,24 +172,26 @@ path = "data/app.db"
 journal_mode = "wal"      # or "delete"; "keep" leaves the existing mode
 busy_timeout = 5000       # ms to wait on a lock instead of failing
 synchronous = "normal"    # the right pairing with WAL
-foreign_keys = true       # SQLite leaves this off, which surprises everyone
-cache_size = -2000        # KiB per connection
-max_rows = 10000          # most rows one query may return (an error past it)
+foreign_keys = true       # SQLite itself defaults this to off
+cache_size = -2000        # negative = KiB, per connection
+max_rows = 10000          # most rows one query may return
 migrations_dir = "migrations"
 ```
 
+These are the defaults; only `path` is required. See
+[`[database]`](./configuration/file#database) for the full reference.
+
 ### Why WAL matters here specifically
 
-There is **one connection per pooled Lua state**. SQLite's default
-rollback journal serializes every writer and fails fast on contention —
-with eight states that is eight writers taking turns badly. WAL lets
-readers and a writer proceed concurrently.
+Each pooled Lua state has its own connection. With SQLite's default
+journal, every writer blocks every reader. WAL lets readers and one
+writer work at the same time.
 
-> [!WARNING] WAL changes what "copy the database" means
+> [!WARNING] Back up with `VACUUM INTO`, not `cp`
 >
-> The on-disk set becomes `app.db`, `app.db-wal` and `app.db-shm`.
-> Copying only `app.db` while the server runs does **not** give a
-> consistent snapshot.
+> In WAL mode the database is three files (`app.db`, `app.db-wal`,
+> `app.db-shm`). Copying only `app.db` while the server runs does not give
+> a consistent snapshot.
 >
 > ```sh
 > sqlite3 data/app.db "VACUUM INTO 'backup.db'"     # safe while running
@@ -259,8 +199,8 @@ readers and a writer proceed concurrently.
 
 ## Startup setup in `config.lua`
 
-The database connection arrives as the config script's vararg, so
-one-off setup happens once rather than once per state:
+The config script receives the database connection as its argument, so
+one-off setup runs once, not once per Lua state:
 
 ```lua
 -- config.lua
@@ -273,51 +213,24 @@ return {
 }
 ```
 
-## Performance notes
+## Performance
 
-**Statements are cached.** Prepared statements are reused per
-connection, so repeating the same SQL text is cheap. Varying the SQL
-text (by inlining values) defeats that — another reason to use
-parameters.
+- **Use parameters.** Prepared statements are cached per connection, so
+  the same SQL text is cheap to run again. Inlining values changes the
+  text and skips the cache.
+- **Index what you filter and sort on.**
+  `CREATE INDEX idx_notes_created_at ON notes (created_at DESC);`
+- **Measure.** At `debug` level each statement logs a `db_query` span
+  with its kind and duration, never the SQL or its values. See
+  [Logging](./logging#spans).
 
-**Queries run off the async threads.** A slow query blocks its own
-request, not the runtime.
+## When SQLite is the wrong fit
 
-**`db_query` spans show the cost.** At debug level each statement emits
-a span with its kind and `elapsed_ms`:
+SQLite suits a single server process with mostly-read or moderate write
+traffic. It is the wrong tool when several machines must write to the
+same data. Nitr ships no other database client, but you can add one as
+an [extension module](../library/extension-modules) in Rust (for
+example, `nitr.ext.pg`).
 
-```
-db_query{kind=query elapsed_ms=3} close
-```
-
-No SQL text and no bind values are ever logged — statements embed
-secrets, and logs outlive them. See [Logging → Redaction
-rules](./logging#redaction-rules).
-
-**Index what you filter on.** SQLite is fast and small, not magic:
-
-```sql
-CREATE INDEX idx_notes_created_at ON notes (created_at DESC);
-```
-
-## When SQLite is the wrong answer
-
-Be honest about the fit. SQLite is excellent for a single-process
-application with a read-heavy or moderate write load. It is the wrong
-tool when you need multiple machines writing to one dataset, or a
-write throughput a single file cannot sustain.
-
-Nitr does not ship a client for anything else — but the [extension
-boundary](../library/extension-modules) is exactly how you add one:
-mount a Postgres or Redis client as `nitr.ext.pg` from Rust.
-
-## Quick reference
-
-| Method                                     | Returns                                                     |
-| ------------------------------------------ | ----------------------------------------------------------- |
-| `nitr.db:query(sql, params?)`              | All rows, each a column→value table; raises past `max_rows` |
-| `nitr.db:query_row(sql, params?)`          | The first row, or `nil` when there are none                 |
-| `nitr.db:query_one(sql, params?)`          | The one row; raises on none, and on more than one           |
-| `nitr.db:execute(sql, params?)`            | Affected row count                                          |
-| `nitr.db:transaction(fn)`                  | Whatever `fn(tx)` returns; rolls back on error              |
-| `nitr.db:query_async(sql, params?, kind?)` | An unsent handle for `nitr.await_all`                       |
+For every method and its signature, see the
+[API reference](../api/#nitr-db).

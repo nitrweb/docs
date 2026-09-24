@@ -1,8 +1,8 @@
 # `ServerBuilder`
 
-The builder is the Rust equivalent of `nitr.toml`, plus the one thing a
-configuration file cannot express: [extension
-modules](./extension-modules).
+The builder sets up a server in Rust. It covers the settings you usually
+set in code, plus [extension modules](./extension-modules), which a
+configuration file cannot express.
 
 ```rust
 use nitr::{Builtins, Server};
@@ -25,33 +25,42 @@ async fn main() -> nitr::Result {
 }
 ```
 
-There are fourteen methods, and they are a deliberately small slice of
-`nitr.toml`: the ones an embedder sets in code. Everything else —
-`[limits]`, `[cors]`, `[rate_limit]`, `[tls]`, `[multipart]`,
-`[cookies]`, `[health]`, `[log]` — is a public field on `Config`, set on
-the struct and handed over with [`config()`](#config-cfg-config-self).
-A setter per key would be a second, drifting copy of the configuration
-schema.
+Every other setting (`[limits]`, `[cors]`, `[rate_limit]`, `[tls]`,
+`[multipart]`, `[cookies]`, `[health]`, `[log]` and so on) is a public
+field on `Config`, passed in with [`config()`](#config).
 
 ## Methods
 
-### `config(cfg: Config) -> Self`
+| Method                                            | What it does                                                                                                                                  |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`config(cfg: Config)`](#config)                  | Applies a whole configuration. Setters called afterwards override it.                                                                         |
+| `listen(addr: SocketAddr)`                        | The address to bind.                                                                                                                          |
+| [`listener(l: std::net::TcpListener)`](#listener) | Serve on an already-bound listener instead of binding `listen`.                                                                               |
+| `health_listener(l: std::net::TcpListener)`       | The same for the `/healthz` and `/readyz` port (`[health] bind`). Ignored when `[health] enabled` is off.                                     |
+| `handler_script(path)`                            | The Lua script that returns `nitr.app()`. Loaded once per Lua state, at build and on reload.                                                  |
+| `config_script(path)`                             | Optional script run **once** at startup; the table it returns becomes `nitr.cfg` in every state.                                              |
+| `templates_dir(path)`                             | Where `nitr.template` loads templates from (`[templating] dir`).                                                                              |
+| `database(path)`                                  | The SQLite file for `nitr.db` (`[database] path`). Needs the `db` feature and `Builtins::DATABASE`.                                           |
+| `builtins(b: Builtins)`                           | Which `nitr.*` modules to enable. Replaces `[std] features`; default `Builtins::minimal()`. See [flags](./cargo-features#the-builtins-flags). |
+| `workers(n: usize)`                               | Number of Lua states, which is the maximum number of handlers running at once. Default: CPU core count.                                       |
+| [`cache(c: nitr::stdlib::Cache)`](#cache)         | Use this cache for `nitr.cache` instead of a new one.                                                                                         |
+| [`dev_mode(on: bool)`](#dev-mode)                 | Reload on file changes and show error details in responses.                                                                                   |
+| [`module(name, f)`](#module)                      | Adds a Rust module at `nitr.ext.<name>`.                                                                                                      |
+| [`setup(f)`](#setup)                              | Runs a closure on each Lua state. Low-level; prefer `module`.                                                                                 |
+| [`build()`](#build)                               | `async`. Validates everything and returns a `Server`.                                                                                         |
 
-Bulk-applies a loaded configuration — typically from `nitr.toml`.
-**Setters called afterwards override it.**
+### `config`
+
+Pass a `Config` loaded from `nitr.toml`, or build one in code:
 
 ```rust
 use std::path::Path;
 
 let cfg = nitr::Config::from_file(Path::new("nitr.toml"))?;
-Server::builder()
+let builder = Server::builder()
     .config(cfg)
-    .workers(8)         // wins over whatever the file said
+    .workers(8); // overrides the file
 ```
-
-This is usually the right shape for a real application: operators tune
-the file, your Rust adds what only Rust can. It is also how you set
-anything without a setter — build the `Config` value yourself:
 
 ```rust
 let cfg = nitr::Config {
@@ -59,32 +68,18 @@ let cfg = nitr::Config {
     listen: ([127, 0, 0, 1], 3000).into(),
     ..nitr::Config::default()
 };
-Server::builder().config(cfg)
+let builder = Server::builder().config(cfg);
 ```
 
-### `listen(addr: SocketAddr) -> Self`
+### `listener`
 
-The address to bind.
-
-```rust
-.listen(([127, 0, 0, 1], 3000).into())
-.listen("0.0.0.0:8080".parse().unwrap())
-```
-
-### `listener(listener: TcpListener) -> Self`
-
-Serve on an **already-bound** `std::net::TcpListener` instead of binding
-`listen`.
-
-This closes the window between choosing a port and binding it: bind port
-`0`, let the OS pick, read the real address, and hand the listener over
-— nothing can take the port in between. That makes it the right tool for
-tests and for socket-activation setups where a supervisor owns the
-socket.
+Bind port `0`, read the port the OS picked, then hand the listener over.
+No other process can take the port in between, which makes this useful
+for tests and for supervisors that own the socket.
 
 ```rust
 let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-let addr = listener.local_addr()?;         // the real port, before serving
+let addr = listener.local_addr()?; // the real port
 
 let server = Server::builder()
     .listener(listener)
@@ -93,67 +88,10 @@ let server = Server::builder()
     .await?;
 ```
 
-### `health_listener(listener: TcpListener) -> Self`
+### `cache`
 
-The same trick for the probe port: serve `/healthz` and `/readyz` on an
-already-bound listener instead of binding `[health] bind`. Ignored when
-`[health] enabled` is off, and irrelevant when the probes answer on the
-main listener — which is what they do when `[health] bind` is unset.
-
-### `handler_script(path) -> Self`
-
-The Lua script that returns `nitr.app()`. Loaded **once per pooled
-state**, at build and on every reload — not per request. Routes and
-middleware are therefore composed once.
-
-### `config_script(path) -> Self`
-
-The script executed **exactly once** at startup, in a bootstrap state;
-the table it returns is snapshotted into every other state and exposed as
-`nitr.cfg`. Optional.
-
-Exactly once is the point: the other states get the snapshot rather than
-re-running the script, so its side effects — creating a schema, seeding a
-row — happen a single time no matter how many workers there are. A state
-recycled after a panic gets the snapshot too, never a second execution.
-
-### `templates_dir(path) -> Self`
-
-Where `nitr.template` loads minijinja templates from — the same setting
-as `[templating] dir`.
-
-### `database(path) -> Self`
-
-The SQLite file for the `nitr.db` builtin. Needs the `db` [Cargo
-feature](./cargo-features) and `Builtins::DATABASE`. When a `[database]`
-section already came from a loaded configuration this replaces only the
-path; the pragmas stay as configured.
-
-### `builtins(builtins: Builtins) -> Self`
-
-Which `nitr.*` modules to expose. **Overrides** the `[std] features`
-list from a loaded configuration; without either,
-`Builtins::minimal()` applies.
-
-```rust
-.builtins(Builtins::JSON | Builtins::HTTP | Builtins::LOG)
-.builtins(Builtins::minimal())
-```
-
-See [Cargo features](./cargo-features#the-builtins-flags), including why
-`Builtins::all()` is only safe on a build with every Cargo feature.
-
-### `workers(n: usize) -> Self`
-
-The number of pooled Lua states — the maximum number of handlers
-executing at once. Defaults to the CPU core count.
-
-### `cache(cache: nitr::stdlib::Cache) -> Self`
-
-The storage behind `nitr.cache`, instead of a fresh one sized by
-`[cache]`. Share one instance with code outside the server, such as a
-test that checks what a handler cached. Ignored when the `cache`
-builtin is not enabled.
+Share one cache with code outside the server, for example a test that
+checks what a handler stored. Ignored when the `cache` builtin is off.
 
 ```rust
 use nitr::stdlib::{Cache, CacheOptions};
@@ -166,28 +104,20 @@ let server = Server::builder()
     .await?;
 ```
 
-### `dev_mode(on: bool) -> Self`
+### `dev_mode`
 
-Hot-reload on change, and include error details in responses.
-
-The watcher covers what a rebuild actually reads: the handler script's
-directory tree (so `require`d modules and `routes/` count), the
-configuration script, and the templates directory. Nothing else — above
-all not the SQLite file and its WAL sidecars, which live in that same
-tree and which the configuration script may write _during_ the rebuild.
-Reacting to those would turn one save into an endless reload loop. Static
-files need no watching either; they are read from disk per request.
+Reloads when the handler script's directory, the configuration script
+or the templates change. The SQLite files are not watched.
 
 > [!DANGER] Never in production
 >
-> It leaks source paths, line numbers and tracebacks to whoever can
-> cause an error.
+> Error responses then include source paths, line numbers and tracebacks.
 
-### `module(name, f) -> Self`
+### `module`
 
-Registers a Rust extension module. The closure runs once per pooled
-state (and again on every reload), and the table it returns is mounted
-at `nitr.ext.<name>`.
+The closure runs once per Lua state (and again on every reload). The
+table it returns is available as `nitr.ext.<name>`. Two modules with the
+same name fail at build time.
 
 ```rust
 .module("greet", |lua| {
@@ -199,21 +129,13 @@ at `nitr.ext.<name>`.
 })
 ```
 
-```lua
-nitr.ext.greet.hello("world")
-```
+See [Extension modules](./extension-modules).
 
-**Registering two modules under the same name fails at build time** —
-extensions cannot silently shadow each other. Mounting under `nitr.ext`
-rather than `nitr` is what guarantees no future builtin can collide with
-yours. See [Extension modules](./extension-modules).
+### `setup`
 
-### `setup(f) -> Self`
-
-The low-level escape hatch behind `module()`: a closure that customizes
-each pooled Lua state. It runs once per state, after the builtins and
-extension modules are registered and before the configuration script and
-handler are loaded.
+A closure that runs once per Lua state, after the builtins and modules
+are registered and before the scripts load. It can change anything in
+the state, including globals outside `nitr`.
 
 ```rust
 .setup(|lua| {
@@ -222,34 +144,26 @@ handler are loaded.
 })
 ```
 
-> [!WARNING] Not covered by any stability promise
->
-> `setup` can register globals outside the `nitr` namespace and
-> otherwise reshape the state. Behaviour reachable only through it is
-> [explicitly not promised](../stability#what-is-deliberately-not-promised)
-> — it is sharp by design. Prefer `module()`.
+What you do through `setup` is [not covered by the stability
+policy](../stability#what-is-deliberately-not-promised). Prefer
+`module()`.
 
-### `build() -> Result<Server>`
+### `build`
 
-An `async fn`. It validates the whole configuration, resolves the
-builtins, creates the runtime pool, runs the configuration script exactly
-once, snapshots its result into every state, and compiles the handler.
+Validates the configuration, creates the Lua states, runs the
+configuration script once and loads the handler. Problems are reported
+here, before any port is bound:
 
-Everything that can fail, fails here rather than at the first request:
-
-| Checked at build                             | Why not later                                                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Configuration validity                       | A contradictory policy would otherwise surface as a header combination a browser quietly ignores |
-| Unknown or removed keys                      | A stale deployment manifest should be an error, not a setting that does nothing                  |
-| A builtin not compiled in                    | Naming the Cargo feature beats a `nil` at the first request that touches it                      |
-| Pending migrations                           | Applying them at boot is how two instances of a rolling deploy race to change one schema         |
-| Missing scripts, templates, upload directory | A path typo is cheaper to find now                                                               |
-| The TLS certificate and key                  | Read once, before a port exists — see below                                                      |
+- invalid or unknown configuration keys;
+- a builtin that was not compiled in (the error names the Cargo feature);
+- pending database migrations (run `nitr migrate` first);
+- missing scripts, templates or upload directory;
+- an invalid TLS certificate or key.
 
 ## TLS
 
-There is **no TLS setter on the builder**. `[tls]` is a `TlsConfig` field
-on `Config`, and reaches the server through `.config(...)`:
+The builder has no TLS method. Set `tls` on `Config` and pass it with
+`.config(...)`. This needs the `tls` [Cargo feature](./cargo-features).
 
 ```rust
 let cfg = nitr::Config {
@@ -257,10 +171,10 @@ let cfg = nitr::Config {
     listen: ([0, 0, 0, 0], 443).into(),
     tls: nitr::TlsConfig {
         enabled: true,
-        cert: Some("/etc/nitr/tls/fullchain.pem".into()),  // leaf, then intermediates
-        key: Some("/etc/nitr/tls/privkey.pem".into()),     // PKCS#8, PKCS#1 or SEC1
-        min_version: Some("1.2".into()),                   // the default and the floor
-        handshake_ms: None,                                // min(header_read_ms, 10s)
+        cert: Some("/etc/nitr/tls/fullchain.pem".into()), // leaf, then intermediates
+        key: Some("/etc/nitr/tls/privkey.pem".into()),    // PKCS#8, PKCS#1 or SEC1
+        min_version: None,                                // "1.2" (default) or "1.3"
+        handshake_ms: None,                               // default: min(header_read_ms, 10 s)
     },
     ..nitr::Config::default()
 };
@@ -268,87 +182,46 @@ let cfg = nitr::Config {
 Server::builder().config(cfg).build().await?.serve().await
 ```
 
-Requires the `tls` [Cargo feature](./cargo-features); `enabled = true`
-without it is a startup error that says so.
-
-`build()` is where both PEM files are read — once, before a port exists —
-so a mismatched or half-written pair fails the build instead of producing
-a listener that accepts TCP and then fails every handshake, which from
-the outside is indistinguishable from a network fault. Every connection
-afterwards clones an `Arc` rather than touching the filesystem.
-
-> [!WARNING] `enabled = true` converts the listener, it does not add one
->
-> The address in `listen` speaks HTTPS and nothing answers plaintext
-> there. There is no dual-listener mode and nothing redirects for you.
-> See [TLS](../server/tls) for the redirect pattern and for why HSTS is
-> the handler's job.
+With TLS enabled, the `listen` address serves HTTPS only. There is no
+plain-HTTP listener or redirect alongside it. See [TLS](../server/tls).
 
 ## `Server`
 
-| Method                                           | Description                                                                                                         |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `serve() -> Result`                              | Serves until a shutdown signal arrives, then drains gracefully                                                      |
-| `serve_with_shutdown(fut) -> Result`             | Serves until `fut` resolves, then drains                                                                            |
-| `test_client() -> TestClient`                    | An in-process client through the real dispatch path. See [Testing](./testing)                                       |
-| `pool() -> Arc<RuntimePool>`                     | The Lua state pool currently serving requests                                                                       |
-| `is_ready() -> bool`                             | What `/readyz` reports; cleared the moment a drain starts                                                           |
-| `openapi_json() -> Option<Bytes>`                | The [OpenAPI document](../server/openapi/) as `nitr openapi` prints it. Needs the `openapi` feature                 |
-| `openapi_site() -> Option<Vec<(String, Bytes)>>` | The Swagger UI page, the document and its assets as a static site — relative names and their bytes. Needs `swagger` |
+| Method                                           | Description                                                                                           |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `serve() -> Result`                              | Serves until `SIGTERM` or ctrl-c, then drains gracefully.                                             |
+| `serve_with_shutdown(fut) -> Result`             | Serves until `fut` completes, then drains.                                                            |
+| `test_client() -> TestClient`                    | An in-process client. See [Testing](./testing).                                                       |
+| `pool() -> Arc<RuntimePool>`                     | The pool of Lua states currently serving requests.                                                    |
+| `is_ready() -> bool`                             | What `/readyz` reports; turns `false` when shutdown starts.                                           |
+| `cfg_snapshot() -> Option<&serde_json::Value>`   | The table the configuration script returned (`nitr.cfg`), or `None` without one.                      |
+| `openapi_json() -> Option<Bytes>`                | The [OpenAPI document](../server/openapi/), as `nitr openapi` prints it. Needs the `openapi` feature. |
+| `openapi_site() -> Option<Vec<(String, Bytes)>>` | The Swagger UI page, the document and its assets, as file names and contents. Needs `swagger`.        |
 
-Both `serve` methods take `self`, so the server is consumed by running
-it. Read `pool()`, `is_ready()` or `test_client()` before that.
+Both `serve` methods consume the server, so call the other methods
+first. The OpenAPI methods work even when `[openapi] enabled` is off.
 
 ```rust
-// Write the document from your own build script or test.
 let server = Server::builder().config(cfg).build().await?;
 if let Some(spec) = server.openapi_json() {
     std::fs::write("openapi.json", &spec)?;
 }
 ```
 
-Both are generated whether or not `[openapi] enabled` — the flag gates
-serving, not generation.
+### Signals
 
-### The signal contract
+| Signal    | Effect                                                     |
+| --------- | ---------------------------------------------------------- |
+| `SIGTERM` | Graceful shutdown                                          |
+| `SIGINT`  | Graceful shutdown (ctrl-c)                                 |
+| `SIGHUP`  | Reload the Lua states and TLS files; connections stay open |
 
-| Signal    | Meaning                                                                         |
-| --------- | ------------------------------------------------------------------------------- |
-| `SIGTERM` | Graceful shutdown — what containers and systemd send                            |
-| `SIGINT`  | Graceful shutdown (ctrl-c)                                                      |
-| `SIGHUP`  | Reload the runtime pool and re-read the TLS material, keeping connections alive |
+On Windows only ctrl-c works.
 
-On Windows only ctrl-c is available; the others are not wired.
-
-### What a reload does, and does not, refresh
-
-`SIGHUP` builds a complete replacement pool — re-running the
-configuration script — and swaps it in atomically. In-flight requests
-finish on the old pool, which is dropped when its last guard returns. On
-any error the old pool stays.
-
-The rebuild runs on **its own task**, not in the accept loop: it
-constructs one Lua state per worker and awaits the configuration script,
-which is seconds on a large pool, and connections keep being accepted
-and `SIGTERM` keeps being answered throughout. A reload requested while
-one is running is not dropped — the task runs once more when it
-finishes, because the rebuild in flight read the scripts before the
-second request arrived.
-
-With `[tls]` enabled the certificate and key are re-read too, and the two
-halves are independent: a failed TLS re-read keeps the old acceptor while
-the pool still reloads, and vice versa. The acceptor is swapped only when
-the new pair validates — a server that stops terminating TLS because
-certbot wrote a half-file is strictly worse than a stale certificate.
-Connections already established keep the acceptor they negotiated with.
-
-Everything else needs a restart, and the boundary is deliberate rather
-than incidental: **`nitr.toml` itself is never re-read.** The listen
-address, the worker count, the limits, the rate limit, the request-id
-trust setting, the CORS and compression policies, the cache and its
-capacity — all are compiled at build and fixed for the process's life. A
-reload re-runs the configuration _script_ and re-reads the certificate
-_files_; that is the whole list.
+A reload re-runs the configuration script and handler and re-reads the
+TLS certificate and key. If something fails, the old version keeps
+running. It does **not** re-read `nitr.toml`; configuration changes need
+a restart. See [Deployment](../server/deployment/).
 
 ### Your own shutdown signal
 
@@ -361,38 +234,6 @@ server.serve_with_shutdown(async {
 }).await
 ```
 
-A drain that runs out of time returns `Error::ShutdownTimeout` instead
-of succeeding quietly — surface it, do not swallow it. See
-[Errors](./errors).
-
-## A complete program
-
-```rust
-use std::path::Path;
-
-use nitr::{Builtins, Server};
-
-#[tokio::main]
-async fn main() -> nitr::Result {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
-
-    // The file carries the operational knobs; the builder carries the code.
-    let mut cfg = nitr::Config::from_file(Path::new("nitr.toml"))?;
-    cfg.load_env_file(Path::new("."))?;
-    cfg.apply_env()?;
-
-    Server::builder()
-        .config(cfg)
-        .module("slug", slug_module)
-        .module("kv", kv_module(Kv::default()))
-        .build()
-        .await?
-        .serve()
-        .await
-}
-```
+If the drain runs out of time (`[shutdown]`), `serve` returns
+`Error::ShutdownTimeout`: some requests were cut off. Exit with a
+non-zero code in that case. See [Errors](./errors).

@@ -1,14 +1,13 @@
 # Documenting Routes
 
-Two tables shape the generated document: `app:doc` for the API as a
-whole, and a `doc` on each route for the operation. Everything about
-what a request _must look like_ stays in
-[`input`](../validation/route-input) — writing it twice is exactly the
-drift this design avoids.
+Two tables shape the generated document: `app:doc` describes the API as
+a whole, and a `doc` table on each route describes that operation.
+Request shapes are declared only in [`input`](../validation/route-input),
+which both enforces and documents them.
 
 ## `app:doc`
 
-Called once, before your routes.
+Call it once, before your routes:
 
 ```lua
 local app = nitr.app()
@@ -16,10 +15,9 @@ local app = nitr.app()
 app:doc({
     title       = "Notes",
     version     = "1.0.0",
-    description = "A small notes API, documented from its own route table.",
+    description = "A small notes API.",
     tags = {
         { name = "notes", description = "Create and read notes" },
-        { name = "admin", description = "Operator endpoints" },
     },
     security = {
         team   = { type = "apiKey", ["in"] = "header", name = "x-team" },
@@ -28,56 +26,45 @@ app:doc({
 })
 ```
 
-| Key                | What it is                                                                        |
-| ------------------ | --------------------------------------------------------------------------------- |
-| `title`            | The API's name. Also the default `<title>` of the [Swagger UI page](./swagger-ui) |
-| `version`          | Your API's version — not Nitr's                                                   |
-| `description`      | Prose for the top of the document. Markdown, as OpenAPI readers expect            |
-| `terms_of_service` | A URL                                                                             |
-| `contact`          | `{ name, url, email }`                                                            |
-| `license`          | `{ name, url }` or `{ name, identifier }`                                         |
-| `tags`             | `{ { name, description } }` — the groups operations sort into                     |
-| `security`         | Named security schemes, referenced by name from a route's `doc.security`          |
-| `external_docs`    | `{ url, description }`                                                            |
+| Key                | What it is                                                                    |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `title`            | The API's name, also the default title of the [Swagger UI page](./swagger-ui) |
+| `version`          | Your API's version                                                            |
+| `description`      | Markdown shown at the top of the document                                     |
+| `terms_of_service` | A URL                                                                         |
+| `contact`          | `{ name, url, email }`                                                        |
+| `license`          | `{ name, url }` or `{ name, identifier }`                                     |
+| `tags`             | `{ { name, description } }`, the groups operations are listed under           |
+| `security`         | Named OpenAPI security schemes that routes refer to by name                   |
+| `external_docs`    | `{ url, description }`                                                        |
 
-An unknown key is a **load-time error** naming the allowed ones. A
-misspelled `descripton` producing a document with no description is
-exactly the failure nobody notices.
+An unknown key, such as a misspelt `descripton`, is a load-time error
+that lists the allowed keys.
 
 ### Security schemes
 
-`security` is a map from a name you choose to an OpenAPI security scheme
-object. Routes then reference the name:
+`security` maps a name you choose to an OpenAPI security scheme. Routes
+refer to it by name:
 
 ```lua
-app:doc({
-    security = {
-        team   = { type = "apiKey", ["in"] = "header", name = "x-team" },
-        bearer = { type = "http", scheme = "bearer", bearerFormat = "JWT" },
-    },
-})
-
 app:get("/api/notes", list, {
     input = { headers = { ["x-team"] = "string|format:alpha_dash|required" } },
     doc   = { summary = "List notes", security = { "team" } },
 })
 ```
 
+`["in"]` needs brackets because `in` is a Lua keyword.
+
 > [!NOTE] A scheme documents; it does not authenticate
 >
-> Declaring `bearer` tells a reader and a client generator that this
-> operation expects a token. It does not check one — that is your
-> middleware's job, and
-> [`nitr.auth.bearer`](../crypto-auth) plus
-> `nitr.crypto.constant_time_eq` is how you do it. Requiring the header
-> to be _present_ is what `input.headers` gives you.
->
-> `["in"]` is bracketed because `in` is a Lua keyword.
+> Checking the token is your middleware's job, for example with
+> [`nitr.auth.bearer`](../crypto-auth) and
+> `nitr.crypto.constant_time_eq`. `input.headers` can require the
+> header to be present.
 
 ## Per-route `doc`
 
-The third argument to a route registration is its
-[options table](../routing#route-options); `doc` is one of its keys.
+`doc` is a key of the route's [options table](../routing#route-options):
 
 ```lua
 app:post("/api/notes", function(req)
@@ -98,47 +85,38 @@ end, {
 })
 ```
 
-| Key            | What it becomes                                                                         |
-| -------------- | --------------------------------------------------------------------------------------- |
-| `summary`      | The one-line title shown in a list of operations                                        |
-| `description`  | The longer prose under it                                                               |
-| `tags`         | Which `app:doc` tags this operation belongs to                                          |
-| `operation_id` | `operationId` — the method name a generated client gets. Defaults to `get_api_notes_id` |
-| `responses`    | `{ [code] = { description, schema?, content? } }`                                       |
-| `security`     | Scheme names from `app:doc`                                                             |
-| `deprecated`   | Marks the operation deprecated                                                          |
-| `hidden`       | Keeps the route out of the document entirely                                            |
+| Key            | What it becomes                                                                       |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `summary`      | The one-line title in the list of operations                                          |
+| `description`  | Longer text under it                                                                  |
+| `tags`         | Which `app:doc` tags the operation belongs to                                         |
+| `operation_id` | `operationId`, the method name in generated clients. Default: e.g. `get_api_notes_id` |
+| `responses`    | `{ [code] = { description, schema?, content? } }`                                     |
+| `security`     | Scheme names from `app:doc`                                                           |
+| `deprecated`   | Marks the operation deprecated                                                        |
+| `hidden`       | Leaves the route out of the document                                                  |
 
-> [!WARNING] Request schemas do not go in `doc`
->
-> `doc = { body = … }` is a load-time error pointing at `input`. There
-> is one place a request shape is declared, and it is the place that
-> also enforces it:
->
-> ```text
-> app.lua:42: doc.body is not a documentation key: request schemas are
-> declared under `input`, which both enforces and documents them
-> ```
+Request schemas do not go in `doc`. `doc = { body = … }` is a load-time
+error that points you to `input`.
 
 ## Responses
 
-Each entry needs a `description`; `schema` and `content` are optional.
+Each response needs a `description`. `schema` and `content` are
+optional:
 
 ```lua
 responses = {
     [200] = { description = "A page of notes",
               schema = { type = "array", items = Note } },
-    [404] = { description = "No such note" },
     [204] = { description = "Deleted" },
+    [404] = { description = "No such note" },
 }
 ```
 
-`schema` takes a compiled schema, or an inline rule table — the same
-vocabulary the request side uses, so `{ type = "array", items = Note }`
-means what it looks like. A titled schema is emitted once under
-`components/schemas` and referenced.
-
-`content` names the media type when it is not `application/json`:
+`schema` takes a compiled schema or an inline rule table, using the
+same rules as request validation. A schema with a `title` is written
+once under `components/schemas` and referenced. `content` sets the media
+type when it is not JSON:
 
 ```lua
 responses = {
@@ -146,42 +124,28 @@ responses = {
 }
 ```
 
-> [!DANGER] A response schema is documentation, and only that
->
-> It is emitted with `x-nitr-enforced: false`. Nitr does not check what
-> your handler returns, on purpose: a response that failed validation
-> would have to become a `500`, turning a documentation mistake into an
-> outage. Write a [test](../testing) that asserts the shape instead —
-> that is the check that belongs here.
+Response schemas are documentation only: Nitr never checks what a
+handler returns (see
+[What the document claims](./#what-the-document-claims)).
 
 ## Hiding a route
 
 ```lua
-app:get("/internal/metrics", function(req)
-    return nitr.json({ notes = count() })
-end, { doc = { hidden = true } })
+app:get("/internal/metrics", metrics, { doc = { hidden = true } })
 ```
 
-Present in the router, absent from the document. Use it for operator
-endpoints and anything whose existence is not part of the published
-contract.
-
-To go the other way — document _only_ what you annotated — turn off the
-default that includes everything:
+The route still works; it is just not in the document. To do the
+opposite and publish **only** routes that have a `doc` table:
 
 ```toml
 [openapi]
 include_undocumented = false
 ```
 
-Then a route without a `doc` table is left out, and adding one is how a
-route becomes public. The two approaches suit different teams; pick one
-deliberately, because the defaults differ in what a _forgotten_ route
-does.
+Choose one approach on purpose: it decides whether a route you forgot
+to document is public or not.
 
-## A worked example
-
-The whole thing together — validated, documented, and served:
+## A complete example
 
 ```lua
 local S = nitr.validate
@@ -244,19 +208,12 @@ app:get("/internal/metrics", metrics, { doc = { hidden = true } })
 return app
 ```
 
-The complete, runnable version is the
+The runnable version is the
 [`openapi` example](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/openapi).
 
-## Prose is escaped where it is rendered
+## Limits
 
-`title` and `description` reach the document as the text you wrote —
-JSON has no markup problem. The [Swagger UI page](./swagger-ui) renders
-them, and it escapes them: a `</script>` in your API title cannot break
-out of the page it is displayed on. The same holds for a field's
-`description` and a custom format's `example`.
-
-Prose fields are bounded at 64 KiB each, and a document that will leave
-the process — served, or written to `[openapi] output` — is bounded at
-1 MiB. An oversized one is a **startup** error naming the size, because
-the size of a document is a property of the application rather than of
-a request. (`nitr openapi` still prints it, whatever its size.)
+Each text field (`title`, `description` and so on) may be up to
+64 KiB, and a served or written document up to 1 MiB. A larger one is a
+startup error. `nitr openapi` prints it regardless of size. The Swagger
+UI page escapes all text it displays.

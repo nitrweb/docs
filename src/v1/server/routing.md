@@ -1,8 +1,7 @@
 # Routing
 
-Routing happens in **Rust**. `app.lua` registers the routes once, at
-load time; matching, parameter extraction and method handling all happen
-before a Lua state is even checked out.
+`app.lua` registers routes once, when it loads. Nitr matches each
+request to a route before any Lua runs.
 
 ## Registering routes
 
@@ -19,10 +18,8 @@ app:delete("/users/:id", delete_user)
 return app
 ```
 
-One method per registration: `get`, `post`, `put`, `delete`, `patch`,
-`head`, `options`.
-
-A handler takes the request and returns a response:
+The methods are `get`, `post`, `put`, `delete`, `patch`, `head` and
+`options`. A handler takes the request and returns a response:
 
 ```lua
 app:get("/ping", function(req)
@@ -32,83 +29,82 @@ end)
 
 ## Path parameters
 
-`:name` captures one path segment. Captures arrive in `req.params` as
-strings:
+`:name` captures one path segment into `req.params`:
 
 ```lua
-app:get("/users/:id", function(req)
-    return nitr.json({ id = req.params.id })      -- "/users/42" → "42"
-end)
-
 app:get("/orgs/:org/repos/:repo", function(req)
     return nitr.json({
-        org  = req.params.org,
-        repo = req.params.repo,
+        org  = req.params.org,       -- "/orgs/nitr/repos/docs" → "nitr"
+        repo = req.params.repo,      -- → "docs"
     })
 end)
 ```
 
-> [!TIP] Parameters are always strings
->
-> `req.params.id` is `"42"`, not `42`. Convert with `tonumber(...)` when
-> you need a number — and remember `tonumber("abc")` is `nil`, which is
-> often exactly the 404 check you wanted:
->
-> ```lua
-> local id = tonumber(req.params.id)
-> if not id then
->     return nitr.error(404, { code = "NOT_FOUND" })
-> end
-> ```
+Parameters are always strings. `tonumber` returns `nil` for anything
+that is not a number, which makes a handy 404 check:
+
+```lua
+local id = tonumber(req.params.id)
+if not id then
+    return nitr.error(404, { code = "NOT_FOUND" })
+end
+```
+
+To have parameters checked and converted for you, declare them in the
+route's [`input`](./validation/route-input).
 
 ## Catch-all routes
 
-A trailing `*` captures the rest of the path, however many segments:
+A `*` as the last segment captures the rest of the path, however many
+segments. A bare `*` stores it in `req.params.splat`; `*name` stores it
+in `req.params.name`:
 
 ```lua
 app:get("/files/*", function(req)
     -- GET /files/docs/2026/report.pdf
-    return nitr.text(req.path)
+    return nitr.text(req.params.splat)       -- "docs/2026/report.pdf"
+end)
+
+app:get("/docs/*page", function(req)
+    return nitr.text(req.params.page)
 end)
 ```
 
-Useful for proxies, custom file serving and SPA fallbacks. For plain
-static files, prefer [`app:static`](./static-files) — it is served
-entirely in Rust, with ETag, ranges and traversal protection.
+For plain static files, use [`app:static`](./static-files) instead: it
+handles caching headers, ranges and path safety for you.
 
 ## Query strings
 
-Parsed and percent-decoded for you:
+`req.query` is parsed and percent-decoded:
 
 ```lua
 -- GET /search?q=rust+lua&page=2
 app:get("/search", function(req)
-    local q    = req.query.q       -- "rust lua"
+    local q    = req.query.q                  -- "rust lua"
     local page = tonumber(req.query.page) or 1
     return nitr.json({ q = q, page = page })
 end)
 ```
 
-Repeated keys keep the **last** value. If you need all of them, parse
-the raw query yourself with
-[`nitr.url.query_parse`](../api/#nitr-url).
+A repeated key keeps its last value. To get every value, split the raw
+string in `req.uri.query` yourself.
 
 ## Methods you do not have to write
 
-| Situation                                 | What Nitr answers              | Reaches Lua? |
-| ----------------------------------------- | ------------------------------ | ------------ |
-| No route and no static mount matched      | `404`                          | no           |
-| Path exists, method does not              | `405` with `Allow`             | no           |
-| `HEAD` with only a `GET` route registered | the `GET` route, body stripped | yes          |
-| Bare `OPTIONS` on a known path            | `204` with `Allow`             | no           |
-| A CORS preflight                          | the configured policy          | no           |
+| Situation                                 | What Nitr answers                                | Runs Lua? |
+| ----------------------------------------- | ------------------------------------------------ | --------- |
+| No route and no static file matched       | `404`                                            | no        |
+| Path exists, method does not              | `405` with `Allow`                               | no        |
+| `HEAD` with only a `GET` route registered | the `GET` route, body removed                    | yes       |
+| `OPTIONS` on a known path                 | `204` with `Allow`                               | no        |
+| A CORS preflight                          | the [`[cors]`](./configuration/file#cors) policy | no        |
 
-So you register `head` or `options` only when you want to _override_
-that behaviour.
+Register `head` or `options` only to change that behaviour.
 
 ## Route middleware
 
-Every argument before the last is middleware for that route only:
+Every argument between the path and the handler is middleware for that
+route only, run left to right:
 
 ```lua
 app:get("/admin/stats", require_admin, function(req)
@@ -120,25 +116,22 @@ app:post("/admin/users", require_admin, audit_log, function(req)
 end)
 ```
 
-The chain runs left to right, outermost first, and only for that route.
 See [Middleware](./middleware).
 
 ## Route options
 
-Every registration method takes an optional **trailing table** after the
-handler. Four keys; anything else is a load-time error naming the route
-and the line that registered it.
+Every registration method takes an optional table after the handler.
+It accepts four keys; any other key is an error at load time.
 
-| Key          | What it does                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------- |
-| `input`      | What the route accepts. Checked in Rust **before the handler**, and reaching it as `req.valid` |
-| `doc`        | How the operation appears in the generated [OpenAPI document](./openapi/)                      |
-| `on_invalid` | This route's answer to a request that failed its `input`. Wins over `app:on_invalid`           |
-| `on_error`   | This route's error handler. Wins over `app:on_error`                                           |
+| Key          | What it does                                                                          |
+| ------------ | ------------------------------------------------------------------------------------- |
+| `input`      | What the route accepts. Checked before the handler runs; the result is in `req.valid` |
+| `doc`        | How the route appears in the generated [OpenAPI document](./openapi/)                 |
+| `on_invalid` | This route's answer to a request that failed its `input`. Overrides `app:on_invalid`  |
+| `on_error`   | This route's error handler. Overrides `app:on_error`                                  |
 
 ```lua
 app:post("/api/notes", function(req)
-    -- Already checked, typed and stripped.
     return nitr.json(create_note(req.valid.body), 201)
 end, {
     input = {
@@ -161,28 +154,25 @@ end, {
 })
 ```
 
-`input` and `doc` are the two halves of the same idea: one enforces the
-request, the other describes the operation, and neither can drift from
-the other because a request schema written under `doc` is refused.
+Request schemas go in `input` only; `doc` describes responses and
+metadata. More detail:
 
-- [Route input validation](./validation/route-input) — `input`,
-  `req.valid`, text coercion, the `415` and `422`
-- [Documenting routes](./openapi/documenting) — `doc`, responses,
+- [Route input validation](./validation/route-input): `input`,
+  `req.valid`, the `415` and `422` answers
+- [Documenting routes](./openapi/documenting): `doc`, responses,
   security schemes
-- [Errors](./errors) — `on_error` and the structured error value
+- [Error handling](./errors): `on_error` and `on_invalid`
 
-> [!NOTE] Validation runs before your middleware
+> [!NOTE] Validation runs before all middleware
 >
-> A route with both an `input` and a route middleware answers `422` to a
-> malformed request without running the middleware — the cheap check
-> comes first, and no Lua state does work for a body that was never
-> going to be accepted. Check authorization in the handler when it must
-> be decided first.
+> A request that fails `input` is answered `422` before any middleware
+> runs, app-wide (`app:use`) or per route. If authorization must be
+> decided first, check it in the handler or in `on_invalid`.
 
 ## Organising routes across files
 
-There is **no auto-discovery**, on purpose: the shape of the application
-stays visible in one file, and a route module stays plain Lua.
+There is no auto-discovery. Keep a route module as a function that
+takes the app, and call it from `app.lua`:
 
 ```lua
 -- routes/users.lua
@@ -204,15 +194,10 @@ require("routes.notes")(app)
 return app
 ```
 
-> [!NOTE] `require` is sandboxed
->
-> It resolves only within the handler script's directory and cannot load
-> native modules. `routes.users` means `routes/users.lua` next to
-> `app.lua`.
+`require` only loads Lua files from the handler script's directory, so
+`routes.users` means `routes/users.lua` next to `app.lua`.
 
 ## Static mounts
-
-Registered from Lua, served from Rust:
 
 ```lua
 app:static("/assets", "public/assets", {
@@ -226,58 +211,9 @@ See [Static files](./static-files).
 
 ## Ordering rules
 
-Two rules, both enforced:
-
-1. **`app:use(...)` must come before any route.** Global middleware
-   wraps the whole application, and the chain is composed once at load
-   time — registering one after a route is an error, not a subtle
-   ordering bug at runtime.
-2. **Routes are matched by specificity, not registration order.** A
-   literal segment beats a `:param`, which beats a `*` catch-all. So
-   `/users/me` and `/users/:id` can coexist, in either order, and
-   `/users/me` wins for that exact path.
-
-## A complete example
-
-```lua
-local app = nitr.app()
-
--- 1. Global middleware, before any route.
-app:use(function(next)
-    return function(req)
-        local started = nitr.time.monotonic()
-        local resp = next(req)
-        nitr.log.info("request", {
-            path   = req.path,
-            status = type(resp) == "table" and resp.status or 200,
-            ms     = math.floor((nitr.time.monotonic() - started) * 1000),
-        })
-        return resp
-    end
-end)
-
--- 2. Static files, served in Rust.
-app:static("/assets", "public/assets")
-
--- 3. Route modules.
-require("routes.users")(app)
-
--- 4. Inline routes.
-app:get("/health/deep", function(req)
-    nitr.db:query_one("SELECT 1")
-    return nitr.json({ ok = true })
-end)
-
--- 5. A catch-all, last for readability (specificity decides anyway).
-app:get("/*", function(req)
-    return nitr.error(404, { code = "NOT_FOUND", path = req.path })
-end)
-
--- 6. The app-wide error response.
-app:on_error(function(err, req)
-    nitr.log.error("handler failed", { error = err.message, kind = err.kind })
-    return nitr.error(500, { code = "INTERNAL" })
-end)
-
-return app
-```
+1. **`app:use(...)` must come before any route.** Calling it after a
+   route is an error at load time.
+2. **Routes match by specificity, not registration order.** A literal
+   segment beats a `:param`, which beats a `*` catch-all. So
+   `/users/me` and `/users/:id` can be registered in either order, and
+   `/users/me` wins for that path.

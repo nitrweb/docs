@@ -1,6 +1,6 @@
 # Responses
 
-A handler returns a **table**. Nitr turns it into an HTTP response.
+A handler returns a **table**, and Nitr turns it into an HTTP response:
 
 ```lua
 return {
@@ -10,22 +10,32 @@ return {
 }
 ```
 
-Every field is optional — `status` defaults to `200`, and a missing
-body is an empty one. The helpers below just build this table for you,
-so you can always inspect and adjust what they produced.
+| Field     | Type                                                 | Default |
+| --------- | ---------------------------------------------------- | ------- |
+| `status`  | integer                                              | `200`   |
+| `headers` | table of string, integer, or array-of-strings values | none    |
+| `body`    | string, or a function for [streaming](./streaming)   | empty   |
+| `cookies` | the `Set-Cookie` builder, attached by the helpers    | none    |
+
+The body is binary-safe: Lua strings are byte strings. A `204` or `304`
+response with a body is an error.
 
 ## The helpers
 
-| Helper                             | Produces                                                             |
-| ---------------------------------- | -------------------------------------------------------------------- |
-| `nitr.json(value, status?)`        | JSON body with `Content-Type: application/json`                      |
-| `nitr.text(s, status?)`            | `text/plain`                                                         |
-| `nitr.html(s, status?)`            | `text/html`                                                          |
-| `nitr.redirect(location, status?)` | A redirect (default `302`)                                           |
-| `nitr.status(code)`                | An empty response with that status                                   |
-| `nitr.error(code, body?)`          | An error response — a string body becomes text, a table becomes JSON |
-| `nitr.sse(fn)`                     | A Server-Sent Events stream                                          |
-| `nitr.negotiate(req, offers)`      | Picks by `Accept`; `406` when nothing matches                        |
+The helpers build that table for you, with a `headers` table and a
+cookie builder already attached, so you can change the result before
+returning it.
+
+| Helper                             | Produces                                                      |
+| ---------------------------------- | ------------------------------------------------------------- |
+| `nitr.json(value, status?)`        | JSON body, `Content-Type: application/json`                   |
+| `nitr.text(s, status?)`            | `text/plain; charset=utf-8`                                   |
+| `nitr.html(s, status?)`            | `text/html; charset=utf-8`                                    |
+| `nitr.redirect(location, status?)` | A redirect (default `302`)                                    |
+| `nitr.status(code)`                | An empty response with that status                            |
+| `nitr.error(code, body?)`          | A string body is sent as text, a table body as JSON           |
+| `nitr.sse(fn)`                     | A [Server-Sent Events](./streaming#server-sent-events) stream |
+| `nitr.negotiate(req, offers)`      | Picks by the `Accept` header; `406` when nothing matches      |
 
 ```lua
 app:get("/api/users",  function(req) return nitr.json(users())          end)
@@ -35,74 +45,50 @@ app:get("/old",        function(req) return nitr.redirect("/new", 301)  end)
 app:delete("/x/:id",   function(req) return nitr.status(204)            end)
 ```
 
+Full signatures are in the [API reference](../api/#responses).
+
 ## Status codes
 
 ```lua
-nitr.json({ id = 1 }, 201)                        -- Created
-nitr.json({ code = "NOT_FOUND" }, 404)            -- via the JSON helper
-nitr.error(404, { code = "NOT_FOUND" })           -- or via the error helper
-nitr.status(204)                                  -- No Content
+nitr.json({ id = 1 }, 201)                                      -- Created
+nitr.error(404, { code = "NOT_FOUND" })                         -- JSON
+nitr.error(400, "bad request")                                  -- text
+nitr.status(204)                                                -- No Content
 ```
 
-`nitr.error` exists to make the intent obvious at a glance and to accept
-either a string or a table body:
-
-```lua
-nitr.error(400, "bad request")                    -- text/plain
-nitr.error(422, { code = "VALIDATION_FAILED", fields = errs })  -- JSON
-```
+A response you return, error or not, is sent as is. `on_error` only
+handles errors that are raised; see [Error handling](./errors).
 
 ## Headers
 
-Set them on the returned table. A value may be a string, an integer, or
-an **array of strings** for a multi-value header:
+A header value may be a string, an integer, or an array of strings for a
+header that repeats:
 
 ```lua
-app:get("/download", function(req)
-    return {
-        status = 200,
-        headers = {
-            ["Content-Type"]        = "application/pdf",
-            ["Content-Disposition"] = 'attachment; filename="report.pdf"',
-            ["Cache-Control"]       = "no-store",
-        },
-        body = pdf_bytes,
-    }
-end)
+app:post("/api/articles", function(req)
+    local id = create_article(req.valid.body)
+    local resp = nitr.json({ id = id }, 201)
+    resp.headers["Location"] = "/api/articles/" .. id
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+end, { input = { body = ArticleInput } })
 ```
 
-Adding a header to a helper's result:
+For cookies, use the builder instead of a `Set-Cookie` header:
+`resp.cookies:set("theme", "dark", { path = "/" })`. See
+[Cookies & sessions](./cookies-sessions).
+
+## Redirects
 
 ```lua
-local resp = nitr.json(data)
-resp.headers = resp.headers or {}
-resp.headers["X-Total-Count"] = 42
-resp.headers["Cache-Control"] = "public, max-age=60"
-return resp
+nitr.redirect("/login")                   -- 302 Found (default)
+nitr.redirect("/new-home", 301)           -- Moved Permanently
+nitr.redirect("/after-post", 303)         -- See Other: follow with GET
+nitr.redirect("/retry", 307)              -- Temporary, method kept
 ```
 
-> [!TIP] `Set-Cookie` is the multi-value case
->
-> Use the cookie builder rather than the header directly — it handles
-> the multiplicity, the attributes and the signing:
->
-> ```lua
-> resp.cookies:set("theme", "dark", { path = "/", max_age = 31536000 })
-> ```
->
-> See [Cookies & sessions](./cookies-sessions).
-
-## Bodies
-
-The body is a **string** (binary-safe — Lua strings are byte strings),
-or a **function** for a [streaming body](./streaming):
-
-```lua
-body = "plain text"
-body = image_bytes                        -- binary is fine
-body = function(writer) … end             -- streamed
-body = coroutine.wrap(function() … end)   -- iterator form
-```
+After a successful form `POST`, use `303`. The browser follows with a
+`GET`, so a page refresh does not submit the form again.
 
 ## Content negotiation
 
@@ -122,39 +108,37 @@ app:get("/report", function(req)
 end)
 ```
 
-Values may also be plain responses rather than functions. Nothing
+An offer can also be a response table instead of a function. Nothing
 matching answers `406`.
 
 ## Caching and conditional responses
 
-Pair `nitr.etag` with `req:fresh`:
+Pair `nitr.etag` with [`req:fresh`](./requests#conditional-requests):
 
 ```lua
 app:get("/config.json", function(req)
-    local version = current_version()
-    local etag = nitr.etag(version)
-
+    local etag = nitr.etag(current_version())
     if req:fresh(etag) then
-        return nitr.status(304)
+        local resp = nitr.status(304)
+        resp.headers["ETag"] = etag
+        return resp
     end
 
     local resp = nitr.json(load_config())
-    resp.headers = resp.headers or {}
     resp.headers["ETag"] = etag
     resp.headers["Cache-Control"] = "public, max-age=300"
     return resp
 end)
 ```
 
-`nitr.etag(value, weak?)` builds a well-formed entity tag from whatever
-identifies the resource — a row version, an `updated_at`, a hash. Pass
-`weak = true` for a `W/"…"` validator when byte-for-byte equality is not
-guaranteed.
+`nitr.etag(value, weak?)` hashes whatever identifies the version (a row
+version, an `updated_at`) into a valid entity tag. Pass `true` as
+`weak` for a `W/"…"` tag.
 
-## Compression, and what you do not do
+## Compression
 
-Do **not** compress in Lua. Turn on `[compression]` and Nitr handles
-negotiation, thresholds and encoding in Rust:
+Do not compress in Lua. Turn on [`[compression]`](./configuration/file#compression)
+and Nitr compresses responses for clients that accept it:
 
 ```toml
 [compression]
@@ -163,69 +147,6 @@ algorithms = ["br", "gzip"]
 min_size = 1024
 ```
 
-Precompressed sidecars (`app.js.br` next to `app.js`) are served
-whenever they exist, with or without that section.
-
-Range requests (`206`, `416`, `If-Range`) are likewise handled for
-static files without any code on your side.
-
-## Redirects
-
-```lua
-nitr.redirect("/login")                   -- 302 Found (default)
-nitr.redirect("/new-home", 301)           -- Moved Permanently
-nitr.redirect("/after-post", 303)         -- See Other — POST → GET
-nitr.redirect("/retry", 307)              -- Temporary, method preserved
-```
-
-> [!TIP] After a successful POST, use 303
->
-> It tells the browser to follow with a `GET`, which is what makes the
-> POST/redirect/GET pattern immune to a refresh re-submitting the form.
-
-## Errors as responses
-
-An error response you return deliberately is just a response — it does
-**not** go through `on_error`:
-
-```lua
-if not user then
-    return nitr.error(404, { code = "NOT_FOUND" })
-end
-```
-
-`on_error` is for failures you did _not_ return: a raised error, a
-timeout, a memory limit. See [Errors](./errors).
-
-## A worked example
-
-```lua
-app:post("/api/articles", require_auth, function(req)
-    local data, err = schema:check(req:json())
-    if not data then
-        return nitr.error(422, { code = "VALIDATION_FAILED", fields = err.fields })
-    end
-
-    local id = nitr.db:transaction(function(tx)
-        tx:execute(
-            "INSERT INTO articles (title, body, author, created_at) VALUES (?, ?, ?, ?)",
-            { data.title, data.body, req.user, nitr.time.now() }
-        )
-        return tx:query_one("SELECT last_insert_rowid() AS id").id
-    end)
-
-    local resp = nitr.json({ id = id, title = data.title }, 201)
-    resp.headers = resp.headers or {}
-    resp.headers["Location"] = "/api/articles/" .. id
-    return resp
-end)
-```
-
-## Quick reference
-
-| Field     | Type                                                | Default |
-| --------- | --------------------------------------------------- | ------- |
-| `status`  | number                                              | `200`   |
-| `headers` | table — string, integer, or array-of-strings values | none    |
-| `body`    | string, or a function for streaming                 | empty   |
-| `cookies` | the `Set-Cookie` builder, attached by the helpers   | —       |
+Static files with a precompressed copy next to them (`app.js.br`,
+`app.js.gz`) are served from that copy even without this section. Range
+requests on static files are handled for you too.

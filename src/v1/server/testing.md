@@ -2,8 +2,8 @@
 
 `nitr test` runs your Lua tests against an **in-process server**: the
 real router, middleware, validation and handlers, on a private test
-database. Nothing about your application is mocked. The framework
-covers three kinds of test:
+database. Nothing in your application is mocked. There are three kinds
+of test:
 
 | Kind                                 | What it exercises                                    | Main tools                                  |
 | ------------------------------------ | ---------------------------------------------------- | ------------------------------------------- |
@@ -14,14 +14,8 @@ covers three kinds of test:
 Rule of thumb: _if a function does not take `req`, unit test it; if it
 does, go through `t.request`._
 
-```sh
-nitr test                     # every test
-nitr test --filter notes      # by test or file name
-nitr test --watch             # re-run on save
-```
-
-The command exits non-zero if any test fails, so it drops straight into
-CI.
+Run `nitr test`. It exits non-zero if any test fails, so it works as is
+in CI. The flags are under [Running tests](#running-tests).
 
 ## Where tests live
 
@@ -40,11 +34,10 @@ tests/
     └── notes.lua         a module: require("helpers.notes")
 ```
 
-A test file can `require` from two roots: the application directory
-(`require("lib.notes")`) and the tests directory
-(`require("helpers.notes")`). The second root exists only in test states,
-never in a state that serves requests. `nitr.test` is likewise available
-**only** in test files.
+A test file can `require` from the application directory
+(`require("lib.notes")`) and from the tests directory
+(`require("helpers.notes")`). Both the tests directory and `nitr.test`
+exist only in test files, never in a state that serves requests.
 
 Files and tests run one after another, and each file gets a fresh Lua
 state.
@@ -87,10 +80,10 @@ notes_test.lua
 2 passed, 0 failed (1 file(s), 0.05 s)
 ```
 
-A file first **registers** its tests. The runner then runs each one on
-its own: it gets its own `[lua] exec_timeout_ms` budget, a duration,
-captured logs and fresh [doubles](#test-doubles). A `while true do end`
-therefore fails one test, not the whole run.
+A file first **registers** its tests, then the runner runs each one
+with its own `[lua] exec_timeout_ms` budget, duration, captured logs
+and fresh [doubles](#test-doubles). A `while true do end` fails one
+test, not the whole run.
 
 ## Structure
 
@@ -229,9 +222,8 @@ Give **one** body option at most: two is an error. `json`, `form` and
 
 ### Request bodies
 
-`form` and `multipart` exist so that a validated form post or an upload
-can be tested without a browser. With `json`, these are the three body
-shapes a route's
+`form` and `multipart` test form posts and uploads without a browser.
+With `json`, they cover every body a route's
 [`input`](./validation/route-input#bodies-and-content-types) accepts.
 
 ```lua
@@ -249,10 +241,9 @@ t.post("/profile", {
 })
 ```
 
-Numbers and booleans are encoded as a browser would send them, so
-`age = 36` arrives as `"36"` and the schema coerces it back to a number.
-That round trip is the thing you want to test. An empty file input
-(`{ filename = "", data = "" }`) reproduces a file field left empty.
+Numbers and booleans are sent as a browser sends them, so `age = 36`
+arrives as `"36"` and the schema converts it back to a number. An empty
+file (`{ filename = "", data = "" }`) is a file field left empty.
 
 ### The response
 
@@ -343,10 +334,10 @@ captured:
 
 ## Test doubles
 
-A test runs in a separate Lua state from the handlers it calls, so
-patching a function in the test has no effect on them. Doubles are
-therefore configured as data and applied by the runtime. They reset
-before every test, so set them in the test itself or in `before_each`.
+A test runs in a different Lua state from the handlers it calls, so
+replacing a function in the test does not affect them. Doubles are set
+up as data instead, and applied by the runtime. They reset before every
+test, so set them in the test or in `before_each`.
 
 ### Fetch
 
@@ -378,12 +369,11 @@ end)
 | `json` or `body`    | The canned body. `json` also sets `content-type`.         |
 | `times`             | How many calls the rule answers before it stops matching. |
 
-The first matching rule answers. Matching happens before the `[fetch]`
-policy is checked, so a mocked call never leaves the process, and a
-test can mock an internal host without widening `[fetch]`. A request no
-rule matches goes out as normal, still subject to the policy, unless
-`strict()` is on. `t.fetch.calls()` records every outbound call,
-answered by a mock or not.
+The first matching rule answers. A mocked call never leaves the
+process, and it is matched before the `[fetch]` policy, so you can mock
+an internal host without loosening `[fetch]`. An unmatched request goes
+out as normal, under the policy, unless `strict()` is on.
+`t.fetch.calls()` records every outbound call, mocked or not.
 
 ### Clock
 
@@ -499,11 +489,8 @@ t.db.isolate()                                   -- reset after every test in th
 | `seed(spec)` | Loads a SQL file or `{ table = rows }` in one transaction.                                                 |
 | `isolate()`  | Calls `reset()` after every test of the file.                                                              |
 
-> [!NOTE] Why not wrap each test in a transaction?
->
-> Every Lua state has its own SQLite connection, so a transaction
-> opened by the test cannot cover writes made by a handler. Restoring a
-> snapshot works across connections.
+Each Lua state has its own SQLite connection, so a transaction in the
+test could not undo a handler's writes. Restoring a snapshot can.
 
 ```toml
 [testing]
@@ -520,12 +507,8 @@ configuration error.
 ## Running tests
 
 ```sh
-nitr test --filter checkout --bail                     # matching tests only; stop at the first failure
-nitr test --list                                       # every test with its file:line; nothing runs
-nitr test --watch                                      # re-run whenever a Lua file or template changes
-nitr test --reporter junit --output target/junit.xml   # a report file for CI
-nitr test --reporter json                              # one JSON document on stdout
-nitr test --nocapture                                  # stream log lines instead of capturing them
+nitr test --filter checkout --bail
+nitr test --reporter junit --output target/junit.xml
 ```
 
 | Flag                    | Effect                                                                                    |
@@ -550,9 +533,8 @@ extra_test.lua
 2 passed, 0 failed, 1 skipped, 1 todo, 10 filtered out (2 file(s), 1.31 s)
 ```
 
-A test that takes longer than `[testing] slow_ms` (default `1000`) is
-marked `slow`. Setting `[testing] capture = false` turns log capture
-off.
+A test slower than `[testing] slow_ms` (default `1000`) is marked
+`slow`. `[testing] capture = false` turns log capture off.
 
 ## Testing middleware
 
@@ -579,16 +561,16 @@ end)
 ## In CI
 
 ```yaml
-- run: cargo install --git https://github.com/nitrweb/nitr nitr-cli
+- run: cargo install nitr-cli --version 0.0.0-beta.5
 - run: nitr check # configuration and scripts load
 - run: nitr migrate # the real schema is current
 - run: nitr test --reporter junit --output junit.xml # behaviour is correct
 ```
 
-`nitr check` first is worth the second it costs: a configuration error
-fails with a clear message rather than as a puzzling test failure.
-`nitr migrate` is about your actual database — the test run migrates its
-own. Most CI systems can read `junit.xml` to annotate failing tests.
+`nitr check` first turns a configuration error into a clear message
+instead of a puzzling test failure. `nitr migrate` checks your real
+database; the test run migrates its own. Most CI systems read
+`junit.xml` to annotate failing tests.
 
 The complete `nitr.test` reference is in the
 [Lua API reference](../api/#nitr-test).

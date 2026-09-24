@@ -1,8 +1,8 @@
 # Static Files
 
-Static files are served **entirely in Rust**, before a Lua state is
-checked out. Content types, `ETag`, `Last-Modified`, `304`, range
-requests and traversal protection all come for free.
+Nitr serves static files itself, without running any Lua. Content
+types, `ETag`, `Last-Modified`, `304`, range requests and path-traversal
+protection work out of the box.
 
 ## From the configuration
 
@@ -10,20 +10,10 @@ requests and traversal protection all come for free.
 [static]
 dir = "public"
 mount = "/"
-spa = false
 cache_control = "public, max-age=3600"
-dotfiles = false
 ```
 
-| Key             | Default            | Meaning                                                        |
-| --------------- | ------------------ | -------------------------------------------------------------- |
-| `dir`           | _unset (disabled)_ | Directory to serve                                             |
-| `mount`         | `"/"`              | URL prefix                                                     |
-| `spa`           | `false`            | Serve `index.html` for unknown paths                           |
-| `cache_control` | _unset_            | `Cache-Control` for served files                               |
-| `dotfiles`      | `false`            | Serve `.`-prefixed names (`.well-known/` is served either way) |
-
-```
+```text
 public/
 ├── index.html      → GET /
 ├── favicon.ico     → GET /favicon.ico
@@ -31,10 +21,13 @@ public/
     └── app.css     → GET /assets/app.css
 ```
 
+The keys (`dir`, `mount`, `spa`, `cache_control`, `dotfiles`) are listed
+in [`[static]`](./configuration/file#static).
+
 ## Extra mounts
 
-Register more from `app.lua` — useful when different directories want
-different caching:
+Add more mounts from `app.lua`, for example to cache directories
+differently:
 
 ```lua
 local app = nitr.app()
@@ -44,35 +37,34 @@ app:static("/assets", "public/assets", {
     cache_control = "public, max-age=31536000, immutable",
 })
 
--- User uploads: revalidate every time.
-app:static("/uploads", "data/uploads", {
+-- User uploads: check for changes every time.
+app:static("/uploads", "/var/lib/myapp/uploads", {
     cache_control = "no-cache",
 })
 
 return app
 ```
 
-| Option          | Meaning                                                        |
-| --------------- | -------------------------------------------------------------- |
-| `spa`           | Serve `index.html` for paths that do not match a file          |
-| `cache_control` | The `Cache-Control` header for this mount                      |
-| `dotfiles`      | Serve `.`-prefixed names (`.well-known/` is served either way) |
+`app:static(mount, dir, opts)` takes the same options as `[static]`:
+`spa`, `cache_control` and `dotfiles`.
 
-## What you get without asking
+Routes are matched first. A static mount only answers `GET` and `HEAD`
+requests that no route matched.
 
-| Behaviour              | Detail                                                                                                                              |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Content types          | From the file extension                                                                                                             |
-| `ETag`                 | Per file; changes when the file does                                                                                                |
-| `Last-Modified`        | From the file's mtime                                                                                                               |
-| `304 Not Modified`     | For `If-None-Match` / `If-Modified-Since`                                                                                           |
-| Range requests         | `206 Partial Content`, `416`, and `If-Range` — video seeking works                                                                  |
-| Traversal protection   | Percent-decode → component whitelist → canonicalize-prefix check, symlinks included. Both this and `nitr.path.normalize` are fuzzed |
-| Dotfiles hidden        | A `.`-prefixed path component answers `404` before the filesystem is touched, unless `dotfiles = true`. `.well-known/` is exempt    |
-| Precompressed sidecars | `app.js.br` or `app.js.gz` next to `app.js` is served automatically                                                                 |
-| `HEAD`                 | Answered with headers only                                                                                                          |
+## What you get
 
-None of this reaches Lua, so none of it costs you a Lua state.
+| Behaviour               | Detail                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| Content types           | From the file extension                                                        |
+| `ETag`, `Last-Modified` | From the file's size and modification time                                     |
+| `304 Not Modified`      | For `If-None-Match` / `If-Modified-Since`                                      |
+| Range requests          | `206`, `416` and `If-Range`, so video seeking works                            |
+| Precompressed files     | `app.js.br` or `app.js.gz` next to `app.js` is sent when the client accepts it |
+| `HEAD`                  | Headers only                                                                   |
+
+No Lua runs for a static file, but Nitr briefly uses a Lua state to
+look up routes. When every state is busy, a static request waits like
+any other (up to `[limits] pool_wait_ms`).
 
 ## Single-page applications
 
@@ -84,33 +76,26 @@ spa = true
 ```
 
 With `spa = true`, a path that matches no file gets `index.html`
-instead of `404`, letting the client-side router take over. React, Vue,
-Svelte and friends all want this.
-
-Serving an API from the same process:
+instead of `404`, so the client-side router can take over. API routes
+in the same app still win, because routes are matched first:
 
 ```lua
-local app = nitr.app()
-
-app:get("/api/users", list_users)          -- API routes win: they are routes
+app:get("/api/users", list_users)          -- a route: always wins
 app:static("/", "dist", { spa = true })    -- everything else → the SPA
-
-return app
 ```
 
 ## Caching strategy
 
-The pattern that works, in two lines:
+Cache fingerprinted files (`app.a1b2c3.js`) forever, and make browsers
+check the HTML entry point every time so they see new deploys:
 
 ```lua
--- Fingerprinted files (app.a1b2c3.js) never change under the same name.
 app:static("/assets", "dist/assets", {
     cache_control = "public, max-age=31536000, immutable",
 })
 ```
 
 ```toml
-# The HTML entry point must be revalidated, or users never see a deploy.
 [static]
 dir = "dist"
 mount = "/"
@@ -118,19 +103,18 @@ spa = true
 cache_control = "no-cache"
 ```
 
-`no-cache` does not mean "do not cache" — it means "revalidate before
-using". The `ETag` then makes that revalidation a cheap `304`.
+`no-cache` means "check before using", not "do not cache". The `ETag`
+makes that check a cheap `304`.
 
 ## Precompressed assets
 
-Ship `.br` and `.gz` next to the original and the server prefers them
-automatically:
+Compress at build time and put the files next to the original:
 
-```
+```text
 dist/assets/
 ├── app.js          (300 KB)
-├── app.js.br       ( 60 KB)   ← served to clients accepting br
-└── app.js.gz       ( 80 KB)   ← served to clients accepting gzip
+├── app.js.br       ( 60 KB)   ← sent to clients accepting br
+└── app.js.gz       ( 80 KB)   ← sent to clients accepting gzip
 ```
 
 ```sh
@@ -138,77 +122,43 @@ brotli -k dist/assets/app.js
 gzip   -k dist/assets/app.js
 ```
 
-This works **regardless of the `[compression]` section and regardless of
-the `compression` Cargo feature** — serving an already-compressed file
-needs no encoder. It is strictly better than on-the-fly compression:
-better ratios (you can afford maximum effort at build time) and zero
-per-request CPU.
-
-Use `[compression]` for _dynamic_ responses; use sidecars for static
-assets.
+This works without the [`[compression]`](./configuration/file#compression)
+section, costs no CPU per request, and compresses better than
+on-the-fly compression. Use `[compression]` for dynamic responses.
 
 ## Security
 
-**Path traversal is not your problem.** Requests are percent-decoded,
-checked against a component whitelist, then canonicalized and verified
-to still be inside the mount — symlinks included. `../` cannot escape,
-and the code is fuzzed.
+- **Path traversal is blocked.** Paths are decoded, checked, and
+  resolved (symlinks included) to make sure they stay inside the mount.
+- **Dotfiles are hidden.** Any path with a `.`-prefixed part (`.env`,
+  `.git/`) gets `404`, unless you set `dotfiles = true`. `.well-known/`
+  is always served, for ACME challenges and `security.txt`.
+- **Everything else in the directory is public.** There is no directory
+  listing, but any other file in it can be downloaded. Keep backups,
+  secrets and source code elsewhere.
+- **Nitr refuses to serve its own code.** A static `dir` that contains
+  the handler script's directory or `[templating] dir` is a startup
+  error.
 
-**Dotfiles are hidden by default.** A request whose path has any
-`.`-prefixed component answers `404` before the filesystem is consulted
-— `.env`, `.git/`, `.htpasswd` and their kind are exactly what lands in
-a served directory by accident, and nothing a browser needs starts with
-a dot. `.well-known/` is the one exception, always served, because ACME
-challenges and `security.txt` live there.
-
-```toml
-[static]
-dir = "public"
-dotfiles = true      # only if you genuinely serve one
-```
-
-**Everything else in the directory is public.** There is no directory
-listing, but there is also no other filter: a non-dotted file in the
-mounted directory is reachable.
-
-```
+```text
 public/
-├── index.html      ✅
-├── .env            🚫 404 — but move it out anyway
-└── backup.sql      ❌ this is public
+├── index.html      served
+├── .env            404, but move it out anyway
+└── backup.sql      served: anyone can download it
 ```
 
-> [!TIP] The hidden dotfile is a backstop, not a place to keep secrets
->
-> `dotfiles = false` stops a leak you did not notice; it does not make
-> the served directory a safe home for credentials. One
-> `dotfiles = true` for a legitimate file exposes every other dotfile
-> beside it.
+See [Security](./security) for the full model.
 
-**A `[static] dir` that encloses your scripts or templates refuses to
-boot.** `dir = "."` with `mount = "/"` would answer `GET /app.lua` and
-`GET /nitr.toml`; that combination is a startup error naming both paths,
-rather than a deployment that serves its own source.
+## Private files
 
-## Serving a file from a handler
-
-For a file you must gate behind authentication, read and return it
-yourself — but note that `io` is not in the Lua stdlib by default, so
-the file must come from somewhere Nitr can reach: the database, or a
+Static mounts are public. To put a file behind a login, serve it from a
+handler after checking the user. The default Lua sandbox has no `io`
+library, so the bytes must come from somewhere Nitr can reach, such as
+[`nitr.db`](./database) or a
 [Rust extension module](../library/extension-modules).
 
-The usual answer is simpler: put private files behind an authenticated
-route that generates a signed, short-lived URL, and serve them from a
-separate mount.
+## CDNs and reverse proxies
 
-## Reverse proxies and CDNs
-
-Nitr serves static files well, but a CDN serves them from closer. A
-common split:
-
-- CDN or proxy handles `/assets/*` with long-lived caching;
-- Nitr handles the application and, as the origin, still answers
-  correctly with `ETag` and ranges when the CDN revalidates.
-
-Nothing special is needed on Nitr's side — correct `ETag` and
-`Cache-Control` are exactly what a CDN wants.
+A CDN or proxy in front can cache `/assets/*` close to users while
+Nitr serves the app. As the origin, Nitr's `ETag`, `Cache-Control` and
+range support are what the CDN needs; nothing else is required.

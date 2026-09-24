@@ -78,12 +78,12 @@ const FEATURES = [
   {
     title: 'Structured logs',
     icon: 'M4 5h16M4 10h10M4 15h16M4 20h7',
-    body: 'JSON with real keys, request spans, and strict redaction rules.'
+    body: 'Text or JSON lines tagged with the request id, method and path, with redaction rules.'
   },
   {
     title: 'A test framework',
     icon: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3',
-    body: '<code>describe</code>/<code>it</code>/<code>expect</code>, dispatching through the real router, against a throwaway database.'
+    body: 'Unit and integration tests through the real router, with fetch/clock/env doubles and database fixtures.'
   },
   {
     title: 'Hot reload',

@@ -1,11 +1,9 @@
 # Getting Started (Library)
 
-Embedding Nitr in a Rust program, from an empty directory to a running
-server with your own Rust module in it.
+From an empty directory to a running server with your own Rust module
+in it.
 
-## 1. The dependency
-
-`nitr` is on crates.io:
+## The dependency
 
 ```sh
 cargo add nitr
@@ -18,42 +16,21 @@ cargo add nitr --features all             # everything
 [dependencies]
 nitr = "0.0.0-beta.5"
 tokio = { version = "1", features = ["full"] }
-
-# Optional, but you will want logs:
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] } # for logs
 ```
 
-The rendered API reference is at [docs.rs/nitr](https://docs.rs/nitr),
-built with every feature enabled, so items that need one are labelled
-with it.
+The library enables **no** optional feature by default, unlike the
+`nitr` binary. Without features you still get routing, static files and
+the `json`, `http`, `log`, `cache`, `time`, `validate`, `base64`, `path`,
+`url`, `env` and `dbg` modules. See [Cargo features](./cargo-features).
 
-> [!WARNING] Nothing is enabled by default
->
-> The **library** ships no optional builtin unless you ask for it, so a
-> build carries only the dependencies it uses. (The `nitr` **binary** is
-> the opposite: it enables `all`, because someone installing a server
-> expects the whole standard library.) A plain `nitr = "0.0.0-beta.5"`
-> still gives you routing, static files, and the builtins with no
-> exclusive dependency — `json`, `http`, `log`, `cache`, `time`,
-> `validate`, `base64`, `path`, `url`, `env`, `dbg`. See [Cargo
-> features](./cargo-features).
-
-> [!NOTE] Two feature lists, different names
->
-> Cargo features (`db`, `template`, `crypto`, `fetch`, `compression`,
-> `multipart`, `tls`) decide what is **compiled in**. The runtime
-> `[std] features` list — `json`, `http`, `log`, `db`, … — decides what
-> is **exposed to Lua**. Writing `features = ["json"]` in `Cargo.toml`
-> is an error: there is no such Cargo feature.
-
-To track unreleased work instead of a release, depend on the repository
-and pin a revision so the build stays reproducible:
+To use unreleased code, depend on the repository at a fixed revision:
 
 ```toml
 nitr = { git = "https://github.com/nitrweb/nitr", rev = "…", features = ["db"] }
 ```
 
-## 2. The server
+## The server
 
 ```rust
 // src/main.rs
@@ -80,7 +57,7 @@ async fn main() -> nitr::Result {
 }
 ```
 
-## 3. The Lua application
+## The Lua application
 
 ```lua
 -- app.lua
@@ -94,11 +71,6 @@ app:get("/hello/:name", function(req)
     return nitr.text("Hello, " .. req.params.name)
 end)
 
-app:on_error(function(err, req)
-    nitr.log.error("handler failed", { error = err.message, kind = err.kind })
-    return nitr.error(500, { code = "INTERNAL" })
-end)
-
 return app
 ```
 
@@ -107,35 +79,31 @@ cargo run
 curl http://127.0.0.1:3000/hello/world
 ```
 
-Everything about writing that Lua — routing, requests, responses,
-middleware — is the [Server](../server/) section. It is identical
-whether the process is `nitr` or your own binary.
+Writing the Lua side (routing, requests, responses, middleware) works
+the same as with the `nitr` binary. See the [Server](../server/)
+section.
 
-## 4. Your own Rust, in Lua
+## Your own Rust in Lua
 
-This is the reason to embed at all:
+Register a module with `.module(name, closure)`. The table it returns is
+available to Lua as `nitr.ext.<name>`:
 
 ```rust
-use nitr::{Builtins, Server};
-
-#[tokio::main]
-async fn main() -> nitr::Result {
-    Server::builder()
-        .listen(([127, 0, 0, 1], 3000).into())
-        .handler_script("app.lua")
-        .builtins(Builtins::JSON | Builtins::HTTP)
-        .module("slug", |lua| {
-            let t = lua.create_table()?;
-            t.set("slugify", lua.create_function(|_, input: String| {
-                Ok(input.to_lowercase().replace(' ', "-"))
-            })?)?;
-            Ok(t)
-        })
-        .build()
-        .await?
-        .serve()
-        .await
-}
+Server::builder()
+    .listen(([127, 0, 0, 1], 3000).into())
+    .handler_script("app.lua")
+    .builtins(Builtins::JSON | Builtins::HTTP)
+    .module("slug", |lua| {
+        let t = lua.create_table()?;
+        t.set("slugify", lua.create_function(|_, input: String| {
+            Ok(input.to_lowercase().replace(' ', "-"))
+        })?)?;
+        Ok(t)
+    })
+    .build()
+    .await?
+    .serve()
+    .await
 ```
 
 ```lua
@@ -144,96 +112,60 @@ app:get("/slug", function(req)
 end)
 ```
 
-Modules mount at `nitr.ext.<name>` — one level below the standard
-library, so no future builtin can ever collide with yours. See
-[Extension modules](./extension-modules).
+The closure uses [`mlua`](./extension-modules#depending-on-mlua), which
+you add as a dependency. See [Extension modules](./extension-modules)
+for shared state, async functions and errors.
 
-## 5. Using a configuration file instead
+## Using a configuration file
 
-The builder and `nitr.toml` are not alternatives; they compose:
+The builder and `nitr.toml` work together:
 
 ```rust
 use std::path::Path;
 
-let cfg = nitr::Config::from_file(Path::new("nitr.toml"))?;
+let mut cfg = nitr::Config::from_file(Path::new("nitr.toml"))?;
+cfg.load_env_file(Path::new("."))?;  // optional: the .env file
+cfg.apply_env()?;                    // optional: NITR_* overrides
 
 Server::builder()
-    .config(cfg)                       // bulk-apply the file
-    .module("slug", slug_module)       // add what the file cannot express
+    .config(cfg)                     // apply the file
+    .module("slug", slug_module)     // add what the file cannot express
     .build()
     .await?
     .serve()
     .await
 ```
 
-Setters called **after** `.config(...)` override it. This is usually the
-right shape for a real application: operators tune `nitr.toml`, and your
-Rust adds the modules. It is also the only way to reach the settings that
-have no builder setter — `[tls]`, `[limits]`, `[cors]`, `[rate_limit]`,
-`[multipart]`, `[cookies]` and the rest are public fields on `Config`.
+Setters called **after** `.config(...)` override the file. Settings
+without a builder method (`[tls]`, `[limits]`, `[cors]` and the rest)
+are public fields on `Config`. Load the `.env` file before `apply_env`,
+as shown; variables already set in the process environment always win.
+See [Environment variables](../server/configuration/env).
 
-To include the environment layering the binary does:
-
-```rust
-let mut cfg = nitr::Config::from_file(Path::new("nitr.toml"))?;
-cfg.load_env_file(Path::new("."))?;   // the dotenv file
-cfg.apply_env()?;                     // NITR_* overrides
-```
-
-Order matters and is the order the binary uses: the dotenv file loads
-first so `apply_env` can see its values, and the real process environment
-still wins, because loading never overwrites a variable that is already
-set. See [Environment variables](../server/configuration/env).
-
-## Project shape
+## Project layout
 
 ```
 my-server/
 ├── Cargo.toml
 ├── src/
-│   └── main.rs        the server, and your modules
+│   └── main.rs        the server and your modules
 ├── nitr.toml          optional: configuration
 ├── app.lua            routes and middleware
 ├── config.lua         optional: startup script
 ├── templates/
 ├── public/
-└── tests/
+└── tests/           optional: nitr test files
 ```
 
-Paths resolve against the **process working directory** — those passed to
-the builder and those written in `nitr.toml` alike. The file does not
-re-root them, so `cargo run` from the project root is what makes the tree
-above line up.
-
-The one exception is the dotenv file, and only because you choose it:
-`load_env_file(base)` resolves a relative `[env] file` — and the implicit
-`.env` — against the `base` you hand it. The binary passes the directory
-holding `nitr.toml`; the snippet above passes the working directory.
-
-`require` is a separate rule again: it is pinned to the directory
-containing the handler script, and nothing outside it is loadable.
-
-## Graceful shutdown
-
-`serve()` already drains on `SIGTERM` and `ctrl-c`. To drain on your own
-signal instead:
-
-```rust
-let server = Server::builder().config(cfg).build().await?;
-
-server.serve_with_shutdown(async {
-    my_shutdown_signal().await;
-}).await
-```
-
-A drain that runs out of time returns `Error::ShutdownTimeout` rather
-than succeeding quietly — a cut request is not a clean shutdown. See
-[Errors](./errors).
+Relative paths, in the builder and in `nitr.toml`, resolve against the
+**current working directory**, so run `cargo run` from the project root.
+`load_env_file(base)` resolves the `.env` file against `base`. `require`
+can only load files from the handler script's directory.
 
 ## Next
 
-- [Cargo features](./cargo-features) — sizing the dependency tree
-- [`ServerBuilder`](./server-builder) — every method
-- [Extension modules](./extension-modules) — stateful and async modules
-- [Testing](./testing) — the in-process client
-- [Examples](./examples) — runnable code for each subject
+- [Cargo features](./cargo-features): choose what gets compiled in
+- [`ServerBuilder`](./server-builder): every method, and graceful shutdown
+- [Extension modules](./extension-modules): stateful and async modules
+- [Testing](./testing): the in-process test client
+- [Examples](./examples): runnable code

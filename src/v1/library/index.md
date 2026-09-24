@@ -1,24 +1,24 @@
 # Library Overview
 
-This section covers the `nitr` **crate**: embedding the server in your
-own Rust program, and exposing your own Rust code to Lua.
+This section covers the `nitr` **crate**: running the server inside your
+own Rust program, and calling your own Rust code from Lua.
 
-If you just want to build a backend, you want the
-[Server](../server/) section instead — the binary does everything below
-except the last item.
+If you only want to build a backend, use the [Server](../server/)
+section instead. The `nitr` binary does everything below except run your
+own Rust code.
 
 ## Why embed
 
-| Reason                          | What it looks like                                                                                                                     |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Expose your own Rust to Lua** | [`ServerBuilder::module`](./extension-modules) mounts a table at `nitr.ext.<name>` in every state — the one thing the binary cannot do |
-| **Own the process**             | Your `main` runs; Nitr is a component, not the entry point                                                                             |
-| **Own the socket**              | Hand over an already-bound `TcpListener` — for the traffic port, the probe port, or both                                               |
-| **Own the shutdown**            | `serve_with_shutdown()` drains on your signal, not just `SIGTERM`                                                                      |
-| **Build a distributable**       | Ship one Rust binary that contains the server and your domain code                                                                     |
-| **Use the Lua runtime alone**   | [`nitr::Runtime`](./runtime) — sandboxed Lua with no HTTP at all                                                                       |
+| Reason                          | What it looks like                                                               |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| **Call your own Rust from Lua** | [`ServerBuilder::module`](./extension-modules) adds a table at `nitr.ext.<name>` |
+| **Own the process**             | Your `main` runs; Nitr is a component, not the entry point                       |
+| **Own the socket**              | Pass an already-bound `TcpListener` for the main port, the health port, or both  |
+| **Own the shutdown**            | `serve_with_shutdown()` stops on your own signal, not only `SIGTERM`             |
+| **Ship one binary**             | One Rust binary with the server and your domain code                             |
+| **Use the Lua runtime alone**   | [`nitr::Runtime`](./runtime): sandboxed Lua without HTTP                         |
 
-## The smallest possible server
+## The smallest server
 
 ```toml
 # Cargo.toml
@@ -38,7 +38,7 @@ async fn main() -> nitr::Result {
         .builtins(Builtins::JSON)
         .build()
         .await?
-        .serve()          // SIGTERM/ctrl-c drains gracefully
+        .serve() // stops gracefully on SIGTERM or ctrl-c
         .await
 }
 ```
@@ -50,94 +50,43 @@ app:get("/", function(req) return nitr.json({ ok = true }) end)
 return app
 ```
 
-`cargo run`. That is the whole thing.
+Run it with `cargo run`. This needs no Cargo feature; modules with large
+dependencies (SQLite, templates, outbound HTTP, argon2, TLS) are opt-in.
+See [Cargo features](./cargo-features). To add your own Rust module,
+continue with [Getting started](./getting-started#your-own-rust-in-lua).
 
-No Cargo feature is needed for that example: `nitr.json` is one of the
-builtins compiled in unconditionally. Anything with a heavy dependency of
-its own — SQLite, minijinja, reqwest, argon2, rustls — is opt-in. See
-[Cargo features](./cargo-features).
-
-## Adding your own Rust
-
-The point of embedding:
-
-```rust
-Server::builder()
-    .handler_script("app.lua")
-    .builtins(Builtins::JSON | Builtins::HTTP | Builtins::LOG)
-    .module("greet", |lua| {
-        let t = lua.create_table()?;
-        t.set("hello", lua.create_function(|_, name: String| {
-            Ok(format!("Hello, {name}!"))
-        })?)?;
-        Ok(t)
-    })
-    .build()
-    .await?
-    .serve()
-    .await
-```
-
-```lua
-app:get("/greet/:name", function(req)
-    return nitr.text(nitr.ext.greet.hello(req.params.name))
-end)
-```
-
-The closure runs **once per pooled state** (and again on every reload).
-Rust owns what happens inside — shared state, I/O, native speed, no
-sandbox limits. Lua only composes it, still under its own memory and
-execution budget. See [Extension modules](./extension-modules).
-
-## The workspace
+## The crates
 
 | Crate       | What it is                                             | Stability                      |
 | ----------- | ------------------------------------------------------ | ------------------------------ |
-| **`nitr`**  | The **facade** — the supported entry point             | Standard semver                |
-| `nitr-core` | Sandboxed Lua runtime, state pool, diagnostics, errors | Unstable pre-1.0               |
-| `nitr-std`  | The `nitr.*` standard library                          | Unstable pre-1.0               |
-| `nitr-http` | hyper server, configuration, HTTP↔Lua bridge           | Unstable pre-1.0               |
+| **`nitr`**  | The main crate; depend on this one                     | Standard semver                |
+| `nitr-core` | Sandboxed Lua runtime, state pool, diagnostics, errors | Unstable before 1.0            |
+| `nitr-std`  | The `nitr.*` standard library                          | Unstable before 1.0            |
+| `nitr-http` | HTTP server, configuration, HTTP↔Lua bridge            | Unstable before 1.0            |
 | `nitr-cli`  | The `nitr` binary                                      | Flags follow the config policy |
 
-All five are published on crates.io at **0.0.0-beta.5**, and each has a
-rendered API reference on docs.rs — [`nitr`](https://docs.rs/nitr) is the
-one to read.
-
-**Depend on `nitr`.** The inner crates are published and usable, but
-explicitly move as fast as development needs. The [extension
-contract](./extension-modules) (`ServerBuilder::module`, `nitr_table`,
-`mount`, `ModuleFn`) is the part expected to settle first. See
+All five are on crates.io at **0.0.0-beta.5**. The API reference is on
+[docs.rs/nitr](https://docs.rs/nitr). The `nitr` crate re-exports what
+you need from the others. The [extension
+API](./extension-modules) (`ServerBuilder::module`, `nitr_table`,
+`mount`, `ModuleFn`) is expected to stabilize first. See
 [Stability](../stability).
 
-## Reading order
+## Pages in this section
 
-| Page                                     | What is in it                                            |
-| ---------------------------------------- | -------------------------------------------------------- |
-| [Getting started](./getting-started)     | Dependency, first server, project shape                  |
-| [Cargo features](./cargo-features)       | Which feature brings which builtin, and which dependency |
-| [`ServerBuilder`](./server-builder)      | Every builder method, `serve` vs `serve_with_shutdown`   |
-| [Extension modules](./extension-modules) | `nitr.ext.*`: stateless, stateful, async                 |
-| [`Runtime`](./runtime)                   | The low-level Lua runtime, with no HTTP                  |
-| [Errors](./errors)                       | `nitr::Error`, `ErrorInfo`, panic containment            |
-| [Testing](./testing)                     | `TestClient`, and binding port 0                         |
-| [Examples](./examples)                   | The runnable examples in the repository                  |
+| Page                                     | What is in it                                        |
+| ---------------------------------------- | ---------------------------------------------------- |
+| [Getting started](./getting-started)     | Dependency, first server, your first module          |
+| [Cargo features](./cargo-features)       | Which feature enables which builtin                  |
+| [`ServerBuilder`](./server-builder)      | Every builder method, TLS, `Server` methods, signals |
+| [Extension modules](./extension-modules) | `nitr.ext.*`: stateless, stateful and async modules  |
+| [`Runtime`](./runtime)                   | The Lua runtime without HTTP                         |
+| [Errors](./errors)                       | `nitr::Error`, `ErrorInfo`, panics                   |
+| [Testing](./testing)                     | `TestClient`, and binding port 0                     |
+| [Examples](./examples)                   | The runnable examples in the repository              |
 
-## What the library shares with the binary
-
-Everything except the extension modules: the same sandbox, the same
-`nitr.*` standard library, the same router, the same
-[configuration](../server/configuration/) types. A `Config` loaded from
-`nitr.toml` can be handed to the builder directly:
-
-```rust
-use std::path::Path;
-
-let cfg = nitr::Config::from_file(Path::new("nitr.toml"))?;
-Server::builder().config(cfg).build().await?.serve().await
-```
-
-Setters called after `.config(...)` override what it loaded. That is also
-how the settings with no builder setter of their own reach the server —
-`[tls]`, `[limits]`, `[cors]`, `[rate_limit]` and the rest are fields on
-`Config`, set on the struct rather than through a method. See
-[`ServerBuilder`](./server-builder).
+Everything else is shared with the binary: the same sandbox, the same
+`nitr.*` library, the same router and the same
+[configuration](../server/configuration/). A `Config` loaded from
+`nitr.toml` can be passed to the builder; see
+[Getting started](./getting-started#using-a-configuration-file).

@@ -1,8 +1,8 @@
 # Schema Options & Composition
 
-The second argument to `nitr.validate.schema` holds everything that is
-about the schema rather than about one field: its name, its strictness,
-its messages, and the rules that span more than one field.
+The second argument to `nitr.validate.schema` holds settings for the
+whole schema: its name, strictness, messages, and rules that involve
+more than one field.
 
 ```lua
 local Signup = nitr.validate.schema({
@@ -15,20 +15,20 @@ local Signup = nitr.validate.schema({
 })
 ```
 
-| Option               | What it does                                                                                                                            |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `title`              | Names the schema. Publishes it once under `components/schemas` in the [OpenAPI document](../openapi/) and references it everywhere else |
-| `strict`             | Report undeclared fields instead of stripping them                                                                                      |
-| `messages`           | Default messages for this schema ([Messages](./messages#one-schema))                                                                    |
-| `at_least_one`       | At least one of these fields must be present                                                                                            |
-| `mutually_exclusive` | At most one of these fields may be present                                                                                              |
-| `dependent_required` | If this field is present, these others must be too                                                                                      |
-| `equal_fields`       | These fields must all carry the same value                                                                                              |
-| `ordered`            | These fields must be in ascending order                                                                                                 |
-| `checks`             | Whole-object predicates written in Lua                                                                                                  |
+| Option               | What it does                                                 |
+| -------------------- | ------------------------------------------------------------ |
+| `title`              | Names the schema in the [OpenAPI document](../openapi/)      |
+| `strict`             | Reject undeclared fields instead of removing them            |
+| `messages`           | Messages for this schema ([Messages](./messages#one-schema)) |
+| `at_least_one`       | At least one of these fields must be present                 |
+| `mutually_exclusive` | At most one of these fields may be present                   |
+| `dependent_required` | If this field is present, these others must be too           |
+| `equal_fields`       | These fields must have the same value                        |
+| `ordered`            | These fields must be in ascending order                      |
+| `checks`             | Your own Lua checks over the whole object                    |
 
-An unknown option is a load-time error naming the allowed ones, exactly
-like an unknown rule key.
+An unknown option, or a group that names an unknown field, is an error
+when the app loads.
 
 ## `title`: name it if you publish it
 
@@ -36,10 +36,10 @@ like an unknown rule key.
 local Note = nitr.validate.schema({ ... }, { title = "Note" })
 ```
 
-Without a title the schema is inlined wherever it appears in the API
-document. With one it becomes `#/components/schemas/Note`, referenced
-from every operation that uses it — which is what makes generated
-clients produce one `Note` type instead of four anonymous ones.
+Without a title, the schema is written out in full wherever it is used
+in the API document. With one, it appears once as
+`#/components/schemas/Note` and every use refers to it, so generated
+clients get one `Note` type.
 
 ## `strict`: report unknown fields
 
@@ -51,106 +51,62 @@ local Internal = nitr.validate.schema({ a = "string" }, { strict = true })
 { "fields": { "titel": "is not a known field" } }
 ```
 
-The default is to strip silently, which is right for a public API — a
-client sending a field it invented should not break. `strict` is right
-for an internal one, where a misspelled field is a caller bug worth
-surfacing. A route can also set it for all of its parts at once with
-[`input.strict`](./route-input#strict-report-unknown-fields), which wins
-over the schema's own.
+The default (remove unknown fields quietly) suits a public API, where a
+client may send extra fields. `strict` suits an internal API, where an
+unknown field is probably a typo. A route's
+[`input.strict`](./route-input#strict-report-unknown-fields) overrides
+the schema's setting.
 
-## Cross-field rules
+## Rules across fields
 
-These run **after** every field of the object passed, on the validated
-output — so they always see typed, normalized values, and they cost
-nothing when a field already failed.
+These run only when every field of the object passed its own rules, and
+they see the checked, converted values. Fields that are absent are
+skipped unless the rule is about presence.
 
-### `at_least_one`
+| Option               | Example                                | Fails with (on field)                                                    |
+| -------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| `at_least_one`       | `{ { "email", "phone" } }`             | `at least one of "email", "phone" is required` (`phone`, the last one)   |
+| `mutually_exclusive` | `{ { "card_token", "bank_account" } }` | `only one of "card_token", "bank_account" may be given` (`bank_account`) |
+| `dependent_required` | `{ address = { "city", "postcode" } }` | `requires "city", "postcode"` (`address`)                                |
+| `equal_fields`       | `{ { "password", "confirm" } }`        | `must equal password` (`confirm`)                                        |
+| `ordered`            | `{ { "start_at", "end_at" } }`         | `must be after start_at` (`end_at`)                                      |
 
-```lua
-{ at_least_one = { { "email", "phone" } } }
-```
-
-> at least one of email, phone is required
-
-Attributed to the **last** field in the group, so a form can show it in
-one place.
-
-### `mutually_exclusive`
-
-```lua
-{ mutually_exclusive = { { "card_token", "bank_account" } } }
-```
-
-> only one of card_token, bank_account may be given
-
-### `dependent_required`
-
-A map, not a list: "if the key is present, the values must be too".
-
-```lua
-local Shipping = nitr.validate.schema({
-    ship        = "boolean|default:false",
-    address     = "string",
-    city        = "string",
-    postcode    = "string",
-}, {
-    dependent_required = { address = { "city", "postcode" } },
-})
-```
-
-Give an `address` without a `city` and the error names what is missing,
-on `address`:
-
-> requires city
-
-### `equal_fields`
-
-```lua
-{ equal_fields = { { "password", "confirm" } } }
-```
-
-> must equal password
-
-Reported on the field that differs, naming the first one it disagreed
-with. Fields that are absent are skipped, so this composes with
-`required` rather than duplicating it.
+Each option takes a list of groups, except `dependent_required`, which
+maps a field to the fields it needs.
 
 ### `ordered`
 
-Ascending order, over numbers or over `date` / `datetime` / `time`
-strings — which is why the format matters: it is what tells Nitr how to
-compare two strings as moments rather than as text.
+Each field must be strictly greater than the one before it. The fields
+must all be numbers, or all strings with the same `date`, `datetime` or
+`time` format, which is how Nitr knows to compare them as times rather
+than as text.
 
 ```lua
 local Booking = nitr.validate.schema({
-    start_at = { "string|format:date|required", label = "Check-in" },
-    end_at   = { "string|format:date|required", label = "Check-out" },
-    price    = "number|min:0",
+    start_at  = "string|format:date|required",
+    end_at    = "string|format:date|required",
+    price     = "number|min:0",
     max_price = "number|min:0",
 }, {
     ordered = { { "start_at", "end_at" }, { "price", "max_price" } },
 })
 ```
 
-> must be after Check-in
-
 ### A message per group
 
-Every group takes its own `message`, with `{fields}` or `{field}`
-available:
+Each group can carry its own `message`, with `{fields}` or `{field}`:
 
 ```lua
 {
     at_least_one = { { "email", "phone", message = "Give us one way to reach you" } },
-    ordered      = { { "start_at", "end_at", message = "{field} comes first" } },
+    ordered      = { { "start_at", "end_at", message = "must be after {field}" } },
 }
 ```
 
-## `checks`: predicates over the whole object
+## `checks`: your own rules over the whole object
 
-When a rule spans fields in a way no declarative form expresses, write
-it. Each entry needs a `description` — that is what the API document
-publishes, since the function itself cannot be.
+When no built-in option expresses a rule, write it. Each entry needs a
+`description`, which is what the API document shows.
 
 ```lua
 local Order = nitr.validate.schema({
@@ -166,29 +122,28 @@ local Order = nitr.validate.schema({
 })
 ```
 
-`check` receives the validated object and returns `false` (optionally
-with a message) to reject. It runs last, after the fields and the
-cross-field groups, in the caller's coroutine and inside the request's
-execution budget.
+`check` receives the checked object and returns `false` (and optionally
+a reason) to reject it. Checks run last, and only when everything else
+passed. A failure is reported on the object itself (path `$`, or `body`
+on a route).
 
 ## Deriving one schema from another
 
-Six methods, each returning a **new** schema. The original is untouched,
-so a derived schema is safe to build at load time and share.
+Each method returns a **new** schema and leaves the original unchanged.
 
-| Method            | Gives you                                           |
-| ----------------- | --------------------------------------------------- |
-| `:partial()`      | The same schema with every top-level field optional |
-| `:pick(names)`    | Only the named fields                               |
-| `:omit(names)`    | Everything but the named fields                     |
-| `:extend(fields)` | Fields added or replaced; `false` removes one       |
-| `:with(opts)`     | The same fields under different options             |
-| `:fields()`       | The declared field names, sorted                    |
+| Method            | Gives you                                     |
+| ----------------- | --------------------------------------------- |
+| `:partial()`      | Every top-level field optional                |
+| `:pick(names)`    | Only the named fields                         |
+| `:omit(names)`    | Every field except the named ones             |
+| `:extend(fields)` | Fields added or replaced; `false` removes one |
+| `:with(opts)`     | The same fields with some options changed     |
+| `:fields()`       | The declared field names, sorted              |
 
-### The POST/PATCH pair
+### Create and update
 
-This is the case `:partial()` exists for. Write the schema once, as the
-full thing, and derive the update:
+Write the full schema for creating a record, and derive the update
+schema from it:
 
 ```lua
 local NoteInput = nitr.validate.schema({
@@ -205,51 +160,36 @@ app:patch("/api/notes/:id", update, {
 })
 ```
 
-`:partial()` drops `required`, and nothing else: a `text` that _is_ sent
-still has to be a trimmed, non-empty string of at most 500 characters.
+`:partial()` only removes `required`: a `text` that is sent must still
+be a non-empty string of at most 500 characters.
 
 ### Narrowing and widening
 
 ```lua
--- A public listing that must not accept the internal fields.
-local PublicNote = NoteInput:omit({ "internal_ref" })
+local PublicNote = NoteInput:omit({ "priority" })
 
--- The same note, plus what only an admin may set.
 local AdminNote = NoteInput:extend({
     pinned = "boolean|default:false",
     owner  = "string|format:uuid|required",
 })
 
--- Just the two fields a search form sends.
 local Search = NoteInput:pick({ "text", "tags" }):with({ title = "Search" })
 
--- Drop a field an inherited schema declared.
-local Trimmed = AdminNote:extend({ owner = false })
+local NoOwner = AdminNote:extend({ owner = false })   -- removes `owner`
+
+local Lenient = Internal:with({ strict = false })     -- other options kept
 ```
 
-> [!NOTE] A dropped field a cross-field rule names is a load-time error
+> [!NOTE] Dropping a field a group uses
 >
-> `:omit({ "confirm" })` on a schema whose options say
-> `equal_fields = { { "password", "confirm" } }` fails when the derived
-> schema compiles — not silently, and not at the first request. Derive
-> the options too, with `:with(...)`, when you drop a field a group
-> mentions.
-
-### Options, changed
-
-`:with(opts)` replaces the options it names and keeps the rest:
-
-```lua
-local Lenient = Internal:with({ strict = false })
-local Loud    = Signup:with({ messages = { required = "We need this" } })
-```
-
-`title`, `strict`, `messages`, the five cross-field groups and `checks`
-are all settable this way.
+> `Signup:omit({ "confirm" })` fails at load, because `equal_fields`
+> still names `confirm`. Change the groups too:
+> `Signup:with({ equal_fields = {} }):omit({ "confirm" })`.
 
 ## Reusing a schema as a field
 
-A compiled schema is a rule. Nest it directly, or through `fields`:
+A compiled schema can be used as a field's rule, directly or through
+`fields`:
 
 ```lua
 local Address = nitr.validate.schema({
@@ -260,19 +200,11 @@ local Address = nitr.validate.schema({
 local Customer = nitr.validate.schema({
     name    = "string|required",
     home    = { type = "table", fields = Address, required = true },
-    work    = { type = "table", fields = Address },
-    history = { "array|max_items:20", items = { type = "table", fields = Address } },
+    work    = Address,
+    history = { "array|max_items:20", items = Address },
 }, { title = "Customer" })
 ```
 
-Because `Address` has a `title`, the API document emits it once and
-references it three times. Failures are reported by path:
-
-```json
-{
-  "fields": {
-    "home.city": "is required",
-    "history[2].street": "is required"
-  }
-}
-```
+Because `Address` has a `title`, the API document describes it once and
+refers to it three times. Failures use the full path: `home.city`,
+`history[2].street`.

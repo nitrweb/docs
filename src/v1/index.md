@@ -16,19 +16,18 @@
 [Lua 5.4](https://www.lua.org/) so you can write fast, efficient and safe
 lightweight dynamic backends.
 
-You write the request handling in Lua. Everything underneath — the HTTP
-layer, routing, TLS termination, compression, static files, SQLite, the
-outbound HTTP client, cryptography — is Rust, and it is already there.
+You write the request handling in Lua. Everything underneath — HTTP,
+routing, TLS, compression, static files, SQLite, the HTTP client,
+cryptography — is Rust, and it ships in one binary.
 
 The current release is **`0.0.0-beta.5`**, published on
-[crates.io](https://crates.io/crates/nitr-cli); the source lives at
+[crates.io](https://crates.io/crates/nitr-cli). The source lives at
 [github.com/nitrweb/nitr](https://github.com/nitrweb/nitr).
 
 > [!WARNING] Early development
 >
-> Nitr is in early development and **not ready for production use**. The
-> `nitr.*` Lua API is the surface we intend to keep most stable, but
-> pre-1.0 a minor release may still break it. See
+> Nitr is **not ready for production use** yet. Before 1.0, a minor
+> release may still break the `nitr.*` Lua API. See
 > [Stability & Versioning](./stability).
 
 ## A complete application
@@ -52,20 +51,19 @@ handler_script = "app.lua"
 
 ```sh
 nitr dev
-# → curl http://127.0.0.1:3000/hello/world
-#   {"hello":"world"}
+curl http://127.0.0.1:3000/hello/world
+# {"hello":"world"}
 ```
 
-That is a complete Nitr application: one Lua file and the two lines of
-configuration that point at it. No build step, no dependency manifest,
-no framework to install — the routing, the JSON encoder and the HTTP
-server all came with the binary. [`nitr init`](./quick-start) writes
-both files, plus a database, tests and editor completions.
+One Lua file and two lines of configuration. No build step, no
+dependencies to install: the router, the JSON encoder and the server all
+come with the binary. [`nitr init`](./quick-start) scaffolds a fuller
+starting point with a database, tests and editor completion.
 
 ## Two ways to use Nitr
 
-Nitr is both a **server binary** and a **Rust library crate**. The docs
-are split the same way, and you almost certainly want the first one.
+Nitr is a **server binary** and a **Rust library crate**. Most people
+want the first one.
 
 |                   | [Server](./server/)                                      | [Library](./library/)                                                                                            |
 | ----------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -74,80 +72,49 @@ are split the same way, and you almost certainly want the first one.
 | **Configuration** | [`nitr.toml`](./server/configuration/file) + env + flags | [`Server::builder()`](./library/server-builder) or a `Config`                                                    |
 | **Use it when**   | You are building a backend                               | You want to embed the server, or expose your own Rust code to Lua as [`nitr.ext.*`](./library/extension-modules) |
 
-Both run the same engine, the same `nitr.*` standard library and the
-same sandbox. The library adds one thing the binary cannot: your own
-Rust modules mounted into every Lua state.
+Both run the same engine, standard library and sandbox.
 
 ## Why Nitr
 
-**One process, one binary, one config file.** Drop a binary and a few
-Lua files onto a machine and you have a complete HTTP application. With
-[`nitr build`](./server/deployment/single-file) even the Lua files
-disappear into the executable.
+- **One binary, one config file.** Copy the binary and a few Lua files
+  to a machine and you have an HTTP application.
+  [`nitr build`](./server/deployment/single-file) packs the Lua files
+  into the executable too.
+- **Parallel without a global lock.** Nitr keeps a pool of independent
+  Lua states, one per CPU core by default, and each request runs in one
+  of them. See [How Nitr works](./how-it-works).
+- **Safe by default.** Scripts run without `io` and `os`, with an 8 MiB
+  memory limit and a 30-second time limit that stops even
+  `while true do end`. `require` only loads from your scripts directory,
+  and precompiled bytecode is refused. See
+  [Security & the sandbox](./server/security).
+- **One namespace.** Everything Nitr adds lives under the global `nitr`
+  table (`nitr.json`, `nitr.db`, `nitr.crypto`, …). Your own Rust
+  modules go under `nitr.ext.*`, where no built-in can clash with them.
+- **The tedious parts of HTTP are done for you.** Range and conditional
+  requests, compression, CORS preflights, streamed uploads, and 404/405
+  responses are handled in Rust without running Lua.
+- **Input checked before your handler runs.** Declare what a route
+  accepts and Nitr validates the body, query, path parameters and
+  headers, then hands you the clean result in `req.valid`:
 
-**Parallel by construction.** Nitr keeps a fixed pool of _independent_
-Lua states — one per CPU core by default. A request checks out a state,
-runs, and gives it back. There is no global interpreter lock, because
-there is no global interpreter. See [How Nitr works](./how-it-works).
+  ```lua
+  app:post("/api/notes", function(req)
+      return nitr.json(create(req.valid.body), 201)
+  end, { input = { body = NoteInput } })
+  ```
 
-**Safe by default, not by discipline.** Every script runs with `io` and
-`os` excluded from the standard library, an 8 MiB memory ceiling, a
-30-second execution budget enforced by an instruction-count hook (so
-`while true do end` is stopped, not merely discouraged — and `pcall`
-cannot swallow the deadline), `require` confined to the scripts
-directory, and every chunk compiled from source, never from bytecode.
-Templates escape by default, static mounts hide dotfiles, and a
-`nitr.toml` that would serve its own scripts refuses to boot. See
-[Security & the sandbox](./server/security).
+  See [Validation](./server/validation/).
 
-**One namespace, no collisions.** Everything Nitr gives Lua lives under
-the global `nitr` table — `nitr.json`, `nitr.db`, `nitr.crypto`. Nitr
-registers nothing else, so scripts never collide with the Lua standard
-library, and your own Rust extensions mount one level down at
-`nitr.ext.*` where no future builtin can ever reach them.
-
-**The boring parts are already Rust.** Range requests, conditional
-requests, compression, CORS preflights, multipart uploads that stream to
-disk without touching the Lua heap, 404/405 answered without entering
-Lua at all.
-
-**Declare what a route accepts, once.** A route's `input` is checked in
-Rust **before your handler runs** — body, query string, path parameters
-and headers, with text coerced to the declared types and undeclared
-fields stripped. The handler reads `req.valid` and contains no
-validation code:
-
-```lua
-app:post("/api/notes", function(req)
-    return nitr.json(create(req.valid.body), 201)
-end, { input = { body = NoteInput } })
-```
-
-Nine types, 36 string formats, uploads judged by their bytes rather than
-their declared type, and messages you can reword. See
-[Validation](./server/validation/).
-
-**And the same declaration is your API document.** Nitr generates
-OpenAPI 3.1 from the route table, with a Swagger UI page served from the
-binary — no CDN, and nothing to keep in sync by hand, because the table
-that describes a request is the table that enforces it. `nitr openapi
---check` is a CI gate against drift. See
-[OpenAPI](./server/openapi/).
-
-**HTTPS without a proxy in front.** Three lines of `[tls]` terminate TLS
-in-process with rustls (the `ring` provider, a TLS 1.2 floor, ALPN
-pinned to what the server actually speaks). The certificate and key are
-validated before the port exists, so a mismatched pair refuses to boot
-rather than failing every handshake on a port traffic already points at;
-a renewal takes effect on `SIGHUP`, which re-reads both files and swaps
-them in only when the new pair validates. Fronting Nitr with a proxy is
-still perfectly good — it just is not the only way to serve HTTPS. See
-[TLS termination](./server/tls).
-
-**Editor completion for the whole surface.** `nitr init` writes
-`nitr-types.lua`, generated LuaCATS definitions covering every
-`nitr.*` API — completion, signatures and inline docs in any editor
-running the Lua Language Server.
+- **API docs from the same declaration.** Nitr generates an OpenAPI 3.1
+  document from your routes and serves a Swagger UI page from the
+  binary. See [OpenAPI](./server/openapi/).
+- **HTTPS without a proxy.** A three-line `[tls]` section serves HTTPS
+  directly, and `SIGHUP` picks up a renewed certificate. See
+  [TLS termination](./server/tls).
+- **Editor completion.** `nitr init` writes `nitr-types.lua`, which gives
+  completion and inline docs for the whole `nitr.*` API in any editor
+  that runs the Lua Language Server.
 
 ## Where to go next
 

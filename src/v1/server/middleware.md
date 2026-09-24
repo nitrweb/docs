@@ -1,20 +1,19 @@
 # Middleware
 
-Middleware in Nitr is a **factory**: a function that receives the next
-handler and returns the function that will actually run per request.
+A middleware is a **factory**: a function that receives the next
+handler and returns the function that runs for each request.
 
 ```lua
-function(next)              -- ← runs ONCE, at load time
-    return function(req)    -- ← runs per request
+function(next)              -- runs once, when app.lua loads
+    return function(req)    -- runs for each request
         return next(req)
     end
 end
 ```
 
-That shape is the whole idea. The chain is composed once, when `app.lua`
-loads; a request just calls through it.
-
 ## Global middleware
+
+`app:use` adds middleware for every route:
 
 ```lua
 local app = nitr.app()
@@ -31,15 +30,13 @@ app:get("/", handler)
 return app
 ```
 
-> [!WARNING] `app:use` must come before any route
->
-> Global middleware wraps the entire application and the chain is
-> composed at load time. Calling `app:use` after a route is an error at
-> startup, not a subtle ordering bug in production.
+`app:use` must come before any route; calling it later is an error at
+startup.
 
 ## Route middleware
 
-Every argument before the last is middleware for that route only:
+Every argument between the path and the handler is middleware for that
+route only:
 
 ```lua
 app:get("/admin/stats", require_admin, function(req)
@@ -57,60 +54,29 @@ app:use(B)
 app:get("/x", C, handler)
 ```
 
-```
+```text
 request  →  A  →  B  →  C  →  handler
 response ←  A  ←  B  ←  C  ←  handler
 ```
 
 Code before `next(req)` runs on the way in; code after it runs on the
-way out, innermost first.
+way out.
 
-> [!NOTE] A route's `input` is checked before any of it
+> [!NOTE] A route's `input` is checked before any middleware
 >
-> Where a route declares
-> [`input`](./validation/route-input), Nitr validates the request in
-> Rust **before** the middleware chain runs — so a malformed body gets a
-> `422` without your auth or logging middleware seeing it at all. The
-> cheap check comes first, and no Lua state does work for a request that
-> was never going to be accepted.
->
-> Middleware that must run on every request, valid or not, therefore
-> belongs in [`on_invalid`](./errors#on-invalid-when-the-input-was-wrong)
-> as well — and authorization that must be decided before shape belongs
-> in the handler.
->
-> Middleware on a validated route can read `req.valid`, which is what
-> makes a shared "who is this?" middleware able to use a checked header.
+> On a route that declares [`input`](./validation/route-input), an
+> invalid request is answered `422` before the chain runs, so your
+> middleware never sees it. Use
+> [`on_invalid`](./errors#on-invalid-when-the-input-was-wrong) to
+> change that answer. Middleware on a validated route can read
+> `req.valid`.
 
-## The patterns worth knowing
-
-### Timing and logging
-
-```lua
-app:use(function(next)
-    return function(req)
-        local started = nitr.time.monotonic()
-        local resp = next(req)
-        nitr.log.info("request", {
-            path   = req.path,
-            status = type(resp) == "table" and resp.status or 200,
-            ms     = math.floor((nitr.time.monotonic() - started) * 1000),
-        })
-        return resp
-    end
-end)
-```
-
-> [!NOTE] Nitr already logs this
->
-> The `request` span emits an access-log line per request on its own.
-> Write your own only when you want extra fields. See
-> [Logging](./logging).
+## Common patterns
 
 ### Short-circuiting
 
-Not calling `next` ends the request there. This is how authentication
-works:
+Return a response without calling `next` to stop the request. This is
+how authentication works:
 
 ```lua
 local function require_auth(next)
@@ -127,28 +93,29 @@ local function require_auth(next)
             return nitr.error(401, { code = "INVALID_TOKEN" })
         end
 
-        req.user = claims.sub          -- pass data down the chain
-        return next(req)
+        return next(req, claims)       -- pass data down the chain
     end
 end
 
-app:get("/me", require_auth, function(req)
-    return nitr.json({ user = req.user })
+app:get("/me", require_auth, function(req, claims)
+    return nitr.json({ user = claims.sub })
 end)
 ```
 
 ### Passing data down the chain
 
-Assign a field on `req`. It is a plain Lua table, and it lives only for
-this request in this state:
+`req` is read-only: `req.user = ...` raises an error. Pass values as
+extra arguments to `next` instead, as above. The handler receives them
+after `req`. A middleware in between must forward them:
 
 ```lua
-req.user      = claims.sub
-req.tenant_id = tenant.id
+local function audit(next)
+    return function(req, ...)
+        nitr.log.info("audit", { path = req.path })
+        return next(req, ...)
+    end
+end
 ```
-
-Prefer a namespaced field (`req.ctx = { … }`) if you worry about
-colliding with a future built-in field.
 
 ### Adding response headers
 
@@ -156,128 +123,125 @@ colliding with a future built-in field.
 app:use(function(next)
     return function(req)
         local resp = next(req)
-        if type(resp) == "table" then
-            resp.headers = resp.headers or {}
-            resp.headers["X-Frame-Options"] = "DENY"
-            resp.headers["X-Content-Type-Options"] = "nosniff"
-            resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        end
+        resp.headers = resp.headers or {}
+        resp.headers["X-Frame-Options"] = "DENY"
+        resp.headers["X-Content-Type-Options"] = "nosniff"
         return resp
     end
 end)
 ```
 
-### Conditional middleware
+A response built by hand may have no `headers` table, hence the
+`or {}`.
 
-There is no path matcher in `app:use` — branch inside instead, or use
-route middleware:
+### Timing
+
+Nitr already writes one access-log line per request (see
+[Logging](./logging)). Time a request yourself only when you want
+extra fields:
 
 ```lua
 app:use(function(next)
     return function(req)
-        if req.path:sub(1, 5) ~= "/api/" then
-            return next(req)
+        local started = nitr.time.monotonic()
+        local resp = next(req)
+        nitr.log.info("timed", {
+            path = req.path,
+            ms   = math.floor((nitr.time.monotonic() - started) * 1000),
+        })
+        return resp
+    end
+end)
+```
+
+### Only for some paths
+
+`app:use` has no path filter. Use route middleware, or check the path
+inside:
+
+```lua
+app:use(function(next)
+    return function(req)
+        if req.path:sub(1, 5) == "/api/" then
+            -- API-only work here
         end
-        -- API-only work here
         return next(req)
     end
 end)
 ```
 
+### Parameterised middleware
+
+Wrap the factory in another function to configure it:
+
+```lua
+local function require_role(role)
+    return function(next)
+        return function(req, user)
+            if not user or user.role ~= role then
+                return nitr.error(403, { code = "FORBIDDEN" })
+            end
+            return next(req, user)
+        end
+    end
+end
+
+app:get("/admin", require_session, require_role("admin"), handler)
+```
+
+Here `require_session` is assumed to call `next(req, user)`.
+
 ### Built-in middleware
 
-Nitr ships two factories you can pass straight to `app:use`:
+`nitr.csrf` returns a factory you can pass to `app:use`:
 
 ```lua
 app:use(nitr.csrf({ secret = nitr.cfg.csrf_secret }))
 ```
 
-See [Cookies & sessions](./cookies-sessions#csrf-protection).
+It passes only `req` on to `next`, so register it before middleware
+that passes extra values. See
+[CSRF protection](./cookies-sessions#csrf-protection).
 
-## Where to put expensive work
+## Do expensive work once
 
-The outer function runs **once**, at load. Everything you can hoist,
-hoist:
+The outer function runs once per Lua state, at load. Build schemas,
+lookup tables and other setup there or at the top of the file, not per
+request:
 
 ```lua
--- ✅ compiled once per state
-local schema = nitr.validate.schema({
-    email = { type = "string", format = "email", required = true },
+local schema = nitr.validate.schema({      -- built once
+    email = "string|format:email|required",
 })
 
-local function validate_body(next)
+local function check_email(next)
     return function(req)
         local data, err = schema:check(req:json())
         if not data then
             return nitr.error(422, { code = "VALIDATION_FAILED", fields = err.fields })
         end
-        req.data = data
-        return next(req)
+        return next(req, data)
     end
 end
 ```
 
-```lua
--- ❌ recompiled on every single request
-local function validate_body(next)
-    return function(req)
-        local schema = nitr.validate.schema({ … })
-        …
-    end
-end
-```
-
-The factory's own body is also a fine place for per-application setup —
-it runs once too, and it can capture configuration:
-
-```lua
-local function require_role(role)          -- a parameterised middleware
-    return function(next)
-        return function(req)
-            if req.user_role ~= role then
-                return nitr.error(403, { code = "FORBIDDEN" })
-            end
-            return next(req)
-        end
-    end
-end
-
-app:get("/admin", require_role("admin"), handler)
-```
+For request bodies, a route [`input`](./validation/route-input) does
+this for you.
 
 ## Errors in middleware
 
-A middleware that raises is handled exactly like a failing handler: the
-error is classified, logged, and offered to
-[`on_error`](./errors#on-error-handlers). You do not need `pcall` around
-`next(req)` — and wrapping it in one usually just hides the failure from
-your own error handler.
-
-Use `pcall` only when you genuinely intend to _recover_:
-
-```lua
-app:use(function(next)
-    return function(req)
-        local ok, resp = pcall(next, req)
-        if ok then
-            return resp
-        end
-        local err = nitr.errinfo(resp)     -- the structured error
-        if err.kind == "timeout" then
-            return nitr.error(504, { code = "TIMEOUT" })
-        end
-        error(resp)                        -- rethrow anything else
-    end
-end)
-```
+An error raised in middleware is handled like one in a handler: logged
+and passed to [`on_error`](./errors#on-error-handlers). You do not need
+`pcall` around `next(req)`; wrapping it usually just hides failures
+from your error handler. A timeout cannot be caught with `pcall` at
+all, so answer it in `on_error` (`err.kind == "timeout"`).
 
 ## What middleware cannot do
 
-- **It cannot see requests answered in Rust.** Static files, `404`,
-  `405`, CORS preflights, health probes and rejected-by-limit requests
-  never enter Lua. If you need a header on a static file, use
-  `[static] cache_control` or a reverse proxy.
-- **It cannot be registered after a route** (globally).
-- **It cannot share state with other Lua states.** A counter in an
-  upvalue counts only what its own state did — use
-  [`nitr.cache`](./cache) or [`nitr.db`](./database).
+- **See requests Nitr answers itself.** Static files, `404`, `405`,
+  CORS preflights, health checks and requests rejected by a limit never
+  reach Lua. For headers on static files, use `cache_control` on the
+  mount or a reverse proxy.
+- **Share state between Lua states.** A counter in a local variable
+  only counts what its own state handled. Use [`nitr.cache`](./cache)
+  or [`nitr.db`](./database).
