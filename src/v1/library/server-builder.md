@@ -148,6 +148,24 @@ See [Cargo features](./cargo-features#the-builtins-flags), including why
 The number of pooled Lua states — the maximum number of handlers
 executing at once. Defaults to the CPU core count.
 
+### `cache(cache: nitr::stdlib::Cache) -> Self`
+
+The storage behind `nitr.cache`, instead of a fresh one sized by
+`[cache]`. Share one instance with code outside the server, such as a
+test that checks what a handler cached. Ignored when the `cache`
+builtin is not enabled.
+
+```rust
+use nitr::stdlib::{Cache, CacheOptions};
+
+let cache = Cache::new(CacheOptions::default());
+let server = Server::builder()
+    .handler_script("app.lua")
+    .cache(cache.clone())
+    .build()
+    .await?;
+```
+
 ### `dev_mode(on: bool) -> Self`
 
 Hot-reload on change, and include error details in responses.

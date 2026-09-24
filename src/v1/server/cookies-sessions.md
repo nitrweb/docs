@@ -237,6 +237,20 @@ tampered one — you never have to distinguish those to be safe.
 > [`nitr.crypto.seal`](./crypto-auth#authenticated-encryption) and store
 > the sealed token.
 
+### Signing outside a cookie header
+
+`nitr.cookie.sign` and `nitr.cookie.verify` use the same scheme
+directly, for a signed value that travels somewhere else (a query
+string, a hidden field) or a test that forges a signed cookie:
+
+```lua
+local token = nitr.cookie.sign("user_id", "42", nitr.cfg.cookie_secret)
+nitr.cookie.verify("user_id", token, nitr.cfg.cookie_secret)   -- "42"
+```
+
+A value signed with `nitr.cookie.sign(name, ...)` is accepted by
+`req.cookies:verify(name, ...)`, and the other way round.
+
 ## Sessions
 
 `nitr.session` gives a **stateless signed-cookie session**: the whole

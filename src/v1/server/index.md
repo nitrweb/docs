@@ -86,20 +86,20 @@ why that distinction matters.
 
 ### The standard library
 
-| Page                                  | What is in it                                         |
-| ------------------------------------- | ----------------------------------------------------- |
-| [Database](./database)                | `nitr.db`, transactions, migrations                   |
-| [Templates](./templates)              | `nitr.template` (minijinja)                           |
-| [Static files](./static-files)        | Rust-side serving, SPA mode, caching                  |
-| [Validation](./validation/)           | `nitr.validate`, route `input`, uploads, messages     |
-| [OpenAPI & Swagger UI](./openapi/)    | The document generated from your routes, and the page |
-| [Outbound HTTP](./fetch)              | `nitr.fetch`, concurrency, SSRF policy                |
-| [Cache](./cache)                      | `nitr.cache`, and what does _not_ belong in it        |
-| [Crypto & auth](./crypto-auth)        | Hashes, HMAC, random bytes, AEAD, `Authorization`     |
-| [Passwords & Basic auth](./passwords) | argon2id, `nitr hash-password`, the login timing leak |
-| [JWT](./jwt)                          | `nitr.crypto.jwt`, and the claims `verify` ignores    |
-| [Testing](./testing)                  | `nitr test`, `describe`/`it`/`expect`                 |
-| [Logging](./logging)                  | Span schema, JSON output, redaction rules             |
+| Page                                  | What is in it                                                 |
+| ------------------------------------- | ------------------------------------------------------------- |
+| [Database](./database)                | `nitr.db`, transactions, migrations                           |
+| [Templates](./templates)              | `nitr.template` (minijinja)                                   |
+| [Static files](./static-files)        | Rust-side serving, SPA mode, caching                          |
+| [Validation](./validation/)           | `nitr.validate`, route `input`, uploads, messages             |
+| [OpenAPI & Swagger UI](./openapi/)    | The document generated from your routes, and the page         |
+| [Outbound HTTP](./fetch)              | `nitr.fetch`, concurrency, SSRF policy                        |
+| [Cache](./cache)                      | `nitr.cache`, and what does _not_ belong in it                |
+| [Crypto & auth](./crypto-auth)        | Hashes, HMAC, random bytes, AEAD, `Authorization`             |
+| [Passwords & Basic auth](./passwords) | argon2id, `nitr hash-password`, the login timing leak         |
+| [JWT](./jwt)                          | `nitr.crypto.jwt`, and the claims `verify` ignores            |
+| [Testing](./testing)                  | `nitr test`: unit and integration tests, doubles, DB fixtures |
+| [Logging](./logging)                  | Span schema, JSON output, redaction rules                     |
 
 The exhaustive per-function inventory is the [Lua API
 reference](../api/).

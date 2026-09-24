@@ -35,6 +35,7 @@ option is `NITR_<SECTION>_<OPTION>`.
 | `NITR_DATABASE_PATH`       | `[database] path`       | `/var/lib/nitr/app.db`    |
 | `NITR_TEMPLATING_DIR`      | `[templating] dir`      | `templates`               |
 | `NITR_TESTING_DIR`         | `[testing] dir`         | `tests`                   |
+| `NITR_TESTING_DATABASE`    | `[testing] database`    | `data/test.db`            |
 | `NITR_ENV_FILE`            | `[env] file`            | `/etc/nitr/app.env`       |
 | `NITR_LUA_MEMORY_LIMIT`    | `[lua] memory_limit`    | `16777216`                |
 | `NITR_LUA_EXEC_TIMEOUT_MS` | `[lua] exec_timeout_ms` | `30000`                   |

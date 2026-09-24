@@ -626,23 +626,36 @@ saying the builtin is not configured. Listing `"template"` in
 ```toml
 [testing]
 dir = "tests"
-database = "test.db"
+database = "data/test.db"
+seed = "tests/fixtures/seed.sql"
+capture = true
+slow_ms = 1000
 ```
 
-| Key        | Default                          | Description                                                                                                      |
-| ---------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `dir`      | `"tests"`                        | Where `nitr test` discovers `*.lua` files.                                                                       |
-| `database` | _unset (a private file per run)_ | The SQLite file tests run against when a `[database]` section exists. Never `[database] path`, whatever it says. |
+| Key        | Default                          | Description                                                                                                                |
+| ---------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `dir`      | `"tests"`                        | Where `nitr test` discovers `*.lua` files. Not recursive: subdirectories hold helpers that tests can `require`.            |
+| `database` | _unset (a private file per run)_ | The SQLite file tests run against. A named file is recreated at the start of every run and kept afterwards for inspection. |
+| `seed`     | _unset_                          | A SQL file applied after the migrations and the config script. It is part of the snapshot that `t.db.reset()` restores.    |
+| `capture`  | `true`                           | Captures log lines per test and prints them only under a failed test. `nitr test --nocapture` streams them instead.        |
+| `slow_ms`  | `1000`                           | Tests slower than this many milliseconds are marked `slow` in the report.                                                  |
 
 > [!WARNING] `nitr test` never touches the configured database
 >
-> A test's `before_each` is typically `DELETE FROM ...`, and a
-> `nitr.toml` naming the live database is exactly the file a developer
-> runs `nitr test` beside. So the runner substitutes its own path: the
-> one in `[testing] database`, or — when that is unset — a fresh private
-> file it creates and removes when the run ends. Either way it applies
-> `[database] migrations_dir` first, so tests see the schema rather than
-> an empty file.
+> Tests reset, truncate and seed their database, and a `nitr.toml`
+> naming the live database is exactly the file a developer runs
+> `nitr test` beside. So the runner substitutes its own path: the one
+> in `[testing] database`, or — when that is unset — a fresh private
+> file it removes when the run ends. Either way it applies
+> `[database] migrations_dir` first, so tests see the schema rather
+> than an empty file.
+>
+> Two settings are refused by `nitr test`:
+>
+> - `[testing] database` naming the same file as `[database] path`.
+> - A `[multipart] upload_dir` inside `[testing] dir`. Test files can
+>   `require` from that directory, so an uploaded `.lua` file would
+>   become a loadable module.
 
 ## `[env]`
 

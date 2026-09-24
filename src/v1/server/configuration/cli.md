@@ -38,6 +38,12 @@ nitr -c /srv/app/nitr.toml --dev
 | --------------- | ----------------------- | ------------------------------------------------------------------------------ |
 | `check`         | `--print-config`        | Print the effective configuration after file + env + flag layering, then exit. |
 | `test`          | `--filter <SUBSTRING>`  | Run only tests whose name or file name contains the substring.                 |
+| `test`          | `--bail`                | Stop at the first failing test.                                                |
+| `test`          | `--list`                | Print every test with its `file:line`, without running any.                    |
+| `test`          | `--watch`               | Run again whenever a Lua source, template or test file changes, until Ctrl-C.  |
+| `test`          | `--reporter <FORMAT>`   | `pretty` (default), `json` or `junit`.                                         |
+| `test`          | `-o`, `--output <FILE>` | Write the JSON/JUnit report to a file instead of standard output.              |
+| `test`          | `--nocapture`           | Stream log lines instead of printing them under a failed test.                 |
 | `migrate`       | `--status`              | Report applied, pending and modified migrations, applying nothing.             |
 | `init`          | `[DIR]`                 | Directory to scaffold into. Default: the current directory.                    |
 | `init`          | `--minimal`             | Write the bare-minimum scaffold instead of the full layout.                    |
@@ -90,6 +96,7 @@ NITR_WORKERS=8 nitr check --print-config | grep workers
 
 ```sh
 nitr test --filter "rejects an empty note"
+nitr test --filter notes --watch --bail   # re-run on save, stop at the first failure
 ```
 
 **Mint a credential before the application exists.** This is the one

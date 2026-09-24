@@ -59,15 +59,65 @@ Returns a `TestResponse`:
 | `status: u16`                    | HTTP status code                                                                                        |
 | `headers: Vec<(String, String)>` | Header pairs **in response order** — repeated names appear repeatedly, so `Set-Cookie` is fully visible |
 | `body: Bytes`                    | The collected body, streaming responses included                                                        |
+| `error: Option<HandlerFailure>`  | The handler's failure when the request took the error path, see [below](#why-a-request-failed)          |
 | `.header(name) -> Option<&str>`  | The first value of a case-insensitive header                                                            |
 
 > [!NOTE] What the in-process path does and does not simulate
 >
 > Everything above the socket runs for real: the rate limiter, the
 > request-id policy, CORS and response compression all apply, and every
-> response carries `X-Request-ID`. What is not real is the peer: every
-> test request arrives from `127.0.0.1:0`, so a configured
-> `[rate_limit]` counts your whole test as one client.
+> response carries `X-Request-ID`. What is not real is the peer: by
+> default every test request arrives from `127.0.0.1:0`, so a configured
+> `[rate_limit]` counts your whole test as one client. Set
+> `remote_addr` with [`send`](#send-testrequest) to simulate others.
+
+### `send(TestRequest)`
+
+`request` covers the common case. `send` takes a `TestRequest`, which
+adds the peer address and a timeout for the whole exchange:
+
+```rust
+use std::time::Duration;
+use nitr::testing::TestRequest;
+
+let resp = client.send(TestRequest {
+    method: "GET".into(),
+    path: "/api/notes".into(),
+    remote_addr: Some("10.0.0.7:4000".parse().unwrap()),   // what [rate_limit] sees
+    timeout: Some(Duration::from_secs(2)),                 // a stream that never ends fails
+    ..TestRequest::default()
+}).await?;
+```
+
+| Field         | Type                    | Default        |
+| ------------- | ----------------------- | -------------- |
+| `method`      | `String`                | —              |
+| `path`        | `String`                | with any query |
+| `headers`     | `Vec<(String, String)>` | none           |
+| `body`        | `Option<Bytes>`         | none           |
+| `remote_addr` | `Option<SocketAddr>`    | `127.0.0.1:0`  |
+| `timeout`     | `Option<Duration>`      | none           |
+
+### Why a request failed
+
+When a handler raises, the response carries the classified error in
+`resp.error`, even without dev mode. The bytes a real client receives
+are unchanged: the failure travels as a response extension that hyper
+never serializes.
+
+```rust
+let resp = client.request("GET", "/boom", &[], None).await?;
+assert_eq!(resp.status, 500);
+
+let failure = resp.error.expect("the handler raised");
+assert_eq!(failure.info.kind, "lua");            // nitr::ErrorInfo
+assert!(failure.info.message.contains("nil value"));
+assert!(failure.handled);                        // the app's on_error answered
+```
+
+`HandlerFailure.info` is a `nitr::ErrorInfo`: `kind`, `message`,
+`source`, `line`, `module`, `traceback` and `cause`, the same fields
+`on_error` receives in Lua.
 
 ### Posting JSON
 
@@ -195,8 +245,10 @@ Server::builder()
     .database(dir.path().join("test.db"))
 ```
 
-**The cache.** `nitr.cache` is per-process, so tests in one binary share
-it. Build a fresh `Server` per test, or clear the cache in a fixture.
+**The cache.** Each `Server` builds its own `nitr.cache` unless you pass
+one with [`.cache(...)`](./server-builder).
+Build a fresh `Server` per test, or share a `Cache` on purpose to
+inspect what a handler stored.
 
 **Workers.** `workers(1)` makes behaviour deterministic when you are
 testing one request at a time; use more only when concurrency is the

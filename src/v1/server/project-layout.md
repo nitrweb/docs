@@ -12,6 +12,8 @@ my-app/
 ├── app.lua                routes and middleware; returns nitr.app()
 ├── routes/
 │   └── notes.lua          a route module
+├── lib/
+│   └── notes.lua          plain module: schemas, no `req` — unit-tested
 ├── migrations/
 │   └── 001_init.sql       plain SQL, applied by `nitr migrate`
 ├── templates/
@@ -19,7 +21,9 @@ my-app/
 ├── public/
 │   └── index.html         static files, served by Rust
 ├── tests/
-│   └── notes_test.lua     *.lua files, run by `nitr test`
+│   ├── notes_test.lua     *.lua files, run by `nitr test`
+│   └── helpers/
+│       └── notes.lua      test data; `require("helpers.notes")`
 ├── data/
 │   └── .gitkeep           app.db lands here after `nitr migrate`
 ├── .gitignore             ignores data/*.db*
@@ -42,6 +46,7 @@ Nothing here is magic. Every path is a configuration key you can change:
 | `app.lua`      | `handler_script`                          | **yes**                                        |
 | `config.lua`   | `config_script`                           | no                                             |
 | `routes/`      | nothing — it is `require`d from `app.lua` | no                                             |
+| `lib/`         | nothing — it is `require`d where needed   | no                                             |
 | `migrations/`  | `[database] migrations_dir`               | no                                             |
 | `templates/`   | `[templating] dir`                        | only if you use `nitr.template`                |
 | `public/`      | `[static] dir` + `mount`                  | no                                             |
@@ -230,16 +235,8 @@ A module is just a function that takes the app:
 --
 -- A route's `input` is validated in Rust before the handler runs, and
 -- the same declaration documents the operation in /openapi.json.
-local NoteInput = nitr.validate.schema({
-    text = "string|trim|min_len:1|max_len:500|required",
-}, { title = "NoteInput" })
-
--- Documentation only: responses are never checked.
-local Note = nitr.validate.schema({
-    id         = "integer|required",
-    text       = "string|required",
-    created_at = "integer|required",
-}, { title = "Note" })
+local notes = require("lib.notes")
+local NoteInput, Note = notes.NoteInput, notes.Note
 
 return function(app)
     app:get("/api/notes", function(req)
@@ -279,8 +276,32 @@ end
 require("routes.notes")(app)
 ```
 
-Note where the schema lives: at file scope, so it is compiled once per
-state rather than once per request.
+Note where the schemas live: in `lib/notes.lua`, loaded at file scope,
+so they are compiled once per state rather than once per request.
+
+## `lib/` — plain modules
+
+Code that does not take `req` goes in a module like `lib/notes.lua`.
+Routes `require` it, and so do the tests, which can unit test it
+without a server:
+
+```lua
+-- lib/notes.lua
+local M = {}
+
+M.NoteInput = nitr.validate.schema({
+    text = "string|trim|min_len:1|max_len:500|required",
+}, { title = "NoteInput" })
+
+-- Documentation only: responses are never checked.
+M.Note = nitr.validate.schema({
+    id         = "integer|required",
+    text       = "string|required",
+    created_at = "integer|required",
+}, { title = "Note" })
+
+return M
+```
 
 > [!NOTE] `require` is sandboxed
 >
@@ -337,30 +358,39 @@ root. See [Static files](./static-files).
 
 ## `tests/` — the test suite
 
-Every `*.lua` file under `[testing] dir` is a test file. Requests
-dispatch through the real router and middleware, against a server built
-from the same `nitr.toml` the production run uses:
+Every `*.lua` file directly in `[testing] dir` is a test file.
+Subdirectories are not searched, so `tests/helpers/` holds modules that
+tests `require` (`require("helpers.notes")`). Tests can also `require`
+the application's own modules (`require("lib.notes")`).
 
 ```lua
 -- tests/notes_test.lua
 local t = nitr.test
+local notes = require("lib.notes")
+local fixtures = require("helpers.notes")
 
-t.before_each(function()
-    nitr.db:execute("DELETE FROM notes")
+t.describe("lib.notes (unit)", function()
+    t.it("trims the text it accepts", function()
+        local data = notes.NoteInput:check({ text = "  hi  " })
+        t.expect(data).to_equal({ text = "hi" })
+    end)
 end)
 
 t.describe("notes API", function()
+    local api = t.client({ base = "/api" })
+    t.before_each(t.db.reset)
+
     t.it("creates a note", function()
-        local resp = t.request("POST", "/api/notes", { json = { text = "hi" } })
-        t.expect(resp.status).to_equal(201)
-        t.expect(resp:json().text).to_equal("hi")
+        t.expect(api:post("/notes", { json = fixtures.note })).to_have_status(201)
     end)
 end)
 ```
 
-Each test file gets a fresh Lua state but shares the server — and its
-database — the way real requests do, which is why the scaffold clears
-the table in `before_each`. See [Testing](./testing).
+Integration tests dispatch through the real router and middleware,
+against a server built from the same `nitr.toml` the production run
+uses, but on a private test database. `t.db.reset` restores that
+database to its migrated state before each test. See
+[Testing](./testing).
 
 ## `data/` — mutable state
 

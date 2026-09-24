@@ -442,6 +442,9 @@ byte-clean plain text. See [Logging](./logging).
 | -------------------- | -------------------------------------------- |
 | `[testing] dir`      | `tests`                                      |
 | `[testing] database` | unset — a private file per run, then removed |
+| `[testing] seed`     | unset                                        |
+| `[testing] capture`  | `true` — logs shown under a failed test only |
+| `[testing] slow_ms`  | `1000`                                       |
 | `[env] file`         | `.env` next to `nitr.toml`, when present     |
 | `[env] allow`        | unset — any non-`NITR_*` variable            |
 

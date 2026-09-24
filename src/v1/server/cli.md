@@ -180,25 +180,37 @@ name. Unset options are absent rather than empty: TOML has no null.
 
 ```sh
 nitr test
-nitr test --filter notes
+nitr test --filter notes --bail
+nitr test --watch
+nitr test --reporter junit --output junit.xml
 ```
 
-Runs every `*.lua` file under `[testing] dir` (default `tests/`) against
-an **in-process server**. Requests dispatch through the real router and
-the real middleware chain — nothing is mocked.
+Runs every `*.lua` file in `[testing] dir` (default `tests/`) against
+an **in-process server**. Requests dispatch through the real router, the
+real middleware chain and the real handlers.
 
-`--filter <SUBSTRING>` runs only tests whose name or file name contains
-the substring. The command exits non-zero if any test fails, so it drops
-straight into CI. See [Testing](./testing).
+| Flag                    | Effect                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `--filter <SUBSTRING>`  | Runs only tests whose name or file name contains the substring.                       |
+| `--bail`                | Stops at the first failing test.                                                      |
+| `--list`                | Prints every test with its `file:line` and skip/todo markers, running none.           |
+| `--watch`               | Runs again whenever a Lua source, template or test file changes, until Ctrl-C.        |
+| `--reporter <FORMAT>`   | `pretty` (default), `json` or `junit`.                                                |
+| `-o`, `--output <FILE>` | Writes the JSON/JUnit report to a file; the pretty lines still go to standard output. |
+| `--nocapture`           | Streams log lines as they happen instead of printing them under a failed test.        |
+
+The command exits non-zero if any test fails, or if a `t.only` is left
+in a file, so it drops straight into CI. With `--reporter json` or
+`junit` and no `--output`, the report is written to standard output and
+log lines go to standard error. See [Testing](./testing).
 
 > [!TIP] It never runs against `[database] path`
 >
 > Tests get their own SQLite file: `[testing] database` when you name
 > one, otherwise a private file created for the run and deleted (with
 > its `-wal`/`-shm` sidecars) when it ends. Either way the migrations
-> run against it first, so a test sees the schema. A `before_each` that
-> says `DELETE FROM notes` cannot empty the database your `nitr.toml`
-> points at.
+> run against it first, so a test sees the schema. A `t.db.truncate()`
+> cannot empty the database your `nitr.toml` points at.
 
 ## `openapi`
 
@@ -276,8 +288,8 @@ nitr init --minimal      # the bare-minimum version
 ```
 
 Scaffolds a complete application: `nitr.toml`, `config.lua`, `app.lua`,
-a route module, a migration, a template, a static page, a test, a
-`.gitignore`, `data/.gitkeep`, and the generated `nitr-types.lua`
+a route module, a plain `lib/` module, a migration, a template, a static
+page, a test file with a test helper, a `.gitignore`, `data/.gitkeep`, and the generated `nitr-types.lua`
 completions. See [Project layout](./project-layout).
 
 The scaffold is most people's first and most-copied example, so it shows

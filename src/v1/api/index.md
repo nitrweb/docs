@@ -27,7 +27,7 @@ explained with worked examples.
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Application** | [`nitr.app`](#nitr-app) · [`nitr.cfg`](#nitr-cfg) · [`nitr.ext`](#nitr-ext)                                                                                                                                                                                                     |
 | **Responses**   | [`nitr.json`](#nitr-json) · [`nitr.text`](#nitr-text) · [`nitr.html`](#nitr-html) · [`nitr.redirect`](#nitr-redirect) · [`nitr.status`](#nitr-status) · [`nitr.error`](#nitr-error) · [`nitr.negotiate`](#nitr-negotiate) · [`nitr.etag`](#nitr-etag) · [`nitr.sse`](#nitr-sse) |
-| **Security**    | [`nitr.crypto`](#nitr-crypto) · [`nitr.crypto.jwt`](#nitr-crypto-jwt) · [`nitr.auth`](#nitr-auth) · [`nitr.csrf`](#nitr-csrf) · [`nitr.session`](#nitr-session)                                                                                                                 |
+| **Security**    | [`nitr.crypto`](#nitr-crypto) · [`nitr.crypto.jwt`](#nitr-crypto-jwt) · [`nitr.auth`](#nitr-auth) · [`nitr.csrf`](#nitr-csrf) · [`nitr.session`](#nitr-session) · [`nitr.cookie`](#nitr-cookie)                                                                                 |
 | **Data**        | [`nitr.db`](#nitr-db) · [`nitr.cache`](#nitr-cache) · [`nitr.validate`](#nitr-validate)                                                                                                                                                                                         |
 | **I/O**         | [`nitr.fetch`](#nitr-fetch) · [`nitr.await_all`](#nitr-await-all) · [`nitr.template`](#nitr-template)                                                                                                                                                                           |
 | **Utilities**   | [`nitr.time`](#nitr-time) · [`nitr.base64`](#nitr-base64) · [`nitr.path`](#nitr-path) · [`nitr.url`](#nitr-url) · [`nitr.env`](#nitr-env)                                                                                                                                       |
@@ -353,6 +353,24 @@ lives in the cookie, so there is no store to provision. See
 > [TLS](../server/tls) is enabled for this process. An explicit `secure`
 > from Lua always wins, in both directions.
 
+### `nitr.cookie`
+
+_(std feature: `http`)_ — HMAC-SHA256 cookie signing, the same scheme
+`res.cookies:set_signed` and `req.cookies:verify` use. Useful when a
+signed value travels outside a cookie header, or when a test forges a
+signed cookie.
+
+|                                                           |                                                                                                         |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `nitr.cookie.sign(name, value, secret) -> string`         | Signs `value`. The cookie name is part of the MAC, so a signed value cannot be moved to another cookie. |
+| `nitr.cookie.verify(name, signed, secret) -> string\|nil` | The original value, or `nil` when the signature does not match (constant-time comparison).              |
+
+```lua
+local signed = nitr.cookie.sign("prefs", "dark", secret)
+nitr.cookie.verify("prefs", signed, secret)   -- "dark"
+nitr.cookie.verify("other", signed, secret)   -- nil: bound to "prefs"
+```
+
 ---
 
 ## Data
@@ -619,13 +637,78 @@ Classifies a `pcall`-caught error into its structured form: `kind`,
 ### `nitr.test`
 
 _(available in `nitr test` files only)_ — See
-[Testing](../server/testing).
+[Testing](../server/testing) for a guided tour. Below, `t` is
+`nitr.test` (`local t = nitr.test`).
 
-|                                                   |                                                                                                                                                         |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `nitr.test.request(method, path, opts?) -> table` | Dispatches through the real router / middleware / handler path. Options: `headers`, `body`, `json`. Returns `{ status, headers, body }` plus `:json()`. |
-| `nitr.test.describe(name, fn)`                    | Groups tests; names are prefixed.                                                                                                                       |
-| `nitr.test.it(name, fn)`                          | One test case.                                                                                                                                          |
-| `nitr.test.expect(actual) -> table`               | Starts an assertion. Matchers: `to_equal`, `to_not_equal`, `to_be_nil`, `to_be_truthy`, `to_match`, `to_contain`.                                       |
-| `nitr.test.before_each(fn)`                       | Runs before every test in the file.                                                                                                                     |
-| `nitr.test.after_each(fn)`                        | Runs after every test in the file, failing ones included.                                                                                               |
+#### Structure
+
+|                                          |                                                                                                                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `t.describe(name, fn)`                   | Groups tests. Names are prefixed, and hooks registered inside apply to the group. A throw in the body fails that group; the file carries on. |
+| `t.it(name, fn)`                         | Registers one test.                                                                                                                          |
+| `t.skip(name, fn_or_reason?)`            | Registers a skipped test.                                                                                                                    |
+| `t.todo(name)`                           | A test not written yet.                                                                                                                      |
+| `t.only(name, fn)`                       | Skips the file's other tests. The run exits `1` while any `only` is left.                                                                    |
+| `t.each(cases)(name, fn)`                | One test per case: a list is formatted into `name` and unpacked into `fn`; a table with a `name` field is passed whole.                      |
+| `t.fail(message?)`                       | Fails the current test.                                                                                                                      |
+| `t.before_each(fn)` / `t.after_each(fn)` | Around every test registered after it in this group (and nested ones). `after_each` runs even when the test failed.                          |
+| `t.before_all(fn)` / `t.after_all(fn)`   | Once around the group's tests that run.                                                                                                      |
+
+#### Assertions
+
+`t.expect(actual)` returns the matchers: `to_equal`, `to_not_equal`,
+`to_be_nil`, `to_not_be_nil`, `to_be_truthy`, `to_be_false`,
+`to_be_a(type)`, `to_have_length`, `to_have_key`, `to_be_greater_than`,
+`to_be_greater_than_or_equal`, `to_be_less_than`,
+`to_be_less_than_or_equal`, `to_match_object(subset)`,
+`to_match(pattern)`, `to_not_match`, `to_contain`, `to_not_contain`,
+`to_throw(text?)`, `to_not_throw`, `to_contain_log(subset)`. On a
+response: `to_have_status(n)`, `to_have_header(name, value_or_pattern?)`,
+`to_have_json(subset)`.
+
+#### Requests
+
+|                                                                                                |                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `t.request(method, path, opts?) -> nitr.test.Response`                                         | Dispatches through the real protection / router / middleware / handler path. Options: `headers`, `query`, `cookies`, `auth`, one of `json`/`form`/`multipart`/`body`, `remote_addr`, `timeout`. |
+| `t.get` · `t.post` · `t.put` · `t.patch` · `t.delete` · `t.head` · `t.options` `(path, opts?)` | Shortcuts for `t.request`.                                                                                                                                                                      |
+| `t.client(opts?) -> nitr.test.Client`                                                          | A client with defaults: `{ base?, headers?, cookies = true?, remote_addr? }`. With `cookies = true`, `client.jar` keeps cookies across calls.                                                   |
+| `t.session_cookie(data, { secret, name?, max_age? }) -> string`                                | The value `session:save` would write for `data`.                                                                                                                                                |
+
+`nitr.test.Response` has `status`, `headers` (lowercase name → last
+value), `raw_headers`, `cookies` (parsed `Set-Cookie`s), `body`, `error`
+(the handler's classified error plus `handled`, when it raised),
+`:json()`, `:text()`, `:header(name)` and `:sse()`.
+`nitr.test.Client` has `:request(method, path, opts?)`, the method
+shortcuts and `jar`. `nitr.test.Jar` has `:get(name)`,
+`:set(name, value, { path? })` and `:clear()`.
+
+#### Unit tools
+
+|                                         |                                                                                                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `t.fake_request(spec?) -> nitr.Request` | A real request object built from `{ method?, path?, params?, valid?, ... }` plus the request options. No protection layer, body guard or validation. |
+| `t.app() -> nitr.test.App`              | The application compiled into the test state: `app:handler(method, path)`, `app:dispatch(method, path, req)`, `app:routes()`.                        |
+
+#### Doubles
+
+Reset before every test.
+
+|                                                           |                                                                                                                              |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `t.fetch.mock(rule, ...)`                                 | Canned answers for `nitr.fetch`: `{ url, method?, status?, headers?, json? \| body?, times? }`, `url` exact or a `*` prefix. |
+| `t.fetch.strict(on?)`                                     | An unmatched request raises instead of going out.                                                                            |
+| `t.fetch.calls() -> table[]`                              | Every outbound call: `{ method, url, headers, body?, json?, mocked }`.                                                       |
+| `t.fetch.reset()`                                         | Drops the rules, the calls and the strict flag.                                                                              |
+| `t.clock.set(ts)` / `advance(secs)` / `now()` / `reset()` | Moves the clock behind `nitr.time`, session/JWT expiry, cache TTLs and the rate limiter.                                     |
+| `t.env.set(name, value)` / `unset(name)` / `reset()`      | Overrides `nitr.env`, after the `[env]` policy.                                                                              |
+| `t.logs() -> table[]` / `t.logs.clear()`                  | The current test's captured log entries: `{ level, target, message, fields?, request_id? }`.                                 |
+
+#### Database fixtures
+
+|                          |                                                                                           |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `t.db.reset()`           | Restores the snapshot taken after the migrations, the config script and `[testing] seed`. |
+| `t.db.truncate(tables?)` | Empties the named tables (all application tables without an argument).                    |
+| `t.db.seed(spec)`        | A SQL file under `[testing] dir`, or `{ table = { row, ... } }`, in one transaction.      |
+| `t.db.isolate()`         | Calls `reset()` after every test of the file.                                             |

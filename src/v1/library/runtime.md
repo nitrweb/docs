@@ -45,6 +45,7 @@ let mut rt = Runtime::new_with(RuntimeOpts {
     memory_limit: 8 * 1024 * 1024,                 // bytes
     exec_timeout: Some(Duration::from_secs(30)),
     package_dir: Some("scripts".into()),           // confines `require`
+    extra_package_dirs: Vec::new(),                // more `require` roots
     dev_mode: false,
 })?;
 ```
@@ -69,13 +70,14 @@ mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send"] }
 
 ## `RuntimeOpts`
 
-| Field          | Type               | Meaning                                                                                                                                        |
-| -------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs`         | `mlua::StdLib`     | Which Lua standard libraries to load. `io`, `os`, `debug` and `package` are simply not in the set Nitr's own defaults use                      |
-| `memory_limit` | `usize`            | Lua heap ceiling in bytes, enforced by the allocator                                                                                           |
-| `exec_timeout` | `Option<Duration>` | Budget per invocation, enforced by an instruction-count hook (CPU-bound loops) **and** an outer async timeout (slow I/O). `None` disables both |
-| `package_dir`  | `Option<PathBuf>`  | The directory `require` is pinned to. `None` skips only the pinning — see below                                                                |
-| `dev_mode`     | `bool`             | Development mode: reload the handler script before each call and include Lua tracebacks in errors                                              |
+| Field                | Type               | Meaning                                                                                                                                                               |
+| -------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs`               | `mlua::StdLib`     | Which Lua standard libraries to load. `io`, `os`, `debug` and `package` are simply not in the set Nitr's own defaults use                                             |
+| `memory_limit`       | `usize`            | Lua heap ceiling in bytes, enforced by the allocator                                                                                                                  |
+| `exec_timeout`       | `Option<Duration>` | Budget per invocation, enforced by an instruction-count hook (CPU-bound loops) **and** an outer async timeout (slow I/O). `None` disables both                        |
+| `package_dir`        | `Option<PathBuf>`  | The directory `require` is pinned to. `None` skips only the pinning — see below                                                                                       |
+| `extra_package_dirs` | `Vec<PathBuf>`     | Further directories `require` may load from, after `package_dir`. Ignored without a `package_dir`. `nitr test` uses it to add the tests directory to test states only |
+| `dev_mode`           | `bool`             | Development mode: reload the handler script before each call and include Lua tracebacks in errors                                                                     |
 
 ### What is scrubbed regardless of the options
 
@@ -244,6 +246,7 @@ async fn run_user_script(source: &str, input: String) -> nitr::Result<String> {
         exec_timeout: Some(Duration::from_secs(5)),
         // No PACKAGE above, so there is no `require` to confine.
         package_dir: None,
+        extra_package_dirs: Vec::new(),
         dev_mode: false,
     })?;
 

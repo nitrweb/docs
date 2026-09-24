@@ -32,6 +32,8 @@ my-app/
 ├── app.lua                routes and middleware (returns nitr.app())
 ├── routes/
 │   └── notes.lua          one route module
+├── lib/
+│   └── notes.lua          plain module: the note schemas
 ├── migrations/
 │   └── 001_init.sql       plain SQL, applied by `nitr migrate`
 ├── templates/
@@ -39,14 +41,15 @@ my-app/
 ├── public/
 │   └── index.html         static files, served by Rust
 ├── tests/
-│   └── notes_test.lua     runs with `nitr test`
+│   ├── notes_test.lua     runs with `nitr test`
+│   └── helpers/notes.lua  test data the tests `require`
 ├── data/
 │   └── .gitkeep           the SQLite database will live here
 ├── .gitignore             ignores data/*.db*
 └── nitr-types.lua         editor completion for the whole nitr.* API
 ```
 
-A twelfth file, `openapi.json`, appears on the first `nitr dev`: the
+One more file, `openapi.json`, appears on the first `nitr dev`: the
 generated [API document](./server/openapi/), kept current while you
 work.
 
@@ -121,20 +124,27 @@ nitr test
 
 ```
 notes_test.lua
-  ok   notes API > starts empty
-  ok   notes API > creates a note
-  ok   notes API > rejects an empty note before the handler runs
-  ok   notes API > bounds the page size
-  ok   notes API > publishes what it enforces
+  ok   lib.notes (unit) > trims the text it accepts  (0 ms)
+  ok   lib.notes (unit) > rejects an empty note  (0 ms)
+  ok   lib.notes (unit) > rejects a missing note  (0 ms)
+  ok   lib.notes (unit) > rejects a long note  (0 ms)
+  ok   notes API > starts empty  (3 ms)
+  ok   notes API > creates a note  (3 ms)
+  ok   notes API > lists what the fixtures seeded  (3 ms)
+  ok   notes API > rejects an empty note before the handler runs  (2 ms)
+  ok   notes API > bounds the page size  (1 ms)
+  ok   notes API > publishes what it enforces  (4 ms)
 
-5 passed, 0 failed (1 file(s))
+10 passed, 0 failed (1 file(s), 0.09 s)
 ```
 
-These are real requests: `t.request(...)` dispatches through the actual
-router, middleware included. Nothing is mocked, and the tests run
-against a real `Server` built from the same `nitr.toml` the production
-run uses. `nitr test --filter notes` narrows by test or file name. See
-[Testing](./server/testing).
+The scaffolded file shows both kinds of test. The `lib.notes (unit)`
+tests call a plain module directly. The `notes API` tests are real
+requests: `api:post(...)` dispatches through the actual router,
+validation and middleware, against a private test database that
+`t.db.reset` restores before each test. `nitr test --filter notes`
+narrows by test or file name, and `nitr test --watch` re-runs on save.
+See [Testing](./server/testing).
 
 ## Step 5 — Start the dev server
 

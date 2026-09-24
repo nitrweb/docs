@@ -179,8 +179,32 @@ against it first.
 **What breaks.** A workflow that pointed `NITR_DATABASE_PATH` at a
 throwaway database before `nitr test` — now unnecessary, and ignored.
 A test suite that expected to read rows seeded into the configured
-database sees an empty, migrated schema instead; seed from
-`before_each`. See [Testing](./server/testing#tests-and-the-database).
+database sees an empty, migrated schema instead; seed with
+`[testing] seed` or `t.db.seed`. See
+[Testing](./server/testing#tests-and-the-database).
+
+### `nitr test` hooks are scoped, and a named test database starts fresh
+
+**What changed.** `before_each` and `after_each` apply to the tests
+registered after them in their own `describe` group (and nested ones),
+not to the whole file. A `[testing] database` file is now recreated at
+the start of every run, then kept afterwards. The test framework grew a
+great deal: see [Testing](./server/testing).
+
+**What breaks.** A hook declared inside one `describe` no longer runs
+for tests in a sibling group, and a hook declared after some tests does
+not run for them. Declare file-wide hooks at the top of the file. A
+suite that relied on rows left in a named test database by an earlier
+run must now seed them.
+
+### `RuntimeOpts` has a new field
+
+**What changed.** `RuntimeOpts` gained `extra_package_dirs`, more
+`require` roots after `package_dir`.
+
+**What breaks.** Library code that builds `RuntimeOpts` by hand no longer
+compiles until it adds `extra_package_dirs: Vec::new()`. The struct has
+no `Default` on purpose. See [Runtime](./library/runtime#runtimeopts).
 
 ### `nitr.db:query` is bounded, and `query_row` answers `nil`
 
