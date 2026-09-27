@@ -93,7 +93,9 @@ See [Routing](./server/routing) and [Middleware](./server/middleware).
 [Source](https://github.com/nitrweb/nitr/tree/master/crates/nitr/examples/stdlib)
 · a tour of `nitr.*`
 
-Response helpers, JSON, logging, and the crypto and auth functions.
+Response helpers, JSON, logging, and the crypto and auth functions. Its
+secrets are made in `config.lua` and read from `nitr.cfg`, never written
+as literals in the handler script.
 
 ```sh
 cargo run --features crypto,fetch --example stdlib
@@ -386,7 +388,7 @@ of embedding it:
 app-package/
 ├── nitr.toml       server + app configuration
 ├── app.lua         routes and middleware (returns nitr.app())
-├── config.lua      runs once at startup; result → nitr.cfg
+├── config.lua      runs at startup and on reload; result → nitr.cfg
 ├── lib/            plain Lua modules the app `require`s
 ├── public/         static files
 └── tests/          *.lua files for `nitr test`

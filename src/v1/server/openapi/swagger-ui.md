@@ -20,8 +20,8 @@ INFO openapi: 3 operation(s), spec at /openapi.json, Swagger UI at /docs
 INFO listening on http://127.0.0.1:3000 with 4 Lua state(s)
 ```
 
-`nitr init` writes these settings, so a new application has `/docs`
-from the first run. The `nitr` binary includes the `swagger`
+`nitr init` writes both sections with `enabled = false`; turn them on
+for development. The `nitr` binary includes the `swagger`
 [Cargo feature](../../library/cargo-features). It adds about 1.7 MiB,
 so a custom build that only needs the document can use `openapi` alone.
 

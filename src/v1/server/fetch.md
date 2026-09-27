@@ -50,14 +50,15 @@ local handle = nitr.fetch("POST", "https://api.example.com/items", {
 
 ### The response
 
-| Field / method | Meaning                                                 |
-| -------------- | ------------------------------------------------------- |
-| `resp.status`  | Status code                                             |
-| `resp.headers` | Response headers                                        |
-| `resp.url`     | Final URL, after redirects                              |
-| `resp:text()`  | Body as a string, up to `[fetch] max_response_bytes`    |
-| `resp:json()`  | Body decoded as JSON                                    |
-| `resp:read()`  | Next chunk of the body when streaming; `nil` at the end |
+| Field / method     | Meaning                                                                   |
+| ------------------ | ------------------------------------------------------------------------- |
+| `resp.status`      | Status code                                                               |
+| `resp.headers`     | Response headers, lowercase names; a repeated header keeps its last value |
+| `resp.raw_headers` | Every header as `{ name, value }`, in order (every `Set-Cookie`)          |
+| `resp.url`         | Final URL after redirects, as a string                                    |
+| `resp:text()`      | Body as a string, up to `[fetch] max_response_bytes`                      |
+| `resp:json()`      | Body decoded as JSON                                                      |
+| `resp:read()`      | Next chunk of the body when streaming; `nil` at the end                   |
 
 ## Running requests concurrently
 
@@ -78,9 +79,9 @@ end)
 ```
 
 Two 200 ms calls take about 200 ms, not 400 ms. `await_all` also accepts
-[`nitr.db:query_async`](./database#concurrent-queries) handles. Passing a
-table (`nitr.await_all({ h1, h2 })`) or more handles than
-`[fetch] max_concurrent` (default 8) raises.
+[`nitr.db:query_async`](./database#concurrent-queries) handles. At most
+`[fetch] max_concurrent` (default 8) run at a time; the rest wait their
+turn. Passing a table (`nitr.await_all({ h1, h2 })`) raises.
 
 ## Retries
 
@@ -96,7 +97,8 @@ nitr.fetch("GET", url, { timeout = 5, retry = { attempts = 3 } }):send()
 | `backoff`  | `"exponential"` (default: 100 ms, doubling, with jitter, at most 5 s) or `"constant"` (100 ms) |
 
 A request is retried after a network error or a `408`, `429`, `500`,
-`502`, `503` or `504`. Only idempotent methods (`GET`, `HEAD`, `PUT`,
+`502`, `503` or `504`, never after the [SSRF policy](#the-ssrf-policy)
+refuses it. Only idempotent methods (`GET`, `HEAD`, `PUT`,
 `DELETE`, `OPTIONS`) are retried; on `POST` or `PATCH` the option is
 ignored and the request is sent once. When every attempt fails, you get
 the last response (or the last error). All attempts count as one call
@@ -136,7 +138,7 @@ Two more protections are always on:
 | Setting                  | Default | Limits                                                               |
 | ------------------------ | ------- | -------------------------------------------------------------------- |
 | `max_per_request`        | 32      | Outbound calls **one inbound request** may make. `0` removes the cap |
-| `max_concurrent`         | 8       | Handles per `nitr.await_all(...)`                                    |
+| `max_concurrent`         | 8       | Handles of one `nitr.await_all(...)` in flight at a time             |
 | `max_response_bytes`     | 8 MiB   | Bodies read with `resp:text()` / `resp:json()`                       |
 | `connect_timeout`        | 10 s    | Opening a connection                                                 |
 | `timeout`                | 30 s    | Each request. A per-call `timeout` can lower it, never raise it      |

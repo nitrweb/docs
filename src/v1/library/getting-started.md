@@ -14,7 +14,7 @@ cargo add nitr --features all             # everything
 ```toml
 # Cargo.toml
 [dependencies]
-nitr = "0.0.0-beta.5"
+nitr = "0.0.0-beta.6"
 tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] } # for logs
 ```

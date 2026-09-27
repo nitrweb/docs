@@ -511,15 +511,15 @@ nitr test --filter checkout --bail
 nitr test --reporter junit --output target/junit.xml
 ```
 
-| Flag                    | Effect                                                                                    |
-| ----------------------- | ----------------------------------------------------------------------------------------- |
-| `--filter <SUBSTRING>`  | Runs only tests whose (composed) name or file name contains the substring.                |
-| `--bail`                | Stops at the first failing test.                                                          |
-| `--list`                | Prints every test with its `file:line` and `[skip]`/`[todo]`/`[only]` markers, runs none. |
-| `--watch`               | Runs again whenever a Lua source, template or test file changes, until Ctrl-C.            |
-| `--reporter <FORMAT>`   | `pretty` (default), `json` or `junit`.                                                    |
-| `-o`, `--output <FILE>` | Writes the JSON/JUnit report to a file. The pretty lines still go to stdout.              |
-| `--nocapture`           | Streams log lines as they happen instead of printing them under a failed test.            |
+| Flag                    | Effect                                                                                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--filter <SUBSTRING>`  | Runs only tests whose (composed) name or file name contains the substring.                                                                                                   |
+| `--bail`                | Stops at the first failing test.                                                                                                                                             |
+| `--list`                | Prints every test with its `file:line` and `[skip]`/`[todo]`/`[only]` markers, runs none.                                                                                    |
+| `--watch`               | Runs again whenever a Lua source, template or test file changes, until Ctrl-C.                                                                                               |
+| `--reporter <FORMAT>`   | `pretty` (default), `json` or `junit`.                                                                                                                                       |
+| `-o`, `--output <FILE>` | Writes the JSON/JUnit report to a file. The pretty lines still go to stdout. Without it, a JSON/JUnit report owns stdout and logs (and `--watch` status lines) go to stderr. |
+| `--nocapture`           | Streams log lines as they happen instead of printing them under a failed test.                                                                                               |
 
 The pretty report prints each test as it finishes:
 
@@ -561,7 +561,7 @@ end)
 ## In CI
 
 ```yaml
-- run: cargo install nitr-cli --version 0.0.0-beta.5
+- run: cargo install nitr-cli --version 0.0.0-beta.6
 - run: nitr check # configuration and scripts load
 - run: nitr migrate # the real schema is current
 - run: nitr test --reporter junit --output junit.xml # behaviour is correct

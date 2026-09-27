@@ -146,7 +146,7 @@ local present = nitr.env.has("API_TOKEN")             -- boolean
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `nitr.env.get(name, default?)`    | The value, or the default (`nil` without one).                                                                |
 | `nitr.env.has(name)`              | Whether the variable is set and allowed.                                                                      |
-| `nitr.env.number(name, default?)` | The value as a number; the default if unset or not a number.                                                  |
+| `nitr.env.number(name, default?)` | The value as a number; the default if unset, not a number, or not finite (`nan`, `inf`).                      |
 | `nitr.env.bool(name, default?)`   | `true` for `1`/`true`/`yes`/`on`, `false` for `0`/`false`/`no`/`off`/empty (any case); otherwise the default. |
 
 - There is no setter and no way to list variables.

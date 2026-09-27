@@ -40,9 +40,9 @@ ExecStart=/usr/local/bin/nitr run
 ExecReload=/bin/kill -HUP $MAINPID
 
 # SIGTERM starts the graceful drain. TimeoutStopSec MUST exceed
-# [shutdown] grace + stream_grace (default 30 + 5).
+# [shutdown] readiness_delay + grace + stream_grace (default 5 + 30 + 5).
 KillSignal=SIGTERM
-TimeoutStopSec=40
+TimeoutStopSec=45
 
 # A cut drain exits non-zero; restart on that and on crashes.
 Restart=on-failure
@@ -73,7 +73,7 @@ The same unit, with longer comments, is in the repository at
 ## Two lines to get right
 
 **`TimeoutStopSec` must exceed the drain.** It has to be longer than
-`[shutdown] grace + stream_grace`, or systemd kills the process
+`[shutdown] readiness_delay + grace + stream_grace`, or systemd kills the process
 mid-drain and cuts the requests the drain protects. Raise it whenever
 you raise either setting.
 

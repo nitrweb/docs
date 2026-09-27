@@ -48,8 +48,9 @@ return app
 `app:static(mount, dir, opts)` takes the same options as `[static]`:
 `spa`, `cache_control` and `dotfiles`.
 
-Routes are matched first. A static mount only answers `GET` and `HEAD`
-requests that no route matched.
+Routes are matched first. A static mount answers a `GET` or `HEAD` for
+a path no route serves with that method, including a path routed only
+for other methods (a `POST /items` route does not hide `public/items`).
 
 ## What you get
 
@@ -62,9 +63,8 @@ requests that no route matched.
 | Precompressed files     | `app.js.br` or `app.js.gz` next to `app.js` is sent when the client accepts it |
 | `HEAD`                  | Headers only                                                                   |
 
-No Lua runs for a static file, but Nitr briefly uses a Lua state to
-look up routes. When every state is busy, a static request waits like
-any other (up to `[limits] pool_wait_ms`).
+A static file is served without a Lua state, so it is answered even
+while every state is busy.
 
 ## Single-page applications
 
@@ -75,8 +75,9 @@ mount = "/"
 spa = true
 ```
 
-With `spa = true`, a path that matches no file gets `index.html`
-instead of `404`, so the client-side router can take over. API routes
+With `spa = true`, a path that matches no file and no route gets
+`index.html` instead of `404`, so the client-side router can take over.
+A path a route serves with other methods still answers `405`. API routes
 in the same app still win, because routes are matched first:
 
 ```lua

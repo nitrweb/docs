@@ -78,9 +78,10 @@ nitr.dbg(nitr.validate.image())
 
 > [!NOTE] Request limits still apply
 >
-> `[limits] max_file_bytes` (10 MiB) and `[limits] max_body_bytes`
-> (1 MiB) cap the whole request, whatever the rule says. To accept large
-> files, such as `S.video`'s 500 MB, raise both.
+> `[limits] max_body_bytes` (1 MiB) caps the whole request, and
+> `[limits] max_file_bytes` (10 MiB) caps each file: a file above it
+> fails the rule's `max_bytes`, whatever the rule allows. To accept large
+> files, such as `S.video`'s 500 MB, raise both limits.
 
 ## Writing a `file` rule by hand
 

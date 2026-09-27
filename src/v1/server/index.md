@@ -9,7 +9,7 @@ your own Rust program instead, see [Library](../library/).
 ```
 my-app/
 ├── nitr.toml       ← configuration
-├── config.lua      ← runs once at startup → nitr.cfg   (optional)
+├── config.lua      ← on startup/reload → nitr.cfg      (optional)
 ├── app.lua         ← routes and middleware; returns nitr.app()
 ├── routes/         ← route modules                     (optional)
 ├── migrations/     ← SQL, applied by `nitr migrate`

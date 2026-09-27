@@ -8,7 +8,7 @@ minutes, and you do not need to know Lua.
 > Install the `nitr` binary with Cargo:
 >
 > ```sh
-> cargo install nitr-cli --version 0.0.0-beta.5
+> cargo install nitr-cli --version 0.0.0-beta.6
 > ```
 >
 > See [Download & Install](./download-install) for other options.
@@ -25,7 +25,7 @@ nitr init my-app && cd my-app
 ```
 my-app/
 ├── nitr.toml              server + application configuration
-├── config.lua             runs once at startup → nitr.cfg
+├── config.lua             runs at startup (and on reload) → nitr.cfg
 ├── app.lua                routes and middleware (returns nitr.app())
 ├── routes/
 │   └── notes.lua          the notes API routes
@@ -55,6 +55,9 @@ Next steps:
   nitr test
   nitr dev   # then open http://127.0.0.1:3000/docs
 ```
+
+The `/docs` page is off in the scaffold until you turn it on in
+Step 6 below.
 
 `nitr init` never overwrites a file: if any of these paths exists, it
 stops without writing anything. For a smaller start, `nitr init --minimal`
@@ -117,9 +120,8 @@ notes_test.lua
   ok   notes API > lists what the fixtures seeded  (3 ms)
   ok   notes API > rejects an empty note before the handler runs  (2 ms)
   ok   notes API > bounds the page size  (1 ms)
-  ok   notes API > publishes what it enforces  (4 ms)
 
-10 passed, 0 failed (1 file(s), 0.09 s)
+9 passed, 0 failed (1 file(s), 0.04 s)
 ```
 
 The `lib.notes (unit)` tests call a plain module directly. The
@@ -177,7 +179,19 @@ See [Validation](./server/validation/).
 
 ## Step 6 — Open the API docs
 
-With `nitr dev` running, open <http://127.0.0.1:3000/docs> for the
+The scaffold ships the OpenAPI document and Swagger UI turned off,
+because a published route map is something to decide on. Turn both on
+in `nitr.toml` for development:
+
+```toml
+[openapi]
+enabled = true
+
+[swagger]
+enabled = true
+```
+
+Restart `nitr dev`, then open <http://127.0.0.1:3000/docs> for the
 Swagger UI, or fetch the document itself:
 
 ```sh
@@ -187,7 +201,8 @@ curl -s http://127.0.0.1:3000/openapi.json | jq '.paths | keys'
 
 The request schemas come from each route's `input` and the descriptions
 from its `doc`, so the document always matches what the server enforces.
-`nitr dev` also keeps an `openapi.json` file in your project up to date.
+`nitr dev` also keeps an `openapi.json` file in your project up to date
+(it does this even while serving is off).
 Commit it, and run `nitr openapi --check` in CI: it exits with `1` when
 the committed file is out of date. See [OpenAPI](./server/openapi/).
 
@@ -234,8 +249,8 @@ to a server and run it. The SQLite database stays outside the file. See
 
 ## What just happened
 
-1. **`config.lua` runs once**, at startup. What it returns is available
-   to every handler as `nitr.cfg`.
+1. **`config.lua` runs at startup**, and again on every reload. What it
+   returns is available to every handler as `nitr.cfg`.
 2. **`app.lua` runs once per Lua state**, not once per request. It
    builds the routes and middleware; requests only run your handlers.
 3. **Requests run in parallel** across a pool of independent Lua states

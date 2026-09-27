@@ -33,6 +33,8 @@ nitr.log.error("payment failed", { order_id = id, reason = reason })
 ```
 
 The optional second argument is encoded as JSON into a `fields` value.
+A table JSON cannot hold (one mixing list items and named keys) is
+logged as `"<unserializable fields>"` rather than failing the request.
 Lines from Lua have the target `lua`. In text format:
 
 ```text

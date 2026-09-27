@@ -9,16 +9,16 @@ the [production checklist](#a-production-checklist) lists them.
 
 ### The Lua sandbox
 
-| Risk                     | What Nitr does                                                                                                                                                               |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Infinite loops, slow I/O | Every request has an execution budget (`[lua] exec_timeout_ms`, 30 s). `pcall`, `xpcall` and `coroutine.resume` cannot catch and ignore it.                                  |
-| Memory exhaustion        | Each Lua state has a memory limit (`[lua] memory_limit`, 8 MiB). A state that hits it is thrown away and rebuilt.                                                            |
-| File and process access  | `io`, `os`, `dofile`, `loadfile` and `collectgarbage` are not available. Native modules can never be loaded. `require` only loads files from the handler script's directory. |
-| Hand-crafted bytecode    | All code is compiled from source text. `load` only accepts text and `string.dump` is removed.                                                                                |
-| Writing files            | The only write is `part:save` for uploads, confined to `[multipart] upload_dir`. See [below](#uploads-are-the-one-thing-lua-can-write).                                      |
-| Leaks between states     | Pooled states share no Lua values. The shared cache and `nitr.cfg` hold plain data only.                                                                                     |
-| Runaway data structures  | Converting a Lua value to JSON, a session, a cache entry, a template context and so on stops at 128 levels deep and 1,000,000 nodes, with a normal Lua error.                |
-| Crashes                  | A panic fails only the current request. A damaged state is replaced, never reused.                                                                                           |
+| Risk                     | What Nitr does                                                                                                                                                                                                                                                                            |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Infinite loops, slow I/O | Every request, and every load of `config.lua` and the handler script, has an execution budget (`[lua] exec_timeout_ms`, 30 s). `pcall`, `xpcall`, `coroutine.resume` and `load` cannot catch and ignore it. `setmetatable` refuses `__gc` finalizers, which would run outside the budget. |
+| Memory exhaustion        | Each Lua state has a memory limit (`[lua] memory_limit`, 8 MiB). A state that hits it is thrown away and rebuilt.                                                                                                                                                                         |
+| File and process access  | `io`, `os`, `dofile`, `loadfile` and `collectgarbage` are not available. Native modules can never be loaded. `require` only loads files from the handler script's directory.                                                                                                              |
+| Hand-crafted bytecode    | All code is compiled from source text. `load` (and `loadfile`/`dofile` when `io` is enabled) only accepts text, and `string.dump` is removed.                                                                                                                                             |
+| Writing files            | The only write is `part:save` for uploads, confined to `[multipart] upload_dir`. See [below](#uploads-are-the-one-thing-lua-can-write).                                                                                                                                                   |
+| Leaks between states     | Pooled states share no Lua values. The shared cache and `nitr.cfg` hold plain data only.                                                                                                                                                                                                  |
+| Runaway data structures  | Converting a Lua value to JSON, a session, a cache entry, a template context and so on stops at 128 levels deep and 1,000,000 nodes, with a normal Lua error.                                                                                                                             |
+| Crashes                  | A panic fails only the current request. A damaged state is replaced, never reused.                                                                                                                                                                                                        |
 
 ### Requests, responses and outbound calls
 
@@ -47,10 +47,17 @@ the [production checklist](#a-production-checklist) lists them.
 - A `[fetch]` proxy without `allowed_hosts` or
   `allow_private_networks = true`, because a proxy bypasses the address
   check.
-- `"debug"` in `[lua] stdlib`.
+- `"debug"` in `[lua] stdlib`, or `[lua] memory_limit = 0` (no memory
+  cap).
+- Limits that disable themselves: `max_streams = 0`,
+  `[rate_limit] requests` or `window` of `0`, and a `[limits]
+max_uri_bytes` that is not below the header buffer.
+- A `[cors] origins` entry with a path or trailing slash, and an invalid
+  `[log] level`.
 
-Nitr also **warns** at startup when cookies will not be `Secure` and
-when the `[tls] key` file is readable by other users.
+Nitr also **warns** at startup when cookies will not be `Secure`, when
+the `[tls] key` file is readable by other users, and when `max_streams`
+lets open streams hold every Lua state.
 
 ## What it does not defend against
 
@@ -229,7 +236,8 @@ them with `make fuzz` in the Nitr repository.
       and no backups or exports inside.
 - [ ] `[std] features` listing only the builtins you use.
 - [ ] `[openapi]` and `[swagger]` enabled only if you want the API map
-      public. `NITR_OPENAPI_ENABLED=false` turns it off in production.
+      public. Both are off in a new scaffold; `NITR_OPENAPI_ENABLED=false`
+      turns the document off in production.
 
 ### Transport
 

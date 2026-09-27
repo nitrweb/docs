@@ -133,7 +133,7 @@ Each method returns a **new** schema and leaves the original unchanged.
 
 | Method            | Gives you                                     |
 | ----------------- | --------------------------------------------- |
-| `:partial()`      | Every top-level field optional                |
+| `:partial()`      | Every top-level field optional, no defaults   |
 | `:pick(names)`    | Only the named fields                         |
 | `:omit(names)`    | Every field except the named ones             |
 | `:extend(fields)` | Fields added or replaced; `false` removes one |
@@ -160,8 +160,10 @@ app:patch("/api/notes/:id", update, {
 })
 ```
 
-`:partial()` only removes `required`: a `text` that is sent must still
-be a non-empty string of at most 500 characters.
+`:partial()` removes `required` and every `default`: a `text` that is
+sent must still be a non-empty string of at most 500 characters, and an
+omitted `priority` stays omitted instead of resetting the stored value
+to `3`.
 
 ### Narrowing and widening
 

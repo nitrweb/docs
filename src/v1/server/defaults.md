@@ -152,15 +152,16 @@ Applied when a `[database]` section exists. `path` is required.
 
 ## Health and shutdown
 
-| Key                        | Default                   |
-| -------------------------- | ------------------------- |
-| `[health] enabled`         | `true`                    |
-| `[health] liveness`        | `/healthz`                |
-| `[health] readiness`       | `/readyz`                 |
-| `[health] bind`            | unset (the main listener) |
-| `[health] max_connections` | 64                        |
-| `[shutdown] grace`         | 30 s                      |
-| `[shutdown] stream_grace`  | 5 s                       |
+| Key                          | Default                                     |
+| ---------------------------- | ------------------------------------------- |
+| `[health] enabled`           | `true`                                      |
+| `[health] liveness`          | `/healthz`                                  |
+| `[health] readiness`         | `/readyz`                                   |
+| `[health] bind`              | unset (the main listener)                   |
+| `[health] max_connections`   | 64                                          |
+| `[shutdown] grace`           | 30 s                                        |
+| `[shutdown] stream_grace`    | 5 s                                         |
+| `[shutdown] readiness_delay` | 5 s (0 with `[health] bind` or in dev mode) |
 
 ## API docs
 

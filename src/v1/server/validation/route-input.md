@@ -121,8 +121,9 @@ input = { body = { file = nitr.validate.image({ max_bytes = "2mb" }), content = 
 | `"multipart"` | `multipart/form-data`                           |
 | `"raw"`       | Any: the whole body is one file                 |
 
-Multipart and raw bodies carry files; see [File uploads](./files). A body
-of any other type gets a **`415`** that lists what the route accepts,
+Multipart and raw bodies carry files; see [File uploads](./files). A
+`multipart/form-data` body without a usable boundary fails with a `422`
+(`must be a well-formed multipart body`). A body of any other type gets a **`415`** that lists what the route accepts,
 also sent in an `Accept` header:
 
 ```json

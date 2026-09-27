@@ -9,7 +9,7 @@ your application directory, using the `nitr-cli` crate from crates.io.
 FROM rust:1-slim AS build
 # Pin the version: while every release is a pre-release,
 # `cargo install` fails without --version.
-RUN cargo install nitr-cli --version 0.0.0-beta.5
+RUN cargo install nitr-cli --version 0.0.0-beta.6
 
 FROM debian:stable-slim
 # curl is only for the HEALTHCHECK below.
@@ -66,15 +66,15 @@ draining. The same applies to `docker kill -s HUP` for reloads.
 
 ### 2. Wait longer than the drain
 
-The stop timeout must exceed `[shutdown] grace + stream_grace` (35 s by
-default):
+The stop timeout must exceed
+`[shutdown] readiness_delay + grace + stream_grace` (40 s by default):
 
 ```sh
-docker stop --time 40 myapp
+docker stop --time 45 myapp
 ```
 
-In Compose use `stop_grace_period: 40s`; in Kubernetes,
-`terminationGracePeriodSeconds: 40`.
+In Compose use `stop_grace_period: 45s`; in Kubernetes,
+`terminationGracePeriodSeconds: 45`.
 
 ### 3. The database is a volume
 
@@ -172,7 +172,7 @@ services:
     volumes: ['myapp-data:/app/data']
     environment:
       NITR_LOG_FORMAT: json
-    stop_grace_period: 40s
+    stop_grace_period: 45s
     restart: unless-stopped
 
 volumes:
@@ -197,7 +197,7 @@ spec:
   strategy: { type: Recreate }
   template:
     spec:
-      terminationGracePeriodSeconds: 40
+      terminationGracePeriodSeconds: 45
       securityContext: { runAsNonRoot: true }
       containers:
         - name: app

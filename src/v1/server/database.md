@@ -49,6 +49,10 @@ local n = nitr.db:execute("UPDATE users SET active = 0 WHERE last_seen < ?", { c
 `[database] max_rows` (10 000 by default). Page with `LIMIT`/`OFFSET`, or
 raise the setting.
 
+Because a row is a column→value table, a result with two columns of the
+same name raises (`SELECT a.id, b.id ...`). Give one an alias:
+`b.id AS b_id`.
+
 ## Parameters
 
 Always pass values as parameters. Never build SQL by joining strings.
@@ -61,8 +65,11 @@ nitr.db:query_row("SELECT * FROM users WHERE email = ?", { email })
 nitr.db:query_row("SELECT * FROM users WHERE email = '" .. email .. "'")
 ```
 
-Parameters are positional `?` placeholders, passed as an array. A `LIKE`
-pattern is a parameter too: build it in Lua and pass the finished string.
+Parameters are positional `?` placeholders, passed as an array. `nil`
+and JSON `null` bind SQL `NULL`, including a trailing one
+(`{ name, nil }`). Passing an empty list, or no list, for a statement
+with placeholders raises. A `LIKE` pattern is a parameter too: build it
+in Lua and pass the finished string.
 
 ```lua
 nitr.db:query("SELECT * FROM users WHERE name LIKE ?", { "%" .. q .. "%" })
@@ -199,8 +206,9 @@ writer work at the same time.
 
 ## Startup setup in `config.lua`
 
-The config script receives the database connection as its argument, so
-one-off setup runs once, not once per Lua state:
+The config script receives the database connection as its argument.
+It runs once per startup and reload, not once per Lua state, so keep it
+idempotent:
 
 ```lua
 -- config.lua

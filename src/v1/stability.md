@@ -5,7 +5,7 @@ covers the whole workspace.
 
 > [!WARNING] Pre-1.0
 >
-> Nitr is at `0.0.0-beta.5`. Until 1.0, **a minor release may break
+> Nitr is at `0.0.0-beta.6`. Until 1.0, **a minor release may break
 > anything on this page**. The rules below show which parts are meant to
 > be depended on once 1.0 ships, and which are meant to keep moving.
 
@@ -30,6 +30,48 @@ removals and renames are recorded in `CHANGELOG.md`.
 
 Until `CHANGELOG.md` exists, breaking changes are listed here, **newest
 first**, with what to do about each.
+
+### Changes in `0.0.0-beta.6`
+
+- **Tables mixing list items and named keys raise** wherever a value is
+  serialized: `nitr.json`, the cache, sessions, JWT claims and
+  templates (`{ "a", total = 1 }` used to lose `total` silently). Put
+  the list under a key of its own. In `nitr.log` fields such a table is
+  logged as `"<unserializable fields>"`.
+- **`resp.url` from `nitr.fetch` is a string**, not a table. Parse it
+  with [`nitr.url.parse`](./api/#nitr-url) if you need its parts.
+  `resp.raw_headers` is new.
+- **`nitr.await_all` no longer raises** past `[fetch] max_concurrent`
+  handles; the extra ones wait their turn.
+- **`schema:partial()` fills no defaults**, so a PATCH body no longer
+  resets omitted fields to their default.
+- **An `array` rule refuses a JSON object, and a `table` rule refuses a
+  JSON array**, instead of accepting them as empty.
+- **A validated file above `[limits] max_file_bytes` fails `max_bytes`**,
+  whatever the rule allows (it used to pass, saved empty).
+- **Uncaught multipart limit errors answer `413`**, not `500`, and skip
+  `on_error`.
+- **Static mounts answer a `GET`/`HEAD` on a path routed only for other
+  methods**, instead of `405`, when a file matches.
+- **`nitr.db`**: a query whose result columns share a name raises (alias
+  one with `AS`). A trailing `nil` parameter (`{ name, nil }`) now binds
+  `NULL` instead of failing.
+- **`config.lua` and the handler script load under
+  `[lua] exec_timeout_ms`**, and `setmetatable` refuses `__gc`
+  finalizers.
+- **`nitr.url.encode` escapes `!*'()`** too, and `nitr.url.parse` rejects
+  a port above 65535.
+- **New startup refusals**: `max_streams = 0`,
+  `[lua] memory_limit = 0`, `[rate_limit]` `requests` or `window` of
+  `0`, a `max_uri_bytes` not below the header buffer, a `[cors] origins`
+  entry with a path or trailing slash, and an invalid `[log] level`.
+- **Shutdown keeps serving for `[shutdown] readiness_delay`** (5 s by
+  default with the probes on the main port) while `/readyz` answers
+  `503`. Raise your supervisor's stop timeout by the same amount, or set
+  it to `0`.
+- **The CLI**: a `nitr build` artifact refuses `--config`, and
+  `nitr init` writes `[openapi]` and `[swagger]` with
+  `enabled = false`.
 
 ### Route options and validation
 
@@ -233,16 +275,16 @@ nitr-core → nitr-std → nitr-http → nitr → nitr-cli
 - **Pin a version.**
 
   ```sh
-  cargo install nitr-cli --version 0.0.0-beta.5
+  cargo install nitr-cli --version 0.0.0-beta.6
   ```
 
   ```toml
   # Cargo.toml
-  nitr = { version = "0.0.0-beta.5", features = ["db"] }
+  nitr = { version = "0.0.0-beta.6", features = ["db"] }
   ```
 
   That requirement also accepts later `0.0.0-beta.N` releases. Use
-  `"=0.0.0-beta.5"` for an exact pin, and commit `Cargo.lock`.
+  `"=0.0.0-beta.6"` for an exact pin, and commit `Cargo.lock`.
 
 - **Or pin a git revision** to use unreleased work:
 

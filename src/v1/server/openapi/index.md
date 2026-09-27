@@ -17,9 +17,9 @@ $ curl -s localhost:3000/openapi.json | jq '.paths."/api/notes".post.summary'
 "Create a note"
 ```
 
-`nitr init` turns on both the document and the
-[Swagger UI page](./swagger-ui), so a new application serves
-`/openapi.json` and `/docs` from the first `nitr dev`.
+`nitr init` writes both sections turned off. Set `enabled = true` here
+and in [`[swagger]`](./swagger-ui) to serve `/openapi.json` and `/docs`.
+`nitr openapi` prints the document either way.
 
 ## Turning it on
 

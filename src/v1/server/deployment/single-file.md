@@ -29,7 +29,10 @@ ssh server '
 ```
 
 The artifact takes the same subcommands as `nitr` (`run`, `migrate`,
-`check`, `reload`, …) and applies them to its bundled application.
+`check`, `reload`, …) and applies them to its bundled application. It
+refuses `--config`, since it carries its own configuration: values that
+differ per deployment come from `NITR_*` environment variables. Dev mode
+is always off.
 
 `nitr build` needs a configuration file, since it becomes the
 application manifest. The output directory must already exist. Build

@@ -59,7 +59,10 @@ You need `mlua` as a dependency to name `StdLib`; see [Depending on
 Whatever the options, every state:
 
 - has no `collectgarbage`;
-- has no `dofile` or `loadfile`, unless `StdLib::IO` is loaded;
+- has no `dofile` or `loadfile`, unless `StdLib::IO` is loaded, and
+  then they load source text only;
+- refuses `setmetatable` with a `__gc` finalizer, which would run
+  outside the execution budget;
 - cannot load native (C) modules, even with `StdLib::PACKAGE`.
 
 > [!WARNING] `exec_timeout: None` allows infinite loops

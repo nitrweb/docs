@@ -45,6 +45,11 @@ app:get("/old",        function(req) return nitr.redirect("/new", 301)  end)
 app:delete("/x/:id",   function(req) return nitr.status(204)            end)
 ```
 
+A Lua table becomes a JSON array when its keys are `1..n`, and an object
+otherwise. A table mixing list items and named keys (`{ "a", total = 1 }`)
+raises, because JSON has no shape for it; see
+[`nitr.json`](../api/#nitr-json).
+
 Full signatures are in the [API reference](../api/#responses).
 
 ## Status codes
@@ -107,6 +112,11 @@ app:get("/report", function(req)
     })
 end)
 ```
+
+When the client accepts several offers equally (`Accept: */*`), a map
+picks the type that sorts first. To choose the order yourself, pass a
+list: `{ { "application/json", fn_json }, { "text/csv", fn_csv } }`
+prefers the earlier entry.
 
 An offer can also be a response table instead of a function. Nothing
 matching answers `406`.

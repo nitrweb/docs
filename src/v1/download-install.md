@@ -1,6 +1,6 @@
 # Download & Install
 
-Nitr is at `0.0.0-beta.5`. Install it from crates.io with Cargo.
+Nitr is at `0.0.0-beta.6`. Install it from crates.io with Cargo.
 Pre-built binaries are not published yet.
 
 ## Install with Cargo <Badge type="tip" text="recommended" />
@@ -9,7 +9,7 @@ You need Rust **1.88.0** or newer. Get it from
 [rustup.rs](https://rustup.rs/).
 
 ```sh
-cargo install nitr-cli --version 0.0.0-beta.5
+cargo install nitr-cli --version 0.0.0-beta.6
 ```
 
 The crate is `nitr-cli`; the binary it installs into `~/.cargo/bin` is
@@ -17,7 +17,7 @@ The crate is `nitr-cli`; the binary it installs into `~/.cargo/bin` is
 
 ```sh
 nitr --version
-# nitr 0.0.0-beta.5
+# nitr 0.0.0-beta.6
 ```
 
 > [!WARNING] Keep the `--version` flag
@@ -25,7 +25,7 @@ nitr --version
 > Every published version is a pre-release, and a bare
 > `cargo install nitr-cli` only looks for stable versions, so it fails
 > with an error saying it could not find `nitr-cli` with version `*`. Use
-> `--version '^0.0.0-beta.5'` to accept later betas too.
+> `--version '^0.0.0-beta.6'` to accept later betas too.
 
 The binary includes every optional feature: SQLite, templates, the HTTP
 client, crypto, compression, multipart uploads, TLS, OpenAPI and
@@ -36,7 +36,7 @@ Swagger UI.
 To leave out what you do not use, pick the features yourself:
 
 ```sh
-cargo install nitr-cli --version 0.0.0-beta.5 \
+cargo install nitr-cli --version 0.0.0-beta.6 \
   --no-default-features --features template
 ```
 
@@ -52,7 +52,7 @@ work, or pin an exact tag or commit:
 
 ```sh
 cargo install --git https://github.com/nitrweb/nitr nitr-cli
-cargo install --git https://github.com/nitrweb/nitr --tag v0.0.0-beta.5 nitr-cli
+cargo install --git https://github.com/nitrweb/nitr --tag v0.0.0-beta.6 nitr-cli
 cargo install --git https://github.com/nitrweb/nitr --rev <commit-sha> nitr-cli
 ```
 
@@ -112,7 +112,7 @@ checks `/healthz`.
 >
 > Its build stage runs a bare `cargo install nitr-cli`, which fails for
 > the reason above. Change it to
-> `cargo install nitr-cli --version 0.0.0-beta.5`.
+> `cargo install nitr-cli --version 0.0.0-beta.6`.
 
 See [Docker deployment](./server/deployment/docker) for signals and stop
 timeouts.

@@ -46,6 +46,11 @@ A few details worth knowing:
   joined into `req.cookies`, and a request with two `Authorization`
   headers is refused with `400` before it reaches Lua.
 - A header value that is not valid UTF-8 reads as `""`.
+- **`req.uri` host and port come from the `Host` header**, since an
+  HTTP/1.1 request line carries only the path. `port` is the scheme's
+  default when `Host` names none, and `scheme` is `https` under
+  [`[tls]`](./tls), `http` otherwise. The client chooses `Host`, so do
+  not trust it for security decisions.
 - **`req.remote_addr` is the direct peer.** Behind a proxy that is the
   proxy. Read `X-Forwarded-For` yourself if you trust it; the rate
   limiter has its own `[rate_limit] trust_forwarded_for` setting.
@@ -55,11 +60,12 @@ A few details worth knowing:
 Pick the method that matches the content type. All of them are limited
 by `[limits] max_body_bytes`; a larger body gets `413`.
 
-> [!WARNING] The body is read once
+> [!WARNING] Streaming reads consume the body
 >
-> `json`, `text`, `read` and `multipart` consume it, so a second read in
-> the same request sees nothing. `form` is the exception: its result is
-> cached.
+> `json`, `text` and `form` share one cached read, so you can call more
+> than one of them (in middleware and handler alike). `read` and
+> `multipart` stream the body instead: after them, nothing is left to
+> read.
 
 ### JSON
 
@@ -265,7 +271,9 @@ extension. The result never contains a separator, so
 Each part can be read once: a second `text`, `save` or `discard` raises.
 A part the callback ignores is skipped for you. A path that `save`
 refuses leaves the part unread, so you can `pcall` and retry; a save
-that fails partway removes the partial file. If the callback raises,
+that fails partway leaves nothing behind: `save` writes to a temporary
+file under `upload_dir/.nitr-tmp` and moves it into place only when the
+whole part has arrived, so an existing file is never left truncated. If the callback raises,
 the error leaves `req:multipart` and the remaining parts are not
 delivered.
 
@@ -281,10 +289,10 @@ delivered.
 All four live in [`[limits]`](./configuration/file#limits). To accept
 bigger files, raise both `max_file_bytes` and `max_body_bytes`.
 
-The last three raise ordinary Lua errors, which reach
-[`on_error`](./errors) as a `500` unless you catch them. To answer
-`413` instead, `pcall` inside the callback and remember the result. The
-callback's return value is ignored, so build the response after
+The last three raise Lua errors. Uncaught, they answer
+`413 Payload Too Large` without calling [`on_error`](./errors). To send
+your own response, `pcall` inside the callback and remember the result.
+The callback's return value is ignored, so build the response after
 `req:multipart` returns:
 
 ```lua

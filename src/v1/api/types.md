@@ -8,18 +8,18 @@ generated `nitr-types.lua` describes all of them for your editor.
 The incoming request, passed to every handler and middleware. See
 [Requests](../server/requests).
 
-| Field         | Type                                          | Description                                                                             |
-| ------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `method`      | `string`                                      | Request method, uppercase (`"GET"`).                                                    |
-| `path`        | `string`                                      | URI path (`"/users/42"`).                                                               |
-| `params`      | `table<string, string>`                       | Path parameters captured by the router (`:id` → `params.id`).                           |
-| `query`       | `table<string, string>`                       | Parsed query string; for a repeated key the last value wins.                            |
-| `headers`     | `table<string, string>`                       | Request headers, with **lowercase names**.                                              |
-| `id`          | `string`                                      | The request id (UUIDv7, sent back as `X-Request-ID`).                                   |
-| `remote_addr` | `string`                                      | Peer address (`"ip:port"`).                                                             |
-| `uri`         | `table`                                       | URI parts: `scheme`, `host`, `port`, `path`, `authority`, `query`.                      |
-| `cookies`     | [`nitr.RequestCookies`](#nitr-requestcookies) | Parsed request cookies.                                                                 |
-| `valid`       | `table\|nil`                                  | The route's validated input, `{ body, query, params, headers }`; `nil` without `input`. |
+| Field         | Type                                          | Description                                                                                                                                                       |
+| ------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `method`      | `string`                                      | Request method, uppercase (`"GET"`).                                                                                                                              |
+| `path`        | `string`                                      | URI path (`"/users/42"`).                                                                                                                                         |
+| `params`      | `table<string, string>`                       | Path parameters captured by the router (`:id` → `params.id`).                                                                                                     |
+| `query`       | `table<string, string>`                       | Parsed query string; for a repeated key the last value wins.                                                                                                      |
+| `headers`     | `table<string, string>`                       | Request headers, with **lowercase names**.                                                                                                                        |
+| `id`          | `string`                                      | The request id (UUIDv7, sent back as `X-Request-ID`).                                                                                                             |
+| `remote_addr` | `string`                                      | Peer address (`"ip:port"`).                                                                                                                                       |
+| `uri`         | `table`                                       | URI parts: `scheme`, `host`, `port`, `path`, `authority`, `query`. `host`, `port` and `authority` come from the `Host` header; `scheme` is `https` under `[tls]`. |
+| `cookies`     | [`nitr.RequestCookies`](#nitr-requestcookies) | Parsed request cookies.                                                                                                                                           |
+| `valid`       | `table\|nil`                                  | The route's validated input, `{ body, query, params, headers }`; `nil` without `input`.                                                                           |
 
 `req.valid` holds only the parts the route's
 [`input`](../server/validation/route-input) declared, converted to the
@@ -27,15 +27,15 @@ declared types, with unknown fields removed and defaults filled in. The
 raw fields (`req.params`, `req.query`, `req:json()`) still hold what the
 client sent.
 
-| Method                                     | Description                                                                                                                                          |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:json() -> table`                         | Reads and decodes the body as JSON. Errors on an empty or invalid body.                                                                              |
-| `:text() -> string`                        | Reads the whole body as a string.                                                                                                                    |
-| `:form() -> table<string, string>`         | Reads an `application/x-www-form-urlencoded` body. The result is cached, so middleware and handler can both call it.                                 |
-| `:multipart(fn) -> integer`                | Calls `fn(part)` for each [part](#nitr-part) of a `multipart/form-data` body, in order; returns the part count. Needs the `multipart` Cargo feature. |
-| `:read(n?) -> string\|nil`                 | Streams the body: the next chunk, or at least `n` bytes. `nil` at the end.                                                                           |
-| `:accepts(...) -> string\|nil`             | The best match for the `Accept` header among the given media types, or `nil`.                                                                        |
-| `:fresh(etag?, last_modified?) -> boolean` | Whether the client's cached copy is current, per `If-None-Match` / `If-Modified-Since`.                                                              |
+| Method                                     | Description                                                                                                                                                                                                                |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:json() -> table`                         | Reads and decodes the body as JSON. Errors on an empty or invalid body. `json`, `text` and `form` share one cached read.                                                                                                   |
+| `:text() -> string`                        | Reads the whole body as a string.                                                                                                                                                                                          |
+| `:form() -> table<string, string>`         | Reads an `application/x-www-form-urlencoded` body. The result is cached, so middleware and handler can both call it.                                                                                                       |
+| `:multipart(fn) -> integer`                | Calls `fn(part)` for each [part](#nitr-part) of a `multipart/form-data` body, in order; returns the part count. A `[limits]` bound a part crosses raises; uncaught, it answers `413`. Needs the `multipart` Cargo feature. |
+| `:read(n?) -> string\|nil`                 | Streams the body: the next chunk, or at least `n` bytes. `nil` at the end.                                                                                                                                                 |
+| `:accepts(...) -> string\|nil`             | The best match for the `Accept` header among the given media types, or `nil`.                                                                                                                                              |
+| `:fresh(etag?, last_modified?) -> boolean` | Whether the client's cached copy is current, per `If-None-Match` / `If-Modified-Since`.                                                                                                                                    |
 
 ## `nitr.RequestCookies`
 
@@ -83,20 +83,20 @@ are exactly what you pass.
 The application: routes, middleware, error handling and static files.
 Return it from the handler script. See [Routing](../server/routing).
 
-| Method                       | Description                                                                                                                                          |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:get(path, ...)`            | Registers a GET route: `middleware..., handler`, then an optional [options table](#route-options). Paths take `:name` parameters and a trailing `*`. |
-| `:post(path, ...)`           | Registers a POST route (see `get`).                                                                                                                  |
-| `:put(path, ...)`            | Registers a PUT route (see `get`).                                                                                                                   |
-| `:delete(path, ...)`         | Registers a DELETE route (see `get`).                                                                                                                |
-| `:patch(path, ...)`          | Registers a PATCH route (see `get`).                                                                                                                 |
-| `:head(path, ...)`           | Registers a HEAD route. Without one, HEAD uses the GET route and drops the body.                                                                     |
-| `:options(path, ...)`        | Registers an OPTIONS route. Without one, OPTIONS answers `204` with `Allow`.                                                                         |
-| `:use(mw)`                   | Adds app-wide middleware: a factory `fn(next) -> fn(req)`. **Call it before any route.**                                                             |
-| `:on_error(handler)`         | Sets the app-wide error handler `fn(err, req)`; `err` is the [error table](#the-error-table).                                                        |
-| `:on_invalid(handler)`       | Sets the app-wide answer to failed `input` validation: `fn(err, req)`. A route's own `on_invalid` wins. Default: JSON `422`.                         |
-| `:doc(info)`                 | App-level information for the [OpenAPI document](../server/openapi/documenting#app-doc). Once per app.                                               |
-| `:static(mount, dir, opts?)` | Serves a directory. Options: `spa`, `cache_control`, `dotfiles`. Dotfiles answer `404` unless `dotfiles = true`; `.well-known/` is always served.    |
+| Method                       | Description                                                                                                                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `:get(path, ...)`            | Registers a GET route: `middleware..., handler`, then an optional [options table](#route-options). Paths take `:name` parameters and a trailing `*`.                                                                           |
+| `:post(path, ...)`           | Registers a POST route (see `get`).                                                                                                                                                                                            |
+| `:put(path, ...)`            | Registers a PUT route (see `get`).                                                                                                                                                                                             |
+| `:delete(path, ...)`         | Registers a DELETE route (see `get`).                                                                                                                                                                                          |
+| `:patch(path, ...)`          | Registers a PATCH route (see `get`).                                                                                                                                                                                           |
+| `:head(path, ...)`           | Registers a HEAD route. Without one, HEAD uses the GET route and drops the body.                                                                                                                                               |
+| `:options(path, ...)`        | Registers an OPTIONS route. Without one, OPTIONS answers `204` with `Allow`.                                                                                                                                                   |
+| `:use(mw)`                   | Adds app-wide middleware: a factory `fn(next) -> fn(req)`. **Call it before any route.**                                                                                                                                       |
+| `:on_error(handler)`         | Sets the app-wide error handler `fn(err, req)`; `err` is the [error table](#the-error-table).                                                                                                                                  |
+| `:on_invalid(handler)`       | Sets the app-wide answer to failed `input` validation: `fn(err, req)`. A route's own `on_invalid` wins. Default: JSON `422`.                                                                                                   |
+| `:doc(info)`                 | App-level information for the [OpenAPI document](../server/openapi/documenting#app-doc). Once per app.                                                                                                                         |
+| `:static(mount, dir, opts?)` | Serves a directory without a Lua state, for `GET`/`HEAD` paths no route serves with that method. Options: `spa`, `cache_control`, `dotfiles`. Dotfiles answer `404` unless `dotfiles = true`; `.well-known/` is always served. |
 
 ### Route options
 
@@ -124,15 +124,15 @@ end, {
 One part of a multipart upload, passed to the `req:multipart` callback.
 See [Requests → File uploads](../server/requests#file-uploads).
 
-| Field / method               | Description                                                                                              |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `name: string`               | Form field name; `""` when the part has none.                                                            |
-| `filename: string\|nil`      | The file name exactly as the client sent it (untrusted). `nil` for an ordinary field.                    |
-| `safe_filename: string\|nil` | `filename` reduced to a single safe file name (`../../etc/passwd` → `passwd`). `nil` when `filename` is. |
-| `content_type: string\|nil`  | Part content type.                                                                                       |
-| `:text() -> string`          | Reads a non-file field, up to `[limits] max_field_bytes`.                                                |
-| `:save(path) -> integer`     | Streams the part to `path` inside `[multipart] upload_dir`; returns the bytes written.                   |
-| `:discard() -> integer`      | Reads and drops the part; returns the bytes skipped.                                                     |
+| Field / method               | Description                                                                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name: string`               | Form field name; `""` when the part has none.                                                                                                            |
+| `filename: string\|nil`      | The file name exactly as the client sent it (untrusted). `nil` for an ordinary field.                                                                    |
+| `safe_filename: string\|nil` | `filename` reduced to a single safe file name (`../../etc/passwd` → `passwd`). `nil` when `filename` is.                                                 |
+| `content_type: string\|nil`  | Part content type.                                                                                                                                       |
+| `:text() -> string`          | Reads a non-file field, up to `[limits] max_field_bytes`.                                                                                                |
+| `:save(path) -> integer`     | Streams the part to `path` inside `[multipart] upload_dir`; returns the bytes written. An existing file is replaced only once the whole part is written. |
+| `:discard() -> integer`      | Reads and drops the part; returns the bytes skipped.                                                                                                     |
 
 `:save` needs `[multipart] upload_dir`. The path must be relative to it,
 and missing directories are not created. `part:save(part.safe_filename)`
@@ -151,14 +151,15 @@ An **unsent** request from `nitr.fetch`. Send it, or pass it to
 
 The response to an outbound request.
 
-| Field / method                   | Description                                               |
-| -------------------------------- | --------------------------------------------------------- |
-| `status: integer`                | HTTP status code.                                         |
-| `headers: table<string, string>` | Response headers.                                         |
-| `url: string`                    | Final URL after redirects.                                |
-| `:text() -> string`              | The body as a string, up to `[fetch] max_response_bytes`. |
-| `:json() -> table`               | The body decoded as JSON.                                 |
-| `:read() -> string\|nil`         | Streams the body chunk by chunk; `nil` at the end.        |
+| Field / method                   | Description                                                              |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `status: integer`                | HTTP status code.                                                        |
+| `headers: table<string, string>` | Response headers, lowercase names; a repeated one keeps its last value.  |
+| `raw_headers: table[]`           | `{ name, value }` pairs in order, repeats included (every `Set-Cookie`). |
+| `url: string`                    | Final URL after redirects.                                               |
+| `:text() -> string`              | The body as a string, up to `[fetch] max_response_bytes`.                |
+| `:json() -> table`               | The body decoded as JSON.                                                |
+| `:read() -> string\|nil`         | Streams the body chunk by chunk; `nil` at the end.                       |
 
 ## `nitr.Schema`
 
@@ -168,7 +169,7 @@ A compiled schema from `nitr.validate.schema`. See
 | Method                                    | Description                                                                                                                |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `:check(value) -> table\|nil, table\|nil` | Validates a value. Returns the data (declared fields only, transformed), or `nil` plus the [error](#the-validation-error). |
-| `:partial() -> nitr.Schema`               | A copy with every top-level field optional, such as a PATCH body.                                                          |
+| `:partial() -> nitr.Schema`               | A copy with every top-level field optional and no defaults filled in, such as a PATCH body.                                |
 | `:pick(names) -> nitr.Schema`             | A copy with only the named fields.                                                                                         |
 | `:omit(names) -> nitr.Schema`             | A copy without the named fields. Fails at load if a cross-field rule uses a removed field.                                 |
 | `:extend(fields) -> nitr.Schema`          | A copy with fields added or replaced; `false` removes one.                                                                 |

@@ -30,8 +30,9 @@ nitr.cache:delete("user:42")              -- returns whether the key was there
 nitr.cache:clear()
 ```
 
-The TTL goes in an options table, `{ ttl = seconds }`. A bare number in
-that position raises. Leave the table out to use `[cache] default_ttl`.
+The TTL goes in an options table, `{ ttl = seconds }`; `0` never
+expires. A bare number in that position raises. Leave the table out to
+use `[cache] default_ttl`. Setting `nil` removes the key, like `delete`.
 
 ## `remember`
 

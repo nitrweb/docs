@@ -91,13 +91,13 @@ string in `req.uri.query` yourself.
 
 ## Methods you do not have to write
 
-| Situation                                 | What Nitr answers                                | Runs Lua? |
-| ----------------------------------------- | ------------------------------------------------ | --------- |
-| No route and no static file matched       | `404`                                            | no        |
-| Path exists, method does not              | `405` with `Allow`                               | no        |
-| `HEAD` with only a `GET` route registered | the `GET` route, body removed                    | yes       |
-| `OPTIONS` on a known path                 | `204` with `Allow`                               | no        |
-| A CORS preflight                          | the [`[cors]`](./configuration/file#cors) policy | no        |
+| Situation                                 | What Nitr answers                                                  | Runs Lua? |
+| ----------------------------------------- | ------------------------------------------------------------------ | --------- |
+| No route and no static file matched       | `404`                                                              | no        |
+| Path exists, method does not              | `405` with `Allow` (a `GET`/`HEAD` may get a matching static file) | no        |
+| `HEAD` with only a `GET` route registered | the `GET` route, body removed                                      | yes       |
+| `OPTIONS` on a known path                 | `204` with `Allow`                                                 | no        |
+| A CORS preflight                          | the [`[cors]`](./configuration/file#cors) policy                   | no        |
 
 Register `head` or `options` only to change that behaviour.
 

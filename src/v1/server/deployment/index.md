@@ -50,8 +50,9 @@ readiness = "/readyz"
 ```
 
 `/readyz` switches to `503 draining` as soon as a graceful shutdown
-starts, so the load balancer moves traffic away before any request can
-fail. That is what makes a rolling deploy seamless.
+starts, while the server keeps serving for `[shutdown] readiness_delay`
+(5 s), so the load balancer moves traffic away before the port closes.
+That is what makes a rolling deploy seamless.
 
 To keep the probes off the public port, give them their own listener:
 
@@ -71,20 +72,24 @@ max_connections = 64      # this listener's own cap (default: 64)
 
 ```toml
 [shutdown]
+readiness_delay = 5   # keep serving while /readyz already answers 503
 grace = 30            # seconds for in-flight requests
 stream_grace = 5      # extra seconds, only if a stream is still open
 ```
 
-On `SIGTERM` or `SIGINT`, Nitr stops accepting connections, switches
-`/readyz` to `503`, lets in-flight requests finish within `grace`, gives
-open streams `stream_grace` more, and exits. If the time runs out and a
+On `SIGTERM` or `SIGINT`, Nitr switches `/readyz` to `503` and keeps
+serving for `readiness_delay`. Then it stops accepting connections, lets
+in-flight requests finish within `grace`, gives open streams
+`stream_grace` more, and exits. `readiness_delay` defaults to `0` when
+the probes have their own `[health] bind` listener, and in dev mode. If the time runs out and a
 request is cut, it **exits non-zero**.
 
 > [!WARNING] Your supervisor must wait longer than the drain
 >
 > Set systemd's `TimeoutStopSec`, `docker stop --time` or Kubernetes'
-> `terminationGracePeriodSeconds` above `grace + stream_grace` (35 s by
-> default). Otherwise the process is killed mid-drain.
+> `terminationGracePeriodSeconds` above
+> `readiness_delay + grace + stream_grace` (40 s by default). Otherwise
+> the process is killed mid-drain.
 
 ## Zero-downtime reload
 

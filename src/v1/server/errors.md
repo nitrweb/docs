@@ -154,9 +154,9 @@ These are answered by Nitr; your handler never sees the request.
 | ------ | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `400`  | More than one `Authorization` header                                                                              |                                                                      |
 | `404`  | No route or static file matched                                                                                   |                                                                      |
-| `405`  | The path exists, the method does not                                                                              | Has `Allow`. `OPTIONS` on a known path gets `204` + `Allow` instead  |
+| `405`  | The path exists, the method does not (and, for `GET`/`HEAD`, no static file matches)                              | Has `Allow`. `OPTIONS` on a known path gets `204` + `Allow` instead  |
 | `408`  | A body read stalled past `body_read_ms`                                                                           | Closes the connection. Slow headers (`header_read_ms`) just close it |
-| `413`  | Body over `max_body_bytes`                                                                                        | Checked from `Content-Length` and while reading                      |
+| `413`  | Body over `max_body_bytes`, or an uncaught multipart limit error                                                  | Checked from `Content-Length` and while reading                      |
 | `414`  | URI over `max_uri_bytes`                                                                                          |                                                                      |
 | `415`  | The body's media type is not one the route's [`input`](./validation/route-input#bodies-and-content-types) accepts | Has `Accept`; the JSON body lists the accepted types                 |
 | `422`  | The request failed the route's `input`                                                                            | Shaped by [`on_invalid`](#on-invalid-when-the-input-was-wrong)       |
@@ -168,8 +168,9 @@ The limits behind these statuses (`max_body_bytes`, `pool_wait_ms`,
 `exec_timeout_ms`, …) and their defaults are listed in
 [Defaults](./defaults) and [`[limits]`](./configuration/file#limits).
 Multipart limits (`max_form_parts`, `max_field_bytes`,
-`max_file_bytes`) raise Lua errors instead, so they become a `500`
-unless you catch them; see [Upload limits](./requests#upload-limits).
+`max_file_bytes`) raise Lua errors in the handler. Uncaught, they answer
+`413` without calling `on_error`; see
+[Upload limits](./requests#upload-limits).
 
 ## Development versus production
 

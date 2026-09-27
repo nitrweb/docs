@@ -7,7 +7,7 @@ What `nitr init` creates, and what each file is for.
 ```
 my-app/
 ├── nitr.toml              configuration
-├── config.lua             runs once at startup → nitr.cfg
+├── config.lua             runs at startup (and on reload) → nitr.cfg
 ├── app.lua                routes and middleware; returns nitr.app()
 ├── routes/
 │   └── notes.lua          a route module
@@ -30,8 +30,9 @@ my-app/
 ```
 
 The first `nitr dev` also writes **`openapi.json`**, the generated
-[API document](./openapi/), and keeps it up to date. Commit it;
-`nitr openapi --check` in CI tells you when it is stale.
+[API document](./openapi/), and keeps it up to date, even while serving
+it is off. Commit it; `nitr openapi --check` in CI tells you when it is
+stale.
 
 Every path is set in `nitr.toml`, so you can rename or move any of them:
 
@@ -73,22 +74,22 @@ dir = "public"
 mount = "/"
 
 [openapi]
-enabled = true
+enabled = false
 output = "openapi.json"
 
 [swagger]
-enabled = true
+enabled = false
 try_it_out = true
 ```
 
-It enables the OpenAPI document and the Swagger UI page at `/docs` for
-development. In production you may want them off:
-`NITR_OPENAPI_ENABLED=false NITR_SWAGGER_ENABLED=false`. Every key is in
+`/openapi.json` and the Swagger UI page at `/docs` are off, because a
+published route map is a choice to make on purpose. Set both `enabled`
+keys to `true` for development. Every key is in
 [nitr.toml](./configuration/file).
 
 ## `config.lua`
 
-Runs **once** at startup, before any request, and on every reload. Its
+Runs at startup, before any request, and again on every reload, so keep it idempotent (`CREATE TABLE IF NOT EXISTS`, not a bare `INSERT`). Its
 returned table becomes `nitr.cfg` in every handler:
 
 ```lua

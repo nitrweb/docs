@@ -70,6 +70,14 @@ A JSON response (`nitr.json({ ok = true })`). It is also the codec:
 | `nitr.json:encode(value) -> string` | Encodes a value as JSON.               |
 | `nitr.json:decode(s) -> any`        | Decodes JSON; errors on invalid input. |
 
+A table whose keys are `1..n` becomes an array, with holes as `null`
+(`{ 1, nil, 3 }` → `[1,null,3]`); a table with only a few high indices
+stays an object (`{ [5] = "x" }` → `{"5":"x"}`). A table mixing list
+items and named keys (`{ "a", total = 1 }`) has no JSON shape and
+**raises**, here and wherever Nitr serializes a value: the cache,
+sessions, JWT claims and templates. Keep the list under a key of its
+own.
+
 > [!NOTE] Strings must be UTF-8
 >
 > A string holding raw bytes (such as `nitr.crypto.random_bytes(16)`)
@@ -114,6 +122,9 @@ An error response: a string body is sent as text, a table body as JSON.
 
 Picks the offer whose media type best matches the `Accept` header;
 function values are called with the request. No match answers `406`.
+Offers are a map `{ [type] = value }`, where a tie (such as
+`Accept: */*`) goes to the type that sorts first, or a list
+`{ { type, value }, ... }`, where it goes to the earlier entry.
 
 ### `nitr.etag`
 
@@ -277,7 +288,9 @@ nitr.cookie.verify("other", signed, secret)   -- nil
 ### `nitr.db`
 
 _(std feature: `db`)_ — The SQLite database from `[database] path`. See
-[Database](../server/database).
+[Database](../server/database). `nil` and JSON `null` parameters bind
+`NULL`. A row is a column→value table, so a result with two columns of
+the same name raises (alias one with `AS`).
 
 |                                                     |                                                                                                                    |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -293,14 +306,14 @@ _(std feature: `db`)_ — The SQLite database from `[database] path`. See
 _(std feature: `cache`)_ — An in-memory cache with TTL and LRU eviction,
 shared by all workers of one process. See [Cache](../server/cache).
 
-|                                              |                                                                                           |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `nitr.cache:get(key) -> any`                 | The cached value, or `nil`.                                                               |
-| `nitr.cache:set(key, value, opts?)`          | Stores a value. `opts` is `{ ttl = seconds }`.                                            |
-| `nitr.cache:delete(key) -> boolean`          | Removes a key; returns whether it existed.                                                |
-| `nitr.cache:clear()`                         | Empties the cache.                                                                        |
-| `nitr.cache:remember(key, opts?, fn) -> any` | The cached value, or `fn()`'s result, stored and returned. `opts` is `{ ttl = seconds }`. |
-| `nitr.cache:stats() -> table`                | Hit, miss and entry counts.                                                               |
+|                                              |                                                                                                   |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `nitr.cache:get(key) -> any`                 | The cached value, or `nil`.                                                                       |
+| `nitr.cache:set(key, value, opts?)`          | Stores a value. `opts` is `{ ttl = seconds }` (`0` never expires). Setting `nil` removes the key. |
+| `nitr.cache:delete(key) -> boolean`          | Removes a key; returns whether it existed.                                                        |
+| `nitr.cache:clear()`                         | Empties the cache.                                                                                |
+| `nitr.cache:remember(key, opts?, fn) -> any` | The cached value, or `fn()`'s result, stored and returned. `opts` is `{ ttl = seconds }`.         |
+| `nitr.cache:stats() -> table`                | Hit, miss and entry counts.                                                                       |
 
 The TTL is always a table (`{ ttl = 600 }`); a bare number raises. Keys
 are limited to 1024 bytes.
@@ -349,8 +362,10 @@ rule table; `opts` overrides any key.
 `nitr.fetch(method, url, opts?) -> nitr.FetchHandle` — _(std feature: `fetch`)_
 
 An outbound HTTP request, with SSRF protection and checked redirects.
-Options: `headers`, `query`, `json`, `body`, `timeout`, `retry`. Returns
-an **unsent** [handle](./types#nitr-fetchhandle). See
+Options: `headers`, `query`, `json`, `body`, `timeout`, `retry`
+(`{ attempts, backoff }`, idempotent methods only, never after a
+`[fetch]` policy refusal). Returns an **unsent**
+[handle](./types#nitr-fetchhandle). See
 [Outbound HTTP](../server/fetch).
 
 ### `nitr.await_all`
@@ -359,7 +374,8 @@ an **unsent** [handle](./types#nitr-fetchhandle). See
 
 Runs fetch handles and `db:query_async` handles concurrently. Pass them
 as separate arguments; the results come back as multiple values in the
-same order. At most `[fetch] max_concurrent` run at once.
+same order. At most `[fetch] max_concurrent` run at once; the rest wait
+their turn.
 
 ```lua
 local profile, stats = nitr.await_all(
@@ -427,13 +443,13 @@ styles. It never touches the filesystem.
 _(std feature: `url`)_ — Percent-encoding, query strings and a simple URL
 splitter.
 
-|                                                        |                                                                                                              |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `nitr.url.encode(value) -> string`                     | Percent-encodes a component (like `encodeURIComponent`).                                                     |
-| `nitr.url.decode(value) -> string`                     | Percent-decodes; leaves `+` as is.                                                                           |
-| `nitr.url.query_parse(query) -> table<string, string>` | Parses a query string; `+` is a space and the last duplicate wins.                                           |
-| `nitr.url.query_build(params) -> string`               | Builds a query string with sorted keys.                                                                      |
-| `nitr.url.parse(value) -> table\|nil, string\|nil`     | Splits a URL into `{ scheme?, userinfo?, host?, port?, path, query?, fragment? }`. Not a full WHATWG parser. |
+|                                                        |                                                                                                                                              |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nitr.url.encode(value) -> string`                     | Percent-encodes everything but ASCII letters, digits and `-_.~` (stricter than `encodeURIComponent`).                                        |
+| `nitr.url.decode(value) -> string`                     | Percent-decodes; leaves `+` as is.                                                                                                           |
+| `nitr.url.query_parse(query) -> table<string, string>` | Parses a query string; `+` is a space and the last duplicate wins.                                                                           |
+| `nitr.url.query_build(params) -> string`               | Builds a query string with sorted keys.                                                                                                      |
+| `nitr.url.parse(value) -> table\|nil, string\|nil`     | Splits a URL into `{ scheme?, userinfo?, host?, port?, path, query?, fragment? }`. A port above 65535 is an error. Not a full WHATWG parser. |
 
 ### `nitr.env`
 
@@ -445,7 +461,7 @@ names `[env] allow` permits. `NITR_*` variables are never visible. See
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `nitr.env.get(name, default?) -> string\|nil`    | The value, or the default when unset or not allowed.                                                             |
 | `nitr.env.has(name) -> boolean`                  | Whether it is set and allowed.                                                                                   |
-| `nitr.env.number(name, default?) -> number\|nil` | The value as a number; the default when unset or not a number.                                                   |
+| `nitr.env.number(name, default?) -> number\|nil` | The value as a number; the default when unset, not a number, or not finite (`nan`, `inf`).                       |
 | `nitr.env.bool(name, default?) -> boolean\|nil`  | `1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off` (any case). Empty is `false`; anything else returns the default. |
 
 ---

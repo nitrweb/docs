@@ -146,7 +146,9 @@ nitr openapi --ui site/             # write a static Swagger UI site
 Generates the [OpenAPI document](./openapi/) from your routes without
 opening a port. It works even when `[openapi] enabled = false`, so you
 can publish the document from CI while keeping it off the server. Like
-`check`, it runs the config script.
+`check`, it runs the config script, but against a scratch copy of the
+database with the migrations applied, so it never touches your real
+database.
 
 | Flag                    | Effect                                                                                         |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
@@ -172,8 +174,9 @@ nitr migrate --status
 Applies pending `.sql` files from `[database] migrations_dir` (default
 `migrations/`) in version order, each in its own transaction.
 
-`--status` lists applied and pending migrations without applying
-anything, and flags any applied file that was changed afterwards
+`--status` lists applied and pending migrations without writing
+anything (it opens the database read-only and never creates it), and
+flags any applied file that was changed afterwards
 (`MODIFIED SINCE APPLIED`). Never edit an applied migration; add a new
 one.
 
@@ -209,7 +212,8 @@ executable. It includes the configuration file, every `.lua` file under
 the handler script's directory, the config script, `[templating] dir`,
 `[static] dir` and the migrations.
 
-- Dev mode is always off in the built file.
+- Dev mode is always off in the built file, and it refuses `--config`
+  (use `NITR_*` environment variables for per-deployment values).
 - The database, `[multipart] upload_dir`, the env file and the TLS
   certificate and key stay **outside** the file, resolved as usual at
   run time.

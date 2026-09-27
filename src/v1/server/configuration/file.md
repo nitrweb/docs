@@ -32,16 +32,16 @@ trust_request_id = false
 pidfile = "/run/nitr/nitr.pid"
 ```
 
-| Key                | Type    | Default                 | Description                                                                                                                                                    |
-| ------------------ | ------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `listen`           | string  | `"127.0.0.1:3000"`      | Address to bind. With `[tls] enabled = true` this same address speaks HTTPS.                                                                                   |
-| `handler_script`   | path    | `"scripts/handler.lua"` | The script that returns `nitr.app()`. Loaded once per Lua state.                                                                                               |
-| `config_script`    | path    | _unset_                 | Runs once per (re)build. Its returned table becomes `nitr.cfg` in every state; without it, `nitr.cfg` is `nil`.                                                |
-| `dev_mode`         | bool    | `false`                 | Hot reload and error details in responses. Also set by `--dev` and `nitr dev`.                                                                                 |
-| `workers`          | integer | CPU cores               | Number of Lua states: the most handlers that run at once. Maximum 4096.                                                                                        |
-| `max_streams`      | integer | `workers - 1` (min 1)   | Most concurrent [streaming responses](../streaming). Each holds a Lua state while it runs; past the cap a stream is answered `503`. May not exceed `workers`.  |
-| `trust_request_id` | bool    | `false`                 | Reuse an incoming `X-Request-ID` (well-formed, up to 64 ASCII chars) instead of generating one. Enable **only** behind a proxy that sets or cleans the header. |
-| `pidfile`          | path    | _unset_                 | File the server writes its process id to at startup and removes at exit. [`nitr reload`](../cli#reload) uses it to find the server.                            |
+| Key                | Type    | Default                 | Description                                                                                                                                                                                                                    |
+| ------------------ | ------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `listen`           | string  | `"127.0.0.1:3000"`      | Address to bind. With `[tls] enabled = true` this same address speaks HTTPS.                                                                                                                                                   |
+| `handler_script`   | path    | `"scripts/handler.lua"` | The script that returns `nitr.app()`. Loaded once per Lua state.                                                                                                                                                               |
+| `config_script`    | path    | _unset_                 | Runs once per (re)build. Its returned table becomes `nitr.cfg` in every state; without it, `nitr.cfg` is `nil`.                                                                                                                |
+| `dev_mode`         | bool    | `false`                 | Hot reload and error details in responses. Also set by `--dev` and `nitr dev`.                                                                                                                                                 |
+| `workers`          | integer | CPU cores               | Number of Lua states: the most handlers that run at once. Maximum 4096.                                                                                                                                                        |
+| `max_streams`      | integer | `workers - 1` (min 1)   | Most concurrent [streaming responses](../streaming). Each holds a Lua state while it runs; past the cap a stream is answered `503`. May not exceed `workers`; `0` is refused. Startup warns when streams can hold every state. |
+| `trust_request_id` | bool    | `false`                 | Reuse an incoming `X-Request-ID` (well-formed, up to 64 ASCII chars) instead of generating one. Enable **only** behind a proxy that sets or cleans the header.                                                                 |
+| `pidfile`          | path    | _unset_                 | File the server writes its process id to at startup and removes at exit. [`nitr reload`](../cli#reload) uses it to find the server.                                                                                            |
 
 > [!TIP] Sizing `workers`
 >
@@ -69,26 +69,26 @@ max_field_bytes = 65536
 max_file_bytes = 10485760
 ```
 
-| Key                | Default | When exceeded                | Description                                                                                                |
-| ------------------ | ------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `max_body_bytes`   | 1 MiB   | `413`                        | Request body cap, counted as the body arrives (not read from `Content-Length`).                            |
-| `max_header_bytes` | 16 KiB  | `431`                        | Request header buffer. Values below 8192 are raised to 8192.                                               |
-| `max_uri_bytes`    | 8 KiB   | `414`                        | Request URI cap.                                                                                           |
-| `max_connections`  | 1024    | listener stops accepting     | Concurrent TCP connections. Maximum 1048576.                                                               |
-| `pool_wait_ms`     | 5000    | `503` + `Retry-After`        | How long a request waits for a free Lua state. `0` waits forever.                                          |
-| `header_read_ms`   | 30000   | connection closed            | Deadline for the complete request headers. `0` disables it.                                                |
-| `body_read_ms`     | 30000   | `408` + connection closed    | How long each body read may wait for more bytes. It limits stalls, not total upload time. `0` disables it. |
-| `max_form_parts`   | 64      | Lua error in `req:multipart` | Parts allowed in a `multipart/form-data` body.                                                             |
-| `max_field_bytes`  | 64 KiB  | Lua error in `part:text()`   | Per non-file form field. Fields become Lua strings, so this bounds Lua memory.                             |
-| `max_file_bytes`   | 10 MiB  | Lua error in `part:save()`   | Per uploaded file. Files stream to disk and never enter Lua memory.                                        |
+| Key                | Default | When exceeded                             | Description                                                                                                           |
+| ------------------ | ------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `max_body_bytes`   | 1 MiB   | `413`                                     | Request body cap, counted as the body arrives (not read from `Content-Length`).                                       |
+| `max_header_bytes` | 16 KiB  | `431`                                     | Request header buffer. Values below 8192 are raised to 8192.                                                          |
+| `max_uri_bytes`    | 8 KiB   | `414`                                     | Request URI cap. Must be below the header buffer (`max_header_bytes`, at least 8192), or startup fails.               |
+| `max_connections`  | 1024    | listener stops accepting                  | Concurrent TCP connections. Maximum 1048576.                                                                          |
+| `pool_wait_ms`     | 5000    | `503` + `Retry-After`                     | How long a request waits for a free Lua state. `0` waits forever.                                                     |
+| `header_read_ms`   | 30000   | connection closed                         | Deadline for the complete request headers. `0` disables it.                                                           |
+| `body_read_ms`     | 30000   | `408` + connection closed                 | How long each body read may wait for more bytes. It limits stalls, not total upload time. `0` disables it.            |
+| `max_form_parts`   | 64      | `413`, via a Lua error in `req:multipart` | Parts allowed in a `multipart/form-data` body.                                                                        |
+| `max_field_bytes`  | 64 KiB  | `413`, via a Lua error in `part:text()`   | Per non-file form field. Fields become Lua strings, so this bounds Lua memory.                                        |
+| `max_file_bytes`   | 10 MiB  | `413`, via a Lua error in `part:save()`   | Per uploaded file. Files stream to disk and never enter Lua memory. Also caps a validation `file` rule's `max_bytes`. |
 
 > [!WARNING] Raising `max_file_bytes` is not enough
 >
 > `max_body_bytes` caps the whole request, uploads included. Raise both.
 
-The three multipart caps raise ordinary Lua errors. Uncaught, they reach
-[`on_error`](../errors) as a `500`; catch them if you want a `413`. See
-[Requests](../requests#file-uploads).
+The three multipart caps raise Lua errors. Uncaught, they answer `413`
+without calling [`on_error`](../errors); catch them with `pcall` to answer
+something else. See [Requests](../requests#file-uploads).
 
 Two timing checks run at startup, only when both values are non-zero:
 
@@ -225,8 +225,9 @@ types = ["text/*", "application/json", "application/javascript"]
 | `types`      | see below        | Content types to compress. A trailing `*` matches a prefix (`"text/*"`).                              |
 
 Default `types`: `text/*`, `application/json`, `application/javascript`,
-`application/xml`, `image/svg+xml`. Already-compressed types (images,
-video, archives) are skipped even if listed. A response with
+`application/xml`, `image/svg+xml`. Already-compressed families (images,
+video, archives) are skipped when matched by a `*` pattern; a full type
+you list, such as `image/svg+xml`, is compressed. A response with
 `Cache-Control: no-transform` is never compressed.
 
 Precompressed files (`app.js.br` or `app.js.gz` next to `app.js`) are
@@ -247,14 +248,14 @@ credentials = false
 max_age = 86400
 ```
 
-| Key              | Default            | Description                                                                   |
-| ---------------- | ------------------ | ----------------------------------------------------------------------------- |
-| `origins`        | _unset (disabled)_ | Allowed origins, or `["*"]` for any.                                          |
-| `methods`        | _unset_            | Allowed methods (case-insensitive).                                           |
-| `headers`        | _unset_            | Allowed request headers.                                                      |
-| `expose_headers` | _unset_            | Response headers the browser may read.                                        |
-| `credentials`    | `false`            | Allow cookies and `Authorization`. Cannot be combined with `origins = ["*"]`. |
-| `max_age`        | _unset_            | Seconds a browser may cache the preflight answer.                             |
+| Key              | Default            | Description                                                                                                 |
+| ---------------- | ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `origins`        | _unset (disabled)_ | Allowed origins as `scheme://host[:port]`, or `["*"]` for any. A path or trailing slash is a startup error. |
+| `methods`        | _unset_            | Allowed methods (case-insensitive).                                                                         |
+| `headers`        | _unset_            | Allowed request headers.                                                                                    |
+| `expose_headers` | _unset_            | Response headers the browser may read.                                                                      |
+| `credentials`    | `false`            | Allow cookies and `Authorization`. Cannot be combined with `origins = ["*"]`.                               |
+| `max_age`        | _unset_            | Seconds a browser may cache the preflight answer.                                                           |
 
 ## `[tls]`
 
@@ -294,16 +295,18 @@ pair is valid. A key file readable by other users logs a warning.
 [shutdown]
 grace = 30
 stream_grace = 5
+readiness_delay = 5
 ```
 
-| Key            | Default | Description                                                          |
-| -------------- | ------- | -------------------------------------------------------------------- |
-| `grace`        | `30`    | Seconds for in-flight requests to finish after `SIGTERM`/`SIGINT`.   |
-| `stream_grace` | `5`     | Extra seconds for streaming and SSE responses still open after that. |
+| Key               | Default    | Description                                                                                                                                                                                                                                                  |
+| ----------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `grace`           | `30`       | Seconds for in-flight requests to finish after `SIGTERM`/`SIGINT`.                                                                                                                                                                                           |
+| `stream_grace`    | `5`        | Extra seconds for streaming and SSE responses still open after that.                                                                                                                                                                                         |
+| `readiness_delay` | `5` or `0` | Seconds the server keeps serving after the signal while `/readyz` already answers `503`, so a load balancer stops sending traffic before the port closes. Defaults to `5` when the probes are on the main listener, `0` with `[health] bind` or in dev mode. |
 
 A drain that runs out of time exits non-zero. Give your supervisor
 (systemd `TimeoutStopSec`, Docker `--time`) longer than
-`grace + stream_grace`. See [Deployment](../deployment/).
+`readiness_delay + grace + stream_grace`. See [Deployment](../deployment/).
 
 ## `[rate_limit]`
 
@@ -321,8 +324,8 @@ trust_forwarded_for = false
 | Key                   | Default | Description                                                                                                                       |
 | --------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`             | `false` | Turn the limiter on.                                                                                                              |
-| `requests`            | `100`   | Requests allowed per window and client.                                                                                           |
-| `window`              | `60`    | Window length in seconds.                                                                                                         |
+| `requests`            | `100`   | Requests allowed per window and client. At least `1`.                                                                             |
+| `window`              | `60`    | Window length in seconds. At least `1`.                                                                                           |
 | `trust_forwarded_for` | `false` | Identify clients by the **last** `X-Forwarded-For` entry (the one your proxy added). Enable **only** behind a proxy that sets it. |
 
 IPv6 clients share one budget per `/64`. Because the window is fixed, a
@@ -350,20 +353,20 @@ no_proxy = false
 propagate_trace_context = false
 ```
 
-| Key                       | Default | Description                                                                                    |
-| ------------------------- | ------- | ---------------------------------------------------------------------------------------------- |
-| `allowed_hosts`           | _unset_ | If set, only these exact host names may be fetched (redirects included).                       |
-| `allow_private_networks`  | `false` | Allow loopback and private-network targets.                                                    |
-| `max_response_bytes`      | 8 MiB   | Cap on bodies read with `resp:text()` / `resp:json()`.                                         |
-| `max_concurrent`          | `8`     | Most parallel requests in one `nitr.await_all(...)`.                                           |
-| `max_per_request`         | `32`    | Most outbound calls one incoming request may make. `0` removes the cap.                        |
-| `connect_timeout`         | `10.0`  | Seconds to connect.                                                                            |
-| `timeout`                 | `30.0`  | Seconds per request. A per-call `timeout` may lower it, not raise it.                          |
-| `pool_max_idle_per_host`  | `8`     | Idle connections kept per host.                                                                |
-| `max_retries`             | `5`     | Upper limit for a call's `retry.attempts`. Retries are opt-in and only for idempotent methods. |
-| `proxy`                   | _unset_ | Proxy URL. Unset uses `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`.                              |
-| `no_proxy`                | `false` | Ignore the proxy environment variables.                                                        |
-| `propagate_trace_context` | `false` | Send a W3C `traceparent` header derived from the request id.                                   |
+| Key                       | Default | Description                                                                                                                   |
+| ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `allowed_hosts`           | _unset_ | If set, only these exact host names may be fetched (redirects included).                                                      |
+| `allow_private_networks`  | `false` | Allow loopback and private-network targets.                                                                                   |
+| `max_response_bytes`      | 8 MiB   | Cap on bodies read with `resp:text()` / `resp:json()`.                                                                        |
+| `max_concurrent`          | `8`     | Most requests of one `nitr.await_all(...)` in flight at a time; the rest wait.                                                |
+| `max_per_request`         | `32`    | Most outbound calls one incoming request may make. `0` removes the cap.                                                       |
+| `connect_timeout`         | `10.0`  | Seconds to connect.                                                                                                           |
+| `timeout`                 | `30.0`  | Seconds per request. A per-call `timeout` may lower it, not raise it.                                                         |
+| `pool_max_idle_per_host`  | `8`     | Idle connections kept per host.                                                                                               |
+| `max_retries`             | `5`     | Upper limit for a call's `retry.attempts`. Retries are opt-in, only for idempotent methods, and never after a policy refusal. |
+| `proxy`                   | _unset_ | Proxy URL. Unset uses `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`.                                                             |
+| `no_proxy`                | `false` | Ignore the proxy environment variables.                                                                                       |
+| `propagate_trace_context` | `false` | Send a W3C `traceparent` header derived from the request id.                                                                  |
 
 > [!WARNING] A proxy needs an explicit choice
 >
@@ -376,8 +379,9 @@ propagate_trace_context = false
 ## `[static]`
 
 Static file serving in Rust, with ETag, `Last-Modified`, `304` and range
-requests. Scripts can add mounts with
-[`app:static(...)`](../static-files).
+requests, without a Lua state. Routes win: a mount answers a `GET` or
+`HEAD` only for a path no route serves with that method. Scripts can add
+mounts with [`app:static(...)`](../static-files).
 
 ```toml
 [static]
@@ -388,13 +392,13 @@ cache_control = "public, max-age=3600"
 dotfiles = false
 ```
 
-| Key             | Default            | Description                                                     |
-| --------------- | ------------------ | --------------------------------------------------------------- |
-| `dir`           | _unset (disabled)_ | Directory to serve. Must be readable at startup.                |
-| `mount`         | `"/"`              | URL prefix.                                                     |
-| `spa`           | `false`            | Serve `index.html` for unknown paths (single-page apps).        |
-| `cache_control` | _unset_            | `Cache-Control` header for served files.                        |
-| `dotfiles`      | `false`            | Serve names starting with `.`. `.well-known/` is always served. |
+| Key             | Default            | Description                                                                                                                    |
+| --------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `dir`           | _unset (disabled)_ | Directory to serve. Must be readable at startup.                                                                               |
+| `mount`         | `"/"`              | URL prefix.                                                                                                                    |
+| `spa`           | `false`            | Serve `index.html` for paths nothing matches (single-page apps). A path a route serves with other methods still answers `405`. |
+| `cache_control` | _unset_            | `Cache-Control` header for served files.                                                                                       |
+| `dotfiles`      | `false`            | Serve names starting with `.`. `.well-known/` is always served.                                                                |
 
 > [!DANGER] Never serve your code
 >
@@ -471,13 +475,13 @@ bind = "127.0.0.1:9090"
 max_connections = 64
 ```
 
-| Key               | Default      | Description                                                                           |
-| ----------------- | ------------ | ------------------------------------------------------------------------------------- |
-| `enabled`         | `true`       | Serve the probes.                                                                     |
-| `liveness`        | `"/healthz"` | `200 ok` while the process runs. Never waits for a Lua state.                         |
-| `readiness`       | `"/readyz"`  | `200 ok`, then `503 draining` as soon as a graceful shutdown starts.                  |
-| `bind`            | _unset_      | Separate address for the probes, to keep them off the public port. Always plain HTTP. |
-| `max_connections` | `64`         | Connection cap for the separate `bind` listener only.                                 |
+| Key               | Default      | Description                                                                                             |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
+| `enabled`         | `true`       | Serve the probes.                                                                                       |
+| `liveness`        | `"/healthz"` | `200 ok` while the process runs. Never waits for a Lua state.                                           |
+| `readiness`       | `"/readyz"`  | `200 ok`, then `503 draining` as soon as a graceful shutdown starts (see `[shutdown] readiness_delay`). |
+| `bind`            | _unset_      | Separate address for the probes, to keep them off the public port. Always plain HTTP.                   |
+| `max_connections` | `64`         | Connection cap for the separate `bind` listener only.                                                   |
 
 Both paths must start with `/` and must differ. Only `GET` and `HEAD`
 are answered.
@@ -544,10 +548,10 @@ format = "text"
 level = "info"
 ```
 
-| Key      | Default                          | Description                                                           |
-| -------- | -------------------------------- | --------------------------------------------------------------------- |
-| `format` | `"text"`                         | `"text"` for people, `"json"` (one object per line) for log shippers. |
-| `level`  | `"info"` (`"debug"` in dev mode) | A level or any `tracing` filter. `RUST_LOG` overrides it.             |
+| Key      | Default                          | Description                                                                                                                                     |
+| -------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format` | `"text"`                         | `"text"` for people, `"json"` (one object per line) for log shippers.                                                                           |
+| `level`  | `"info"` (`"debug"` in dev mode) | A level (`error`, `warn`, `info`, `debug`, `trace`, `off`) or a `target=level` list. Anything else is a startup error. `RUST_LOG` overrides it. |
 
 See [Logging](../logging).
 
@@ -597,11 +601,11 @@ memory_limit = 8388608
 exec_timeout_ms = 30000
 ```
 
-| Key               | Default                                                       | Description                                                                                                  |
-| ----------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `stdlib`          | `["math", "table", "string", "utf8", "coroutine", "package"]` | Lua standard libraries loaded into every state. `"io"` and `"os"` are allowed; `"debug"` is a startup error. |
-| `memory_limit`    | 8 MiB                                                         | Memory limit per Lua state, in bytes. A state that hits it is thrown away and rebuilt.                       |
-| `exec_timeout_ms` | `30000`                                                       | Time limit per handler call, covering both busy loops and slow I/O. `0` disables it.                         |
+| Key               | Default                                                       | Description                                                                                                                        |
+| ----------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `stdlib`          | `["math", "table", "string", "utf8", "coroutine", "package"]` | Lua standard libraries loaded into every state. `"io"` and `"os"` are allowed; `"debug"` is a startup error.                       |
+| `memory_limit`    | 8 MiB                                                         | Memory limit per Lua state, in bytes. A state that hits it is thrown away and rebuilt. `0` is refused.                             |
+| `exec_timeout_ms` | `30000`                                                       | Time limit per handler call, and per load of `config.lua` and the handler script. Covers busy loops and slow I/O. `0` disables it. |
 
 > [!DANGER] Adding `io` or `os` weakens the sandbox
 >

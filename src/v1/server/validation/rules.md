@@ -34,13 +34,13 @@ All three compile to the same thing, and you can choose per field.
 `type|token|token…`, where each token is a rule key with the same
 meaning it has in a table.
 
-| Token                                | Meaning                                                                                          | Example                            |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| A bare key                           | A flag: `required`, `trim`, `unique`, `utf8`, `match_extension`, `allow_executables`             | `"string\|trim\|required"`         |
-| `key:number`                         | A numeric rule: `min`, `max_len`, `max_items`, `max_pixels`, …                                   | `"integer\|min:1\|max:5"`          |
-| `key:a,b,c`                          | A list rule: `one_of`, `not_one_of`, `contains_any`, `contains_all`, `types`, `extensions`       | `"string\|one_of:draft,published"` |
-| `key:text`                           | Anything else, as text                                                                           | `"string\|format:email"`           |
-| `default:` / `equals:` / `contains:` | Read as the field's type: a number on `integer`/`number`, `true`/`false` on `boolean`, else text | `"integer\|default:3"`             |
+| Token                                | Meaning                                                                                                                                        | Example                            |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| A bare key                           | A flag: `required`, `trim`, `unique`, `utf8`, `match_extension`, `allow_executables`                                                           | `"string\|trim\|required"`         |
+| `key:number`                         | A numeric rule: `min`, `max_len`, `max_items`, `max_pixels`, …                                                                                 | `"integer\|min:1\|max:5"`          |
+| `key:a,b,c`                          | A list rule: `one_of`, `not_one_of`, `contains_any`, `contains_all`, `types`, `extensions`                                                     | `"string\|one_of:draft,published"` |
+| `key:text`                           | Anything else, as text                                                                                                                         | `"string\|format:email"`           |
+| `default:` / `equals:` / `contains:` | Read as the field's type (for an array's `contains`, the `items` type): a number on `integer`/`number`, `true`/`false` on `boolean`, else text | `"integer\|default:3"`             |
 
 Escape a literal `|` or `,` with a backslash. `nitr.validate.expand`
 shows what a shorthand string means:
@@ -175,7 +175,10 @@ form, see [text conversion](./route-input#text-becomes-values).
 ```
 
 A failing element is reported by its position, counting from 1:
-`tags[2]`.
+`tags[2]`. The value must be a list: a JSON object such as
+`{"admin": true}` fails the `array` type instead of passing as an empty
+list. `unique` tells large integers apart exactly and treats `1` and
+`1.0` as the same value.
 
 ## `table`: a nested object
 
@@ -192,7 +195,8 @@ local schema = nitr.validate.schema({
 })
 ```
 
-`fields` takes a table of rules or a compiled schema. Reusing a schema
+`fields` takes a table of rules or a compiled schema. The value must be
+an object: a JSON array fails the `table` type. Reusing a schema
 is covered in [Composition](./composition#reusing-a-schema-as-a-field).
 Nested failures use dotted paths: `address.postcode`.
 
@@ -224,7 +228,9 @@ blob.
 { payload = { type = "any", max_bytes = "64kb" } }
 ```
 
-`max_bytes` is the only type-specific rule.
+`max_bytes` is the only type-specific rule, measured on the value's JSON.
+A Lua table that has no JSON form (one mixing list items and named keys)
+fails with `must be a JSON value`.
 
 ## `file`: an upload
 

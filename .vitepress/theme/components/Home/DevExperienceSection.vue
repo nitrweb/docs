@@ -40,7 +40,7 @@ const STAGES: Stage[] = [
       '<code>nitr init</code> writes the layout the CLI expects — routes, a migration, a template, a test — and the pieces already fit together.',
     points: [
       '<code>nitr-types.lua</code> gives your editor completion and inline docs for every <code>nitr.*</code> call.',
-      'The routes come with validated <code>input</code>, so <code>/openapi.json</code> and a Swagger UI at <code>/docs</code> work from the first run.',
+      'The routes come with validated <code>input</code>, so an OpenAPI document and a Swagger UI at <code>/docs</code> are one setting away.',
       '<code>--minimal</code> for a four-file version when you only need one endpoint.',
       'It refuses to overwrite: running it in a non-empty directory is safe.'
     ],

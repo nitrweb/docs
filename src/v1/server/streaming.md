@@ -213,4 +213,4 @@ stream_grace = 5      # extra seconds, used only if a stream is still open
 ```
 
 Your process manager's stop timeout must be longer than
-`grace + stream_grace`. See [Deployment](./deployment/).
+`readiness_delay + grace + stream_grace`. See [Deployment](./deployment/).
