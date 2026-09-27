@@ -139,13 +139,20 @@ secure = "auto"
 | `secure` | `"auto"` | `"auto"`: `Secure` when `[tls] enabled = true`. `"always"`: TLS ends at a proxy in front of Nitr. `"never"`: plain-HTTP development. |
 
 An explicit `secure` option passed from Lua always wins.
+`NITR_COOKIES_SECURE` overrides the file.
 
 > [!WARNING] Behind a TLS proxy, use `"always"`
 >
 > The usual deployment is Nitr on loopback behind a proxy that handles
 > TLS. `[tls] enabled = false` is right for Nitr, but cookies must still
-> be `Secure`, and Nitr cannot detect the proxy. So when cookies would
-> not be `Secure`, Nitr warns at startup (except in dev mode).
+> be `Secure`, and Nitr cannot detect the proxy. So with `"auto"` and
+> TLS off, the first cookie Nitr builds without `Secure` logs a warning,
+> once per process. A service that sets no cookie is never warned, and
+> dev mode and an explicit `"never"` stay silent.
+
+The one startup warning left is `secure = "never"` together with
+`[tls] enabled = true`: a server that terminates TLS and then opts its
+cookies out of it.
 
 See [Cookies & sessions](../cookies-sessions).
 
@@ -166,16 +173,16 @@ max_rows = 10000
 migrations_dir = "migrations"
 ```
 
-| Key              | Default    | Description                                                                                                |
-| ---------------- | ---------- | ---------------------------------------------------------------------------------------------------------- |
-| `path`           | _required_ | The database file. SQLite creates the file but not its directory; a missing directory is a startup error.  |
-| `journal_mode`   | `"wal"`    | `"wal"`, `"delete"`, or `"keep"` to leave the file's current mode (safest when other tools open the file). |
-| `busy_timeout`   | `5000`     | Milliseconds to wait on a lock before failing with `SQLITE_BUSY`.                                          |
-| `synchronous`    | `"normal"` | SQLite `synchronous` pragma. `"normal"` is the usual pairing with WAL.                                     |
-| `foreign_keys`   | `true`     | Enforce foreign keys (SQLite's own default is off).                                                        |
-| `cache_size`     | `-2000`    | SQLite `cache_size` per connection; negative values are KiB.                                               |
-| `max_rows`       | `10000`    | Most rows one `nitr.db:query` may return. A larger result raises an error instead of being cut short.      |
-| `migrations_dir` | _unset_    | Where `nitr migrate` finds `NNN_name.sql` files. Unset uses `migrations/` when that directory exists.      |
+| Key              | Default    | Description                                                                                                                                            |
+| ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `path`           | _required_ | The database file. SQLite creates the file but not its directory; a missing directory is a startup error. `nitr migrate` (and `--migrate`) creates it. |
+| `journal_mode`   | `"wal"`    | `"wal"`, `"delete"`, or `"keep"` to leave the file's current mode (safest when other tools open the file).                                             |
+| `busy_timeout`   | `5000`     | Milliseconds to wait on a lock before failing with `SQLITE_BUSY`.                                                                                      |
+| `synchronous`    | `"normal"` | SQLite `synchronous` pragma. `"normal"` is the usual pairing with WAL.                                                                                 |
+| `foreign_keys`   | `true`     | Enforce foreign keys (SQLite's own default is off).                                                                                                    |
+| `cache_size`     | `-2000`    | SQLite `cache_size` per connection; negative values are KiB.                                                                                           |
+| `max_rows`       | `10000`    | Most rows one `nitr.db:query` may return. A larger result raises an error instead of being cut short.                                                  |
+| `migrations_dir` | _unset_    | Where `nitr migrate` finds `NNN_name.sql` files. Unset uses `migrations/` when that directory exists.                                                  |
 
 > [!WARNING] WAL uses three files
 >
@@ -257,6 +264,27 @@ max_age = 86400
 | `credentials`    | `false`            | Allow cookies and `Authorization`. Cannot be combined with `origins = ["*"]`.                               |
 | `max_age`        | _unset_            | Seconds a browser may cache the preflight answer.                                                           |
 
+## `[headers]`
+
+Headers added to every response: static files, the SPA page, the
+built-in rejections and every handler answer. Each key is a header name
+and each value its value.
+
+```toml
+[headers]
+X-Content-Type-Options = "nosniff"
+X-Frame-Options = "DENY"
+Referrer-Policy = "same-origin"
+```
+
+- A header the handler set itself wins over the entry here.
+- Names and values are checked at startup. An invalid one (a name with a
+  space, a value with a line break or a non-ASCII character) refuses to
+  boot, and the error names the entry.
+- Empty by default.
+
+See [Responses → Headers on every response](../responses#headers-on-every-response).
+
 ## `[tls]`
 
 HTTPS served by Nitr itself (rustls). Needs the `tls` Cargo feature. See
@@ -330,6 +358,12 @@ trust_forwarded_for = false
 
 IPv6 clients share one budget per `/64`. Because the window is fixed, a
 burst across a window boundary can briefly reach twice the rate.
+`NITR_RATE_LIMIT_TRUST_FORWARDED_FOR` overrides `trust_forwarded_for`.
+
+A route can add a tighter limit of its own with the
+[`rate_limit` route option](../routing#per-route-rate-limits). It
+applies on top of this section, and identifies clients the same way,
+`trust_forwarded_for` included.
 
 ## `[fetch]`
 
@@ -341,6 +375,7 @@ every redirect is checked again.
 [fetch]
 allowed_hosts = ["api.example.com"]
 allow_private_networks = false
+private_hosts = ["payments"]
 max_response_bytes = 8388608
 max_concurrent = 8
 max_per_request = 32
@@ -353,20 +388,27 @@ no_proxy = false
 propagate_trace_context = false
 ```
 
-| Key                       | Default | Description                                                                                                                   |
-| ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `allowed_hosts`           | _unset_ | If set, only these exact host names may be fetched (redirects included).                                                      |
-| `allow_private_networks`  | `false` | Allow loopback and private-network targets.                                                                                   |
-| `max_response_bytes`      | 8 MiB   | Cap on bodies read with `resp:text()` / `resp:json()`.                                                                        |
-| `max_concurrent`          | `8`     | Most requests of one `nitr.await_all(...)` in flight at a time; the rest wait.                                                |
-| `max_per_request`         | `32`    | Most outbound calls one incoming request may make. `0` removes the cap.                                                       |
-| `connect_timeout`         | `10.0`  | Seconds to connect.                                                                                                           |
-| `timeout`                 | `30.0`  | Seconds per request. A per-call `timeout` may lower it, not raise it.                                                         |
-| `pool_max_idle_per_host`  | `8`     | Idle connections kept per host.                                                                                               |
-| `max_retries`             | `5`     | Upper limit for a call's `retry.attempts`. Retries are opt-in, only for idempotent methods, and never after a policy refusal. |
-| `proxy`                   | _unset_ | Proxy URL. Unset uses `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`.                                                             |
-| `no_proxy`                | `false` | Ignore the proxy environment variables.                                                                                       |
-| `propagate_trace_context` | `false` | Send a W3C `traceparent` header derived from the request id.                                                                  |
+| Key                       | Default | Description                                                                                                                                                                      |
+| ------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allowed_hosts`           | _unset_ | If set, only these exact host names may be fetched (redirects included).                                                                                                         |
+| `allow_private_networks`  | `false` | Allow loopback and private-network targets.                                                                                                                                      |
+| `private_hosts`           | `[]`    | Host names that may resolve to a private or loopback address while `allow_private_networks` stays off. Bare names only (`"payments"`, `"db.internal"`): no scheme, port or path. |
+| `max_response_bytes`      | 8 MiB   | Cap on bodies read with `resp:text()` / `resp:json()`.                                                                                                                           |
+| `max_concurrent`          | `8`     | Most requests of one `nitr.await_all(...)` in flight at a time; the rest wait.                                                                                                   |
+| `max_per_request`         | `32`    | Most outbound calls one incoming request may make. `0` removes the cap.                                                                                                          |
+| `connect_timeout`         | `10.0`  | Seconds to connect.                                                                                                                                                              |
+| `timeout`                 | `30.0`  | Seconds per request. A per-call `timeout` may lower it, not raise it.                                                                                                            |
+| `pool_max_idle_per_host`  | `8`     | Idle connections kept per host.                                                                                                                                                  |
+| `max_retries`             | `5`     | Upper limit for a call's `retry.attempts`. Retries are opt-in, only for idempotent methods (or a call marked `idempotent = true`), and never after a policy refusal.             |
+| `proxy`                   | _unset_ | Proxy URL. Unset uses `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`.                                                                                                                |
+| `no_proxy`                | `false` | Ignore the proxy environment variables.                                                                                                                                          |
+| `propagate_trace_context` | `false` | Send a W3C `traceparent` header derived from the request id.                                                                                                                     |
+
+`private_hosts` names the internal services you mean to call, such as a
+`payments` container on the same network, without opening every private
+address. A name matches exactly (case-insensitive) and is checked on
+every redirect hop. An entry with a scheme, port or path is a startup
+error. See [Outbound HTTP → The SSRF policy](../fetch#the-ssrf-policy).
 
 > [!WARNING] A proxy needs an explicit choice
 >
@@ -392,13 +434,13 @@ cache_control = "public, max-age=3600"
 dotfiles = false
 ```
 
-| Key             | Default            | Description                                                                                                                    |
-| --------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `dir`           | _unset (disabled)_ | Directory to serve. Must be readable at startup.                                                                               |
-| `mount`         | `"/"`              | URL prefix.                                                                                                                    |
-| `spa`           | `false`            | Serve `index.html` for paths nothing matches (single-page apps). A path a route serves with other methods still answers `405`. |
-| `cache_control` | _unset_            | `Cache-Control` header for served files.                                                                                       |
-| `dotfiles`      | `false`            | Serve names starting with `.`. `.well-known/` is always served.                                                                |
+| Key             | Default            | Description                                                                                                                                                                                                                                        |
+| --------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dir`           | _unset (disabled)_ | Directory to serve. Must be readable at startup; `nitr check` and `nitr test` only warn and skip static files when it is missing.                                                                                                                  |
+| `mount`         | `"/"`              | URL prefix.                                                                                                                                                                                                                                        |
+| `spa`           | `false`            | Serve `index.html` for paths nothing matches (single-page apps), only when the request's `Accept` header names `text/html`; an API client asking for JSON, or `*/*`, gets the `404`. A path a route serves with other methods still answers `405`. |
+| `cache_control` | _unset_            | `Cache-Control` header for served files.                                                                                                                                                                                                           |
+| `dotfiles`      | `false`            | Serve names starting with `.`. `.well-known/` is always served.                                                                                                                                                                                    |
 
 > [!DANGER] Never serve your code
 >

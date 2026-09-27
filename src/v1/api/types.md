@@ -83,31 +83,33 @@ are exactly what you pass.
 The application: routes, middleware, error handling and static files.
 Return it from the handler script. See [Routing](../server/routing).
 
-| Method                       | Description                                                                                                                                                                                                                    |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `:get(path, ...)`            | Registers a GET route: `middleware..., handler`, then an optional [options table](#route-options). Paths take `:name` parameters and a trailing `*`.                                                                           |
-| `:post(path, ...)`           | Registers a POST route (see `get`).                                                                                                                                                                                            |
-| `:put(path, ...)`            | Registers a PUT route (see `get`).                                                                                                                                                                                             |
-| `:delete(path, ...)`         | Registers a DELETE route (see `get`).                                                                                                                                                                                          |
-| `:patch(path, ...)`          | Registers a PATCH route (see `get`).                                                                                                                                                                                           |
-| `:head(path, ...)`           | Registers a HEAD route. Without one, HEAD uses the GET route and drops the body.                                                                                                                                               |
-| `:options(path, ...)`        | Registers an OPTIONS route. Without one, OPTIONS answers `204` with `Allow`.                                                                                                                                                   |
-| `:use(mw)`                   | Adds app-wide middleware: a factory `fn(next) -> fn(req)`. **Call it before any route.**                                                                                                                                       |
-| `:on_error(handler)`         | Sets the app-wide error handler `fn(err, req)`; `err` is the [error table](#the-error-table).                                                                                                                                  |
-| `:on_invalid(handler)`       | Sets the app-wide answer to failed `input` validation: `fn(err, req)`. A route's own `on_invalid` wins. Default: JSON `422`.                                                                                                   |
-| `:doc(info)`                 | App-level information for the [OpenAPI document](../server/openapi/documenting#app-doc). Once per app.                                                                                                                         |
-| `:static(mount, dir, opts?)` | Serves a directory without a Lua state, for `GET`/`HEAD` paths no route serves with that method. Options: `spa`, `cache_control`, `dotfiles`. Dotfiles answer `404` unless `dotfiles = true`; `.well-known/` is always served. |
+| Method                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:get(path, ...)`            | Registers a GET route: `middleware..., handler`, then an optional [options table](#route-options). Paths take `:name` parameters and a trailing `*`.                                                                                                                                                                                                                                                                                                                                         |
+| `:post(path, ...)`           | Registers a POST route (see `get`).                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `:put(path, ...)`            | Registers a PUT route (see `get`).                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `:delete(path, ...)`         | Registers a DELETE route (see `get`).                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `:patch(path, ...)`          | Registers a PATCH route (see `get`).                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `:head(path, ...)`           | Registers a HEAD route. Without one, HEAD uses the GET route and drops the body.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `:options(path, ...)`        | Registers an OPTIONS route. Without one, OPTIONS answers `204` with `Allow`.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `:use(mw)`                   | Adds app-wide middleware: a factory `fn(next) -> fn(req)`. **Call it before any route.** Middleware runs before a route's `input` validation.                                                                                                                                                                                                                                                                                                                                                |
+| `:group(prefix, fn?)`        | Routes under a common prefix with their own middleware; returns the group. The group has the route methods above plus `use` (before its routes and nested groups) and `group`. Its middleware runs after the app's and before the route's own. `g:get("/")` is the prefix itself. See [Route groups](../server/routing#route-groups).                                                                                                                                                        |
+| `:on_error(handler)`         | Sets the app-wide error handler `fn(err, req)`; `err` is the [error table](#the-error-table).                                                                                                                                                                                                                                                                                                                                                                                                |
+| `:on_invalid(handler)`       | Sets the app-wide answer to failed `input` validation: `fn(err, req)`. A route's own `on_invalid` wins. Default: JSON `422`.                                                                                                                                                                                                                                                                                                                                                                 |
+| `:doc(info)`                 | App-level information for the [OpenAPI document](../server/openapi/documenting#app-doc). Once per app.                                                                                                                                                                                                                                                                                                                                                                                       |
+| `:static(mount, dir, opts?)` | Serves a directory without a Lua state, for `GET`/`HEAD` paths no route serves with that method. A relative `dir` is resolved against the handler script's directory, and a missing one fails the load. Options: `spa` (the `index.html` fallback answers only when the request's `Accept` header names `text/html`; an API client asking for JSON, or `*/*`, gets the `404`), `cache_control`, `dotfiles`. Dotfiles answer `404` unless `dotfiles = true`; `.well-known/` is always served. |
 
 ### Route options
 
 The optional table after the handler. Unknown keys fail at load.
 
-| Key          | What it does                                                                                                                                                                                    |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `input`      | `{ body, query, params, headers }` schemas, checked before the handler and passed as `req.valid`. See [Route input](../server/validation/route-input).                                          |
-| `doc`        | `{ summary, description, tags, operation_id, responses, security, deprecated, hidden }` for the [OpenAPI document](../server/openapi/documenting#per-route-doc). Request schemas go in `input`. |
-| `on_invalid` | `fn(err, req)`: this route's answer to failed `input` validation.                                                                                                                               |
-| `on_error`   | `fn(err, req)`: this route's error handler.                                                                                                                                                     |
+| Key          | What it does                                                                                                                                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input`      | `{ body, query, params, headers }` schemas, checked after the middleware and before the handler, and passed as `req.valid`. See [Route input](../server/validation/route-input).                   |
+| `doc`        | `{ summary, description, tags, operation_id, responses, security, deprecated, hidden }` for the [OpenAPI document](../server/openapi/documenting#per-route-doc). Request schemas go in `input`.    |
+| `on_invalid` | `fn(err, req)`: this route's answer to failed `input` validation.                                                                                                                                  |
+| `on_error`   | `fn(err, req)`: this route's error handler.                                                                                                                                                        |
+| `rate_limit` | `{ requests = N, window = seconds }`, both at least `1`: this route's own fixed window per client, on top of `[rate_limit]`. See [Per-route rate limits](../server/routing#per-route-rate-limits). |
 
 ```lua
 app:post("/api/notes", function(req)
@@ -183,12 +185,12 @@ Each method returns a new schema and leaves the original unchanged. See
 
 The second value from `:check`, and the body of the default `422`.
 
-| Field     | Description                                                                                         |
-| --------- | --------------------------------------------------------------------------------------------------- |
-| `code`    | Always `"VALIDATION_FAILED"`.                                                                       |
-| `message` | Summary line; `"validation failed"` unless overridden.                                              |
-| `fields`  | Path → message: `email`, `home.city`, `tags[2]`. On a route, prefixed with the part (`body.email`). |
-| `errors`  | One entry per failing path, sorted: `{ path, part?, field, rule, message, params?, label? }`.       |
+| Field     | Description                                                                                                                              |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `code`    | Always `"VALIDATION_FAILED"`.                                                                                                            |
+| `message` | Summary line; `"validation failed"` unless overridden.                                                                                   |
+| `fields`  | Path → message: `email`, `home.city`, `tags[2]`. On a route, prefixed with the part (`body.email`). List indexes are 1-based, as in Lua. |
+| `errors`  | One entry per failing path, sorted: `{ path, part?, field, rule, message, params?, label? }`.                                            |
 
 `params` holds the rule's parameters (`{ max = 20 }`), never the
 submitted value. See [Messages & errors](../server/validation/messages).
@@ -234,8 +236,11 @@ directly (`session.user_id = 42`). See
 ## `nitr.Tx`
 
 The transaction handle passed to `nitr.db:transaction`. It has the same
-query methods as [`nitr.db`](./index#nitr-db) and can nest transactions.
-See [Database → Transactions](../server/database#transactions).
+query methods as [`nitr.db`](./index#nitr-db) and can nest transactions:
+`tx:transaction(fn)` runs `fn` in a savepoint, returns every value `fn`
+returns, and on an error rolls back to the savepoint and re-raises the
+value `fn` raised. See
+[Database → Transactions](../server/database#transactions).
 
 > [!WARNING] Use `tx`, and only inside the block
 >
@@ -309,11 +314,11 @@ The application compiled into the test state, from `t.app()`. Its
 top-level code and `app:use` factories run once more in the test state,
 and nothing it registers is served.
 
-| Method                                      | Description                                                                                                                                  |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:handler(method, path) -> fun(req): table` | A route's handler without its middleware, by pattern (`"/notes/:id"`) or by a path the router matches.                                       |
-| `:dispatch(method, path, req) -> table`     | Routes `req` (filling `req.params`) and runs the middleware chain and handler. Unmatched paths answer `404`, `405` or the `OPTIONS` default. |
-| `:routes() -> table[]`                      | `{ method, path, file, line }` per route, in registration order.                                                                             |
+| Method                                      | Description                                                                                                                                                                                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:handler(method, path) -> fun(req): table` | A route's handler without its middleware, by pattern (`"/notes/:id"`) or by a path the router matches.                                                                                                                                      |
+| `:dispatch(method, path, req) -> table`     | Routes `req` (filling `req.params`) and runs the composed chain: the middleware, then, on a route that declares `input`, its validation (and `on_invalid`), then the handler. Unmatched paths answer `404`, `405` or the `OPTIONS` default. |
+| `:routes() -> table[]`                      | `{ method, path, file, line }` per route, in registration order.                                                                                                                                                                            |
 
-`:dispatch` skips `input` validation, `on_invalid`, `on_error` and the
-protection layer; use `t.request` to test those.
+`:dispatch` does not run `on_error` or the protection layer; use
+`t.request` to test those.

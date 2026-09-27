@@ -160,19 +160,17 @@ files on disk change nothing in a running server.
 
 There is no `[tls] hsts` setting. HSTS tells browsers to use HTTPS only,
 and they remember it for `max-age` seconds, so choose that value
-yourself and send the header from [middleware](./middleware):
+yourself and send the header with [`[headers]`](./configuration/file#headers):
 
-```lua
-app:use(function(next)
-    return function(req)
-        local res = next(req)
-        -- 180 days. Start smaller (e.g. 86400) until you have survived a
-        -- certificate renewal.
-        res.headers["Strict-Transport-Security"] = "max-age=15552000"
-        return res
-    end
-end)
+```toml
+[headers]
+# 180 days. Start smaller (e.g. 86400) until you have survived a
+# certificate renewal.
+Strict-Transport-Security = "max-age=15552000"
 ```
+
+`[headers]` adds it to every response, static files and Nitr's own
+error answers included, which a [middleware](./middleware) would miss.
 
 > [!WARNING] `includeSubDomains` and `preload` are hard to undo
 >
@@ -255,13 +253,16 @@ trust_forwarded_for = true      # only behind a proxy that sets or appends X-For
 ```
 
 `secure = "always"` matters: with `"auto"`, cookies would not be
-`Secure`, because Nitr cannot see the proxy. Nitr warns at startup in
-that case:
+`Secure`, because Nitr cannot see the proxy. The first cookie Nitr
+builds without `Secure` logs a warning, once per process:
 
 ```text
-session and CSRF cookies will be sent without the `Secure` attribute:
-[tls] enabled = false, and [cookies] secure = "auto" follows it. ...
+a cookie was sent without the `Secure` attribute: [tls] enabled = false,
+and [cookies] secure = "auto" follows it. ...
 ```
+
+A service that sets no cookie never sees it. `NITR_COOKIES_SECURE=always`
+sets the policy from the environment.
 
 In this setup, HSTS is also the proxy's job. See
 [Deployment](./deployment/#terminating-at-a-proxy-in-front).
@@ -277,7 +278,8 @@ In this setup, HSTS is also the proxy's job. See
       redirect instance runs on the old port.
 - [ ] A renewal hook replaces both files and reloads, tested once.
 - [ ] HSTS starts with a small `max-age`.
-- [ ] No startup warning about the `Secure` cookie attribute.
+- [ ] No `Secure` cookie warning, at startup or in the log after the
+      first cookie is set.
 - [ ] Binding port 443 without running as root: socket activation,
       `CAP_NET_BIND_SERVICE`, or a high port behind a redirect. The
       [systemd unit](./deployment/systemd) drops all capabilities, so

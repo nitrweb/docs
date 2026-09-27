@@ -52,6 +52,35 @@ raises, because JSON has no shape for it; see
 
 Full signatures are in the [API reference](../api/#responses).
 
+### Empty lists and `null`
+
+Two JSON shapes have no Lua spelling of their own. An empty table could
+be `{}` or `[]`, and a key set to `nil` does not exist. `nitr.json`
+settles both:
+
+```lua
+return nitr.json({
+    tags       = nitr.json.array({}),   -- "tags": []   (a plain {} would be "tags": {})
+    deleted_at = nitr.json.null,        -- "deleted_at": null   (nil would drop the key)
+})
+```
+
+- `nitr.json.array(t)` marks a table as a JSON array and returns the
+  same table, so an empty one encodes as `[]`. A filled list is an
+  array already.
+- `nitr.json.null` is JSON `null` as a value a table can hold.
+- `nitr.json:decode` gives the same shapes back: `null` decodes to
+  `nitr.json.null`, and `[]` to an array-marked table, so both survive
+  a decode and a re-encode.
+- [`nitr.db:query`](./database#querying) marks its result list, so a
+  query with no rows answers `[]`.
+
+> [!WARNING] `nitr.json.null` is truthy
+>
+> It is a value, not `nil`. After `local doc = nitr.json:decode(s)` on
+> `{"deleted_at": null}`, `if doc.deleted_at then` is true. Compare it
+> directly: `if doc.deleted_at == nitr.json.null then`.
+
 ## Status codes
 
 ```lua
@@ -82,6 +111,24 @@ end, { input = { body = ArticleInput } })
 For cookies, use the builder instead of a `Set-Cookie` header:
 `resp.cookies:set("theme", "dark", { path = "/" })`. See
 [Cookies & sessions](./cookies-sessions).
+
+### Headers on every response
+
+Headers every answer should carry, such as security headers, belong in
+[`[headers]`](./configuration/file#headers) rather than in a middleware:
+
+```toml
+[headers]
+X-Content-Type-Options = "nosniff"
+X-Frame-Options = "DENY"
+Referrer-Policy = "same-origin"
+```
+
+They are added to static files, the SPA page, the built-in rejections
+(`404`, `429`, `413`, ...) and every handler response. A middleware
+would miss the first three, since Nitr answers them itself, outside the
+middleware chain. A header the handler set itself wins, so one route can
+still send its own `X-Frame-Options`.
 
 ## Redirects
 

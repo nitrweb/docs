@@ -118,17 +118,52 @@ end)
 
 See [Middleware](./middleware).
 
+## Route groups
+
+`app:group(prefix, fn)` registers routes under a common prefix, with
+middleware of their own:
+
+```lua
+app:group("/api", function(g)
+    g:use(require_auth)                  -- every route in the group
+    g:get("/items", list_items)          -- GET /api/items
+    g:post("/items", create_item)        -- POST /api/items
+
+    g:group("/v2", function(v)           -- nested: /api/v2
+        v:get("/items/:id", show_item)   -- GET /api/v2/items/:id
+    end)
+end)
+
+local admin = app:group("/admin")        -- no body: use the returned group
+admin:get("/stats", admin_stats)         -- GET /admin/stats
+```
+
+- A group has the same route methods as the app (`get`, `post`, `put`,
+  `delete`, `patch`, `head`, `options`, with the same
+  [options](#route-options)), plus `use` and `group`.
+- `g:use(mw)` must come before the group's routes and nested groups;
+  calling it later is an error at load time.
+- A nested group inherits its parent's middleware and prefix.
+- `g:get("/", fn)` is the prefix itself: `GET /api`, not `GET /api/`.
+- The prefix must start with `/`; a trailing `/` is dropped.
+
+A group's middleware runs after the app's (`app:use`) and before the
+route's own; see [Order of execution](./middleware#order-of-execution).
+Groups also suit route modules, which take a group as they take the
+app: `require("routes.admin")(app:group("/admin"))`.
+
 ## Route options
 
 Every registration method takes an optional table after the handler.
-It accepts four keys; any other key is an error at load time.
+It accepts five keys; any other key is an error at load time.
 
-| Key          | What it does                                                                          |
-| ------------ | ------------------------------------------------------------------------------------- |
-| `input`      | What the route accepts. Checked before the handler runs; the result is in `req.valid` |
-| `doc`        | How the route appears in the generated [OpenAPI document](./openapi/)                 |
-| `on_invalid` | This route's answer to a request that failed its `input`. Overrides `app:on_invalid`  |
-| `on_error`   | This route's error handler. Overrides `app:on_error`                                  |
+| Key          | What it does                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------ |
+| `input`      | What the route accepts. Checked after the middleware, before the handler; the result is in `req.valid` |
+| `doc`        | How the route appears in the generated [OpenAPI document](./openapi/)                                  |
+| `on_invalid` | This route's answer to a request that failed its `input`. Overrides `app:on_invalid`                   |
+| `on_error`   | This route's error handler. Overrides `app:on_error`                                                   |
+| `rate_limit` | This route's own per-client limit; see [Per-route rate limits](#per-route-rate-limits)                 |
 
 ```lua
 app:post("/api/notes", function(req)
@@ -163,11 +198,42 @@ metadata. More detail:
   security schemes
 - [Error handling](./errors): `on_error` and `on_invalid`
 
-> [!NOTE] Validation runs before all middleware
+> [!NOTE] Middleware runs before validation
 >
-> A request that fails `input` is answered `422` before any middleware
-> runs, app-wide (`app:use`) or per route. If authorization must be
-> decided first, check it in the handler or in `on_invalid`.
+> The chain is app middleware, group middleware, route middleware, then
+> the route's `input` validation, then the handler. So an
+> authentication middleware answers `401` before an unauthenticated
+> client can learn anything from a `422`. Only the `415` for a body
+> media type the route does not accept is decided before the chain.
+
+## Per-route rate limits
+
+`rate_limit` gives one route a tighter budget than
+[`[rate_limit]`](./configuration/file#rate-limit), such as a login form
+or an expensive report:
+
+```lua
+app:post("/login", login, {
+    rate_limit = { requests = 5, window = 60 },   -- 5 per minute per client
+})
+```
+
+| Field      | Meaning                                               |
+| ---------- | ----------------------------------------------------- |
+| `requests` | Requests allowed per window and client. At least `1`. |
+| `window`   | Window length in seconds. At least `1`.               |
+
+- It is a fixed window per client, like `[rate_limit]`, and applies on
+  top of it: a request must fit both. It works even when
+  `[rate_limit] enabled = false`.
+- It is spent before a Lua state is taken, so a flood on one route
+  cannot tie up the pool.
+- Clients are identified as `[rate_limit]` does it, so
+  `trust_forwarded_for` applies here too.
+- The refusal is `429` with `Retry-After`, as
+  [JSON](./errors#built-in-rejections) when the request accepts
+  `application/json`.
+- Any other key, or a value below `1`, is an error at load time.
 
 ## Organising routes across files
 
@@ -211,8 +277,9 @@ See [Static files](./static-files).
 
 ## Ordering rules
 
-1. **`app:use(...)` must come before any route.** Calling it after a
-   route is an error at load time.
+1. **`app:use(...)` must come before any route**, and `g:use(...)`
+   before the group's routes and nested groups. Calling either later is
+   an error at load time.
 2. **Routes match by specificity, not registration order.** A literal
    segment beats a `:param`, which beats a `*` catch-all. So
    `/users/me` and `/users/:id` can be registered in either order, and

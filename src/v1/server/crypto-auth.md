@@ -146,36 +146,31 @@ Full example:
   hash. They are async, so call them from a handler, not a script's top
   level. See [Passwords & Basic Auth](./passwords).
 - **JWT**: `nitr.crypto.jwt` signs and verifies HMAC tokens (HS256,
-  HS384, HS512). `verify` requires an `algorithms` list and does not
-  check `iss` or `aud`. See [JWT](./jwt). For your own web app, a
-  [session cookie](./cookies-sessions#sessions) is usually simpler.
+  HS384, HS512). `verify` requires an `algorithms` list, and checks
+  `iss`, `aud`, `sub` and required claims only when you pass `issuer`,
+  `audience`, `subject` or `require`. See [JWT](./jwt). For your own
+  web app, a [session cookie](./cookies-sessions#sessions) is usually
+  simpler.
 
 ## Managing secrets
 
 Keep secrets out of `nitr.toml`. Read them from the environment in
-`config.lua`, so a missing one stops startup instead of failing on the
+`config.lua` with [`nitr.env.secret`](./configuration/env#secrets), so a
+missing, empty or too-short one stops startup instead of failing on the
 first request:
 
 ```lua
 -- scripts/config.lua
-local function required(name)
-    local value = nitr.env.get(name)
-    if not value or value == "" then
-        error(name .. " is not set")
-    end
-    return value
-end
-
 -- nitr.base64.decode returns nil plus a reason instead of raising.
-local key, why = nitr.base64.decode(required("ENCRYPTION_KEY"))
+local key, why = nitr.base64.decode(nitr.env.secret("ENCRYPTION_KEY"))
 if not key or #key ~= 32 then
     error("ENCRYPTION_KEY must decode to 32 bytes: " .. (why or "wrong length"))
 end
 
 return {
-    jwt_secret     = required("JWT_SECRET"),
+    jwt_secret     = nitr.env.secret("JWT_SECRET"),            -- at least 32 bytes
     encryption_key = key,
-    api_token      = required("API_TOKEN"),
+    api_token      = nitr.env.secret("API_TOKEN", { min_len = 16 }),
 }
 ```
 

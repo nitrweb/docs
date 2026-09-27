@@ -8,7 +8,7 @@ minutes, and you do not need to know Lua.
 > Install the `nitr` binary with Cargo:
 >
 > ```sh
-> cargo install nitr-cli --version 0.0.0-beta.6
+> cargo install nitr-cli --version 0.0.0-beta.7
 > ```
 >
 > See [Download & Install](./download-install) for other options.
@@ -53,11 +53,11 @@ Next steps:
   nitr migrate
   nitr check
   nitr test
-  nitr dev   # then open http://127.0.0.1:3000/docs
+  nitr dev   # then open http://127.0.0.1:3000/hello/you
+API docs: set [openapi] enabled = true and [swagger] enabled = true, then open /docs
 ```
 
-The `/docs` page is off in the scaffold until you turn it on in
-Step 6 below.
+The `/docs` page is off in the scaffold; Step 6 below turns it on.
 
 `nitr init` never overwrites a file: if any of these paths exists, it
 stops without writing anything. For a smaller start, `nitr init --minimal`
@@ -95,13 +95,6 @@ ok: configuration and scripts load cleanly (4 worker(s) configured)
 opening a port. It catches typos, unknown keys, missing files and syntax
 errors, so it is a good step for CI and before each deploy. The worker
 count matches your CPU cores.
-
-> [!NOTE] The `Secure` cookie warning
->
-> `check` and `test` log a warning that session and CSRF cookies will be
-> sent without `Secure`. That is expected while you serve plain HTTP
-> locally. In production, enable [`[tls]`](./server/tls), or set
-> `[cookies] secure = "always"` behind an HTTPS proxy.
 
 ## Step 4 — Run the tests
 
@@ -143,7 +136,7 @@ Try it from another terminal:
 
 ```sh
 curl http://127.0.0.1:3000/api/notes
-# {}      ← no rows yet; an empty Lua table encodes as an empty object
+# []      ← no rows yet; query results encode as a JSON array
 
 curl -X POST http://127.0.0.1:3000/api/notes \
   -H 'content-type: application/json' \

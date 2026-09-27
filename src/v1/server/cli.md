@@ -33,10 +33,18 @@ and `hash-password` loads and validates the configuration first.
 ## `run`
 
 ```sh
-nitr run     # or just: nitr
+nitr run             # or just: nitr
+nitr run --migrate   # apply pending migrations, then serve
 ```
 
 Starts the server. This is the default command.
+
+- `--migrate` runs [`nitr migrate`](#migrate) first and serves only if
+  it succeeds: one command for a single container's entrypoint instead
+  of `nitr migrate && nitr run`. Like `nitr migrate`, it needs a
+  `[database]` section and a migrations directory. With several
+  instances, run `nitr migrate` once instead, so they do not race to
+  change the schema.
 
 - Writes the [`pidfile`](./configuration/file#top-level), if set, once
   the server has started. If the pidfile already names a running
@@ -51,6 +59,7 @@ Starts the server. This is the default command.
 
 ```sh
 nitr dev
+nitr dev --migrate   # apply pending migrations, then serve
 ```
 
 `run` with development mode on:
@@ -80,6 +89,11 @@ a port**. Run it in CI and after editing `nitr.toml`. It catches unknown
 or conflicting settings, missing files, Lua syntax errors, route
 conflicts, a handler script that does not `return app`, and pending
 migrations.
+
+A static directory that does not exist yet (`[static] dir`, or an
+`app:static` mount), such as a front-end build that CI runs later, is
+not an error here: `check` logs a warning and skips static files.
+`nitr run` still refuses it.
 
 > [!WARNING] The config script really runs
 >
@@ -131,8 +145,9 @@ migrations applied.
 | `-o`, `--output <FILE>` | Write the JSON/JUnit report to a file; the pretty lines still go to stdout. |
 | `--nocapture`           | Print log lines as they happen instead of only under a failed test.         |
 
-Exits `1` if any test fails or a `t.only` is left in a file. See
-[Testing](./testing).
+Exits `1` if any test fails or a `t.only` is left in a file. Like
+`check`, it warns about and skips a static directory that does not
+exist yet. See [Testing](./testing).
 
 ## `openapi`
 
@@ -174,6 +189,9 @@ nitr migrate --status
 Applies pending `.sql` files from `[database] migrations_dir` (default
 `migrations/`) in version order, each in its own transaction.
 
+It creates the database file's directory when it is missing, so a
+first deploy needs no `mkdir data`.
+
 `--status` lists applied and pending migrations without writing
 anything (it opens the database read-only and never creates it), and
 flags any applied file that was changed afterwards
@@ -181,7 +199,8 @@ flags any applied file that was changed afterwards
 one.
 
 The server refuses to start while a migration is pending, so run
-`nitr migrate` as a deploy step. See
+`nitr migrate` as a deploy step, or start a single instance with
+[`nitr run --migrate`](#run). See
 [Database → Migrations](./database#migrations).
 
 ## `init`
@@ -213,7 +232,9 @@ the handler script's directory, the config script, `[templating] dir`,
 `[static] dir` and the migrations.
 
 - Dev mode is always off in the built file, and it refuses `--config`
-  (use `NITR_*` environment variables for per-deployment values).
+  (use `NITR_*` environment variables for per-deployment values). When
+  the configuration asked for dev mode, the built file logs a `WARN`
+  line saying it was turned off.
 - The database, `[multipart] upload_dir`, the env file and the TLS
   certificate and key stay **outside** the file, resolved as usual at
   run time.

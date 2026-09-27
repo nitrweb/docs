@@ -137,16 +137,20 @@ Nitr answers a lot of HTTP in Rust, without calling your code:
    `Authorization` header (`400`), and a declared body over
    `max_body_bytes` (`413`).
 5. CORS preflights are answered.
-6. A Lua state is borrowed (`503` after `pool_wait_ms`).
-7. The route is matched. With no match, static files are tried, then
-   `404` / `405`.
-8. Global middleware, then route middleware, then the handler, within
+6. The route is matched. With no match, static files are tried, then
+   `404` / `405`, all without a Lua state. A route's own `rate_limit`
+   is spent here (`429`).
+7. A Lua state is borrowed (`503` after `pool_wait_ms`). A body whose
+   media type the route's `input` does not accept is refused (`415`).
+8. App middleware, then group middleware, then route middleware, then
+   the route's `input` validation (`422`), then the handler, within
    `exec_timeout_ms` and `memory_limit`.
 9. The returned table becomes the response. A body that turns out too
    large gets `413`; one that arrives too slowly gets `408`. Neither
    reaches `on_error`.
-10. `X-Request-ID`, CORS headers and compression are added, the state
-    goes back to the pool, and the access-log line is written.
+10. `X-Request-ID`, CORS headers, `[headers]` and compression are
+    added, the state goes back to the pool, and the access-log line is
+    written.
 
 ## Reloading and shutdown
 

@@ -21,15 +21,15 @@ local data, err = schema:check(value)
 
 Each entry of `errors`:
 
-| Key       | What it is                                                                      |
-| --------- | ------------------------------------------------------------------------------- |
-| `path`    | `text`, `tags[2]`, `home.city`. On a route, prefixed with the part: `body.text` |
-| `part`    | `body`, `query`, `params` or `headers`. Route validation only                   |
-| `field`   | The nearest named field: `tags` for `tags[2]`                                   |
-| `rule`    | The rule that failed: `required`, `max_len`, `format`, `check`, `unknown`, …    |
-| `message` | The final message                                                               |
-| `params`  | The rule's own settings (`{ max = 20 }`), when it has any                       |
-| `label`   | The field's [`label`](#labels), when it has one                                 |
+| Key       | What it is                                                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `path`    | `text`, `tags[2]`, `home.city`. On a route, prefixed with the part: `body.text`. List indexes are 1-based, as in Lua: `body.items[1].sku` is the first item's `sku` |
+| `part`    | `body`, `query`, `params` or `headers`. Route validation only                                                                                                       |
+| `field`   | The nearest named field: `tags` for `tags[2]`                                                                                                                       |
+| `rule`    | The rule that failed: `required`, `max_len`, `format`, `check`, `unknown`, …                                                                                        |
+| `message` | The final message                                                                                                                                                   |
+| `params`  | The rule's own settings (`{ max = 20 }`), when it has any                                                                                                           |
+| `label`   | The field's [`label`](#labels), when it has one                                                                                                                     |
 
 ```json
 {
@@ -169,35 +169,35 @@ HTML another way, escape the message yourself.
 
 ## The default messages
 
-| Rule                                              | Default message                                                                                                |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `type`                                            | `must be a string` / `an integer` / `a number` / `a boolean` / `a list` / `an object` / `a file`               |
-| `required`                                        | `is required`                                                                                                  |
-| `min_len` / `max_len` / `len`                     | `must be at least {min} characters` / `at most {max} characters` / `exactly {len} characters`                  |
-| `min` / `max`                                     | `must be at least {min}` / `must be at most {max}`                                                             |
-| `exclusive_min` / `exclusive_max`                 | `must be greater than {min}` / `must be less than {max}`                                                       |
-| `multiple_of` / `decimals`                        | `must be a multiple of {step}` / `must have at most {decimals} decimal places`                                 |
-| `format`                                          | `must be {format}`: see [String formats](./formats)                                                            |
-| `one_of` / `not_one_of`                           | `must be one of: {choices}` / `must not be one of: {choices}`                                                  |
-| `equals`                                          | `must be {expected}`                                                                                           |
-| `starts_with` / `ends_with`                       | `must start with {text}` / `must end with {text}`                                                              |
-| `contains` / `does_not_contain`                   | `must contain {text}` (arrays: `must include {item}`) / `must not contain {text}`                              |
-| `after` / `before`                                | `must be after {limit}` / `must be before {limit}`; with `now`: `must be in the future` / `in the past`        |
-| `min_items` / `max_items` / `unique`              | `must have at least {min} items` / `at most {max} items` / `must not contain duplicates`                       |
-| `contains_any` / `contains_all`                   | `must include one of: {choices}` / `must include all of: {choices}`                                            |
-| `min_keys` / `max_keys` / `keys`                  | `must have at least {min} entries` / `at most {max} entries` / `must have string keys`                         |
-| `max_bytes` / `min_bytes` / `max_total_bytes`     | `must be at most {max}` (non-files: `… in size`) / `must be at least {min}` / `must be at most {max} in total` |
-| `types` / `extensions`                            | `must be {types}` / `must have one of these extensions: {extensions}`                                          |
-| `match_extension` / `executable`                  | `must have an extension that matches its content` / `must not be an executable`                                |
-| `min_width` / `max_width`                         | `must be at least {min} px wide` / `must be at most {max} px wide`                                             |
-| `min_height` / `max_height` / `max_pixels`        | `must be at least {min} px tall` / `at most {max} px tall` / `must be at most {max} pixels`                    |
-| `aspect` / `dimensions` / `utf8`                  | `must have a {aspect} aspect ratio` / `must have readable image dimensions` / `must be UTF-8 text`             |
-| `filename`                                        | `must have a name`, or `must have a valid name: {text}`                                                        |
-| `at_least_one` / `mutually_exclusive`             | `at least one of {fields} is required` / `only one of {fields} may be given`                                   |
-| `dependent_required` / `equal_fields` / `ordered` | `requires {fields}` / `must equal {field}` / `must be after {field}`                                           |
-| `unknown`                                         | `is not a known field`                                                                                         |
-| `check`                                           | `is invalid`, or the reason your `check` returned                                                              |
-| `json` / `multipart` / `body`                     | `must be valid JSON` / `must be a well-formed multipart body` / `must be an object`                            |
+| Rule                                              | Default message                                                                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `type`                                            | `must be a string` / `an integer` / `a number` / `a boolean` / `a list` / `an object` / `a file`                               |
+| `required`                                        | `is required`                                                                                                                  |
+| `min_len` / `max_len` / `len`                     | `must be at least {min} characters` / `at most {max} characters` / `exactly {len} characters` (`1 character` for a bound of 1) |
+| `min` / `max`                                     | `must be at least {min}` / `must be at most {max}`                                                                             |
+| `exclusive_min` / `exclusive_max`                 | `must be greater than {min}` / `must be less than {max}`                                                                       |
+| `multiple_of` / `decimals`                        | `must be a multiple of {step}` / `must have at most {decimals} decimal places`                                                 |
+| `format`                                          | `must be {format}`: see [String formats](./formats)                                                                            |
+| `one_of` / `not_one_of`                           | `must be one of: {choices}` / `must not be one of: {choices}`                                                                  |
+| `equals`                                          | `must be {expected}`                                                                                                           |
+| `starts_with` / `ends_with`                       | `must start with {text}` / `must end with {text}`                                                                              |
+| `contains` / `does_not_contain`                   | `must contain {text}` (arrays: `must include {item}`) / `must not contain {text}`                                              |
+| `after` / `before`                                | `must be after {limit}` / `must be before {limit}`; with `now`: `must be in the future` / `in the past`                        |
+| `min_items` / `max_items` / `unique`              | `must have at least {min} items` / `at most {max} items` / `must not contain duplicates`                                       |
+| `contains_any` / `contains_all`                   | `must include one of: {choices}` / `must include all of: {choices}`                                                            |
+| `min_keys` / `max_keys` / `keys`                  | `must have at least {min} entries` / `at most {max} entries` / `must have string keys`                                         |
+| `max_bytes` / `min_bytes` / `max_total_bytes`     | `must be at most {max}` (non-files: `… in size`) / `must be at least {min}` / `must be at most {max} in total`                 |
+| `types` / `extensions`                            | `must be {types}` / `must have one of these extensions: {extensions}`                                                          |
+| `match_extension` / `executable`                  | `must have an extension that matches its content` / `must not be an executable`                                                |
+| `min_width` / `max_width`                         | `must be at least {min} px wide` / `must be at most {max} px wide`                                                             |
+| `min_height` / `max_height` / `max_pixels`        | `must be at least {min} px tall` / `at most {max} px tall` / `must be at most {max} pixels`                                    |
+| `aspect` / `dimensions` / `utf8`                  | `must have a {aspect} aspect ratio` / `must have readable image dimensions` / `must be UTF-8 text`                             |
+| `filename`                                        | `must have a name`, or `must have a valid name: {text}`                                                                        |
+| `at_least_one` / `mutually_exclusive`             | `at least one of {fields} is required` / `only one of {fields} may be given`                                                   |
+| `dependent_required` / `equal_fields` / `ordered` | `requires {fields}` / `must equal {field}` / `must be after {field}`                                                           |
+| `unknown`                                         | `is not a known field`                                                                                                         |
+| `check`                                           | `is invalid`, or the reason your `check` returned                                                                              |
+| `json` / `multipart` / `body`                     | `must be valid JSON` / `must be a well-formed multipart body` / `must be an object`                                            |
 
 Sizes print in readable units (`2 MB`), and lists print quoted
 (`"email", "phone"`).

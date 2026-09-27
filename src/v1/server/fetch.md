@@ -46,7 +46,7 @@ local handle = nitr.fetch("POST", "https://api.example.com/items", {
 | `json`    | A table sent as a JSON body, with `Content-Type: application/json`           |
 | `body`    | A raw string body                                                            |
 | `timeout` | Seconds for this call. It can **shorten** `[fetch] timeout`, never extend it |
-| `retry`   | `{ attempts, backoff }`; see [Retries](#retries)                             |
+| `retry`   | `{ attempts, backoff, idempotent }`; see [Retries](#retries)                 |
 
 ### The response
 
@@ -91,18 +91,38 @@ Retries are opt-in per call:
 nitr.fetch("GET", url, { timeout = 5, retry = { attempts = 3 } }):send()
 ```
 
-| Field      | Meaning                                                                                        |
-| ---------- | ---------------------------------------------------------------------------------------------- |
-| `attempts` | Total attempts (default 3), capped by `[fetch] max_retries` (default 5)                        |
-| `backoff`  | `"exponential"` (default: 100 ms, doubling, with jitter, at most 5 s) or `"constant"` (100 ms) |
+| Field        | Meaning                                                                                        |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| `attempts`   | Total attempts (default 3), capped by `[fetch] max_retries` (default 5)                        |
+| `backoff`    | `"exponential"` (default: 100 ms, doubling, with jitter, at most 5 s) or `"constant"` (100 ms) |
+| `idempotent` | `true` vouches that repeating this call is safe, so a `POST` or `PATCH` may be retried too     |
 
 A request is retried after a network error or a `408`, `429`, `500`,
 `502`, `503` or `504`, never after the [SSRF policy](#the-ssrf-policy)
 refuses it. Only idempotent methods (`GET`, `HEAD`, `PUT`,
 `DELETE`, `OPTIONS`) are retried; on `POST` or `PATCH` the option is
-ignored and the request is sent once. When every attempt fails, you get
-the last response (or the last error). All attempts count as one call
-toward `max_per_request`.
+ignored and the request is sent once, unless you set
+`idempotent = true`. When every attempt fails, you get the last
+response (or the last error). All attempts count as one call toward
+`max_per_request`.
+
+Vouch for a `POST` only when the upstream deduplicates it, typically
+with an idempotency key it honours:
+
+```lua
+local key = nitr.base64.encode(nitr.crypto.random_bytes(16), { url = true })
+nitr.fetch("POST", "https://api.payments.example/charges", {
+    headers = { ["Idempotency-Key"] = key },   -- the same key on every attempt
+    json    = { amount = 1200, currency = "eur" },
+    timeout = 5,
+    retry   = { attempts = 3, idempotent = true },
+}):send()
+```
+
+> [!DANGER] `idempotent = true` is a promise you make
+>
+> Nitr cannot tell whether a retried `POST` charges a customer twice.
+> Without a key the upstream deduplicates on, leave it off.
 
 > [!WARNING] Set a `timeout` when you set `retry`
 >
@@ -124,6 +144,35 @@ allow_private_networks = false                          # true permits loopback/
 ```
 
 When any part of a URL comes from user input, set `allowed_hosts`.
+
+A refused request raises an error that names the host and both ways
+out:
+
+```text
+fetch host `payments` resolves to a private or local address: name it in
+[fetch] private_hosts, or set allow_private_networks = true to permit every one
+```
+
+### Calling an internal service by name
+
+To reach one service on a private network, such as a `payments`
+container next to Nitr, name it instead of opening every private
+address:
+
+```toml
+[fetch]
+private_hosts = ["payments", "db.internal"]   # may resolve to a private address
+allow_private_networks = false                # everything else stays refused
+```
+
+- An entry is a bare host name: no scheme, port or path. Anything else
+  refuses to start.
+- A name matches exactly, ignoring case. It is honoured both at the URL
+  check and inside the guarded resolver, on every redirect hop: a
+  redirect to an unlisted private host is still refused.
+- With `allowed_hosts` set, a private host must be in it too.
+- A listed name may resolve to any private or local address, the cloud
+  metadata range included. List only names whose DNS you control.
 
 Two more protections are always on:
 
@@ -240,4 +289,6 @@ See [Logging](./logging#spans).
 ## Testing
 
 In `nitr test`, `t.fetch.mock(...)` answers `nitr.fetch` calls without
-touching the network. See [Testing](./testing#fetch).
+touching the network, and a rule with `error = "connection reset"`
+fails one like the network would, so your error path runs. See
+[Testing](./testing#fetch).

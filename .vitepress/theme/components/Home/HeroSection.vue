@@ -98,7 +98,8 @@ app:${f('static')}(${s('"/assets"')}, ${s('"public/assets"')}, {
     cache_control = ${s('"public, max-age=31536000, immutable"')},
 })
 
-${c('-- An SPA falls back to index.html for unknown paths.')}
+${c('-- An SPA: a browser opening an unknown path gets')}
+${c('-- index.html; an API client asking for JSON, the 404.')}
 app:${f('static')}(${s('"/"')}, ${s('"dist"')}, { spa = ${k('true')} })
 
 ${k('return')} app`

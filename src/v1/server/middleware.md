@@ -44,32 +44,55 @@ app:get("/admin/stats", require_admin, function(req)
 end)
 ```
 
+## Group middleware
+
+`g:use` adds middleware for the routes of one
+[route group](./routing#route-groups) and its nested groups:
+
+```lua
+app:group("/api", function(g)
+    g:use(require_auth)
+    g:get("/items", list_items)
+end)
+```
+
+Like `app:use`, it must come before the group's routes and nested
+groups.
+
 ## Order of execution
 
-Global middleware wraps route middleware, which wraps the handler:
+Global middleware wraps group middleware, which wraps route middleware.
+Then the route's [`input`](./validation/route-input) is checked, and
+the handler runs:
 
 ```lua
 app:use(A)
 app:use(B)
-app:get("/x", C, handler)
+app:group("/api", function(g)
+    g:use(G)
+    g:get("/x", C, handler, { input = { query = { page = "integer" } } })
+end)
 ```
 
 ```text
-request  →  A  →  B  →  C  →  handler
-response ←  A  ←  B  ←  C  ←  handler
+request  →  A  →  B  →  G  →  C  →  input  →  handler
+response ←  A  ←  B  ←  G  ←  C  ←  (422 or the handler's response)
 ```
 
 Code before `next(req)` runs on the way in; code after it runs on the
 way out.
 
-> [!NOTE] A route's `input` is checked before any middleware
+> [!NOTE] Middleware runs before a route's `input` is checked
 >
-> On a route that declares [`input`](./validation/route-input), an
-> invalid request is answered `422` before the chain runs, so your
-> middleware never sees it. Use
-> [`on_invalid`](./errors#on-invalid-when-the-input-was-wrong) to
-> change that answer. Middleware on a validated route can read
-> `req.valid`.
+> An authentication middleware answers `401` before an unauthenticated
+> client can get a `422` that reveals the schema. An invalid request
+> never reaches the handler: the `422` (or your
+> [`on_invalid`](./errors#on-invalid-when-the-input-was-wrong) answer)
+> comes back up through the middleware like any response, and extra
+> values a middleware passed to `next` still reach the handler.
+> Validation has not run when a middleware is called, so `req.valid` is
+> for the handler. Only a `415`, for a body media type the route does
+> not accept, is answered before the chain.
 
 ## Common patterns
 
@@ -119,13 +142,19 @@ end
 
 ### Adding response headers
 
+For the same headers on every response, use
+[`[headers]`](./configuration/file#headers) in `nitr.toml`. It also
+covers static files and the answers Nitr sends itself, which no
+middleware sees. Use middleware when the value depends on the request:
+
 ```lua
 app:use(function(next)
     return function(req)
         local resp = next(req)
-        resp.headers = resp.headers or {}
-        resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["X-Content-Type-Options"] = "nosniff"
+        if req.headers.authorization then
+            resp.headers = resp.headers or {}
+            resp.headers["Cache-Control"] = "private, no-store"
+        end
         return resp
     end
 end)
@@ -156,8 +185,8 @@ end)
 
 ### Only for some paths
 
-`app:use` has no path filter. Use route middleware, or check the path
-inside:
+`app:use` has no path filter. Use a [route group](./routing#route-groups)
+or route middleware, or check the path inside:
 
 ```lua
 app:use(function(next)
@@ -240,8 +269,9 @@ all, so answer it in `on_error` (`err.kind == "timeout"`).
 
 - **See requests Nitr answers itself.** Static files, `404`, `405`,
   CORS preflights, health checks and requests rejected by a limit never
-  reach Lua. For headers on static files, use `cache_control` on the
-  mount or a reverse proxy.
+  reach Lua. For headers on those answers, use
+  [`[headers]`](./configuration/file#headers) (and `cache_control` on a
+  static mount).
 - **Share state between Lua states.** A counter in a local variable
   only counts what its own state handled. Use [`nitr.cache`](./cache)
   or [`nitr.db`](./database).

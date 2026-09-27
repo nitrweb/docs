@@ -49,12 +49,8 @@ handler wins.
 ```lua
 local app = nitr.app()
 
+-- Nitr has already logged the failure; this only shapes the answer.
 app:on_error(function(err, req)
-    nitr.log.error("request failed", {
-        error = err.message, kind = err.kind,
-        source = err.source, line = err.line, path = req.path,
-    })
-
     if err.kind == "timeout" then
         return nitr.error(504, { code = "TIMEOUT", request_id = req.id })
     end
@@ -73,8 +69,9 @@ app:get("/report", generate_report, {
 - It receives the error table and the request, and must return a
   response.
 - Nitr logs the failure (with `error.kind`, `error.source`,
-  `error.line`, `error.module`) before calling it, so handling an error
-  never hides it.
+  `error.line`, `error.module` and the request id) before calling it, so
+  handling an error never hides it, and `on_error` does not need to log
+  it again.
 - If `on_error` itself fails or returns an invalid response, Nitr logs
   that and sends its own `500`.
 
@@ -160,7 +157,7 @@ These are answered by Nitr; your handler never sees the request.
 | `414`  | URI over `max_uri_bytes`                                                                                          |                                                                      |
 | `415`  | The body's media type is not one the route's [`input`](./validation/route-input#bodies-and-content-types) accepts | Has `Accept`; the JSON body lists the accepted types                 |
 | `422`  | The request failed the route's `input`                                                                            | Shaped by [`on_invalid`](#on-invalid-when-the-input-was-wrong)       |
-| `429`  | Per-IP rate limit exceeded (`[rate_limit]`)                                                                       | Has `Retry-After`                                                    |
+| `429`  | Per-IP rate limit exceeded (`[rate_limit]`, or the route's own [`rate_limit`](./routing#per-route-rate-limits))   | Has `Retry-After`                                                    |
 | `500`  | A handler failure that `on_error` did not answer                                                                  | See below                                                            |
 | `503`  | No free Lua state within `pool_wait_ms`, too many open streams, or the server is shutting down                    | `pool_wait_ms` answers carry `Retry-After: 1`                        |
 
@@ -171,6 +168,47 @@ Multipart limits (`max_form_parts`, `max_field_bytes`,
 `max_file_bytes`) raise Lua errors in the handler. Uncaught, they answer
 `413` without calling `on_error`; see
 [Upload limits](./requests#upload-limits).
+
+### Built-in rejections
+
+These answers carry the status's reason phrase as plain text
+(`Not Found`), unless the request's `Accept` header names
+`application/json`. Then the body is JSON with a stable `code` to
+branch on:
+
+```sh
+curl -H 'Accept: application/json' http://127.0.0.1:3000/nope
+# 404 {"code":"NOT_FOUND","message":"Not Found"}
+```
+
+| Status | `code`                                                                 |
+| ------ | ---------------------------------------------------------------------- |
+| `400`  | `BAD_REQUEST`                                                          |
+| `403`  | `CSRF_INVALID`, from [`nitr.csrf`](./cookies-sessions#csrf-protection) |
+| `404`  | `NOT_FOUND`                                                            |
+| `405`  | `METHOD_NOT_ALLOWED`                                                   |
+| `408`  | `REQUEST_TIMEOUT`                                                      |
+| `413`  | `PAYLOAD_TOO_LARGE`                                                    |
+| `414`  | `URI_TOO_LONG`                                                         |
+| `429`  | `RATE_LIMITED`                                                         |
+| `503`  | `SERVICE_UNAVAILABLE`                                                  |
+
+`message` is the reason phrase (the CSRF refusal says
+`missing or invalid CSRF token`). An answer with a `Retry-After` header,
+a `429` or a `503` shed while waiting for a Lua state, also carries
+`retry_after`, the same number of seconds:
+
+```json
+{
+  "code": "RATE_LIMITED",
+  "message": "Too Many Requests",
+  "retry_after": 42
+}
+```
+
+`415` and `422` are JSON whatever the `Accept` header says. Headers from
+[`[headers]`](./configuration/file#headers) are added to every one of
+these answers.
 
 ## Development versus production
 

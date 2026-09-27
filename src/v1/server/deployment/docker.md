@@ -9,7 +9,7 @@ your application directory, using the `nitr-cli` crate from crates.io.
 FROM rust:1-slim AS build
 # Pin the version: while every release is a pre-release,
 # `cargo install` fails without --version.
-RUN cargo install nitr-cli --version 0.0.0-beta.6
+RUN cargo install nitr-cli --version 0.0.0-beta.7
 
 FROM debian:stable-slim
 # curl is only for the HEALTHCHECK below.
@@ -112,11 +112,24 @@ docker run --rm -v myapp-data:/app/data myapp migrate
 ```
 
 In Kubernetes, use an init container or a Job with `args: ['migrate']`.
+`migrate` creates the database's directory in the volume if it is
+missing.
+
+A single-container deployment (one replica, such as Compose on one
+host) can migrate on start instead:
+
+```dockerfile
+CMD ["run", "--migrate"]   # apply pending migrations, then serve
+```
+
+Never use `--migrate` with several replicas: each would try to change
+the schema as it starts.
 
 ## TLS
 
 Most container setups terminate TLS at an ingress or load balancer and
-leave `[tls]` off. Then set `[cookies] secure = "always"`; see
+leave `[tls]` off. Then set `[cookies] secure = "always"`, or
+`NITR_COOKIES_SECURE=always` in the container's environment; see
 [Terminating at a proxy](./#terminating-at-a-proxy-in-front).
 
 To terminate TLS in the container, mount the certificate and key

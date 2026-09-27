@@ -5,7 +5,7 @@ covers the whole workspace.
 
 > [!WARNING] Pre-1.0
 >
-> Nitr is at `0.0.0-beta.6`. Until 1.0, **a minor release may break
+> Nitr is at `0.0.0-beta.7`. Until 1.0, **a minor release may break
 > anything on this page**. The rules below show which parts are meant to
 > be depended on once 1.0 ships, and which are meant to keep moving.
 
@@ -31,7 +31,7 @@ removals and renames are recorded in `CHANGELOG.md`.
 Until `CHANGELOG.md` exists, breaking changes are listed here, **newest
 first**, with what to do about each.
 
-### Changes in `0.0.0-beta.6`
+### Changes in `0.0.0-beta.7`
 
 - **Tables mixing list items and named keys raise** wherever a value is
   serialized: `nitr.json`, the cache, sessions, JWT claims and
@@ -76,10 +76,10 @@ first**, with what to do about each.
 ### Route options and validation
 
 - A route's trailing options table now accepts `on_error`, `on_invalid`,
-  `input` and `doc`. **Any other key is a load-time error**, so a typo
-  such as `on_errror` is no longer silently ignored. A route with an
-  `input` answers `415` or `422` before the handler runs. See [Route
-  input validation](./server/validation/route-input).
+  `input`, `doc` and `rate_limit`. **Any other key is a load-time
+  error**, so a typo such as `on_errror` is no longer silently ignored.
+  A route with an `input` answers `415` or `422` before the handler
+  runs. See [Route input validation](./server/validation/route-input).
 - `nitr.validate` grew to nine types and 36 formats. `schema:check(v)`
   still returns `data, err`; `err` now also has `code`
   (`"VALIDATION_FAILED"`) and `errors`, while `err.fields` and
@@ -202,10 +202,12 @@ cookie starts an empty session. Rename any session field called `_exp`.
 ### CSRF protection and cookies
 
 - Unsafe requests with `Sec-Fetch-Site: cross-site` are refused unless
-  `cookie_opts.same_site = "None"`.
-- A partial `cookie_opts` now adds to the defaults instead of replacing
-  them, so `HttpOnly` and `SameSite` stay set. `http_only` can no longer
-  be turned off.
+  the attribute table sets `same_site = "None"`.
+- A partial attribute table now adds to the defaults instead of
+  replacing them, so `HttpOnly` and `SameSite` stay set. `http_only` can
+  no longer be turned off. The table is `cookie`, and the cookie's name
+  is `name`, as in `nitr.session`; see
+  [CSRF options](./server/cookies-sessions#csrf-options).
 
 ### Cookies carry `Secure` on a TLS server
 
@@ -275,16 +277,16 @@ nitr-core → nitr-std → nitr-http → nitr → nitr-cli
 - **Pin a version.**
 
   ```sh
-  cargo install nitr-cli --version 0.0.0-beta.6
+  cargo install nitr-cli --version 0.0.0-beta.7
   ```
 
   ```toml
   # Cargo.toml
-  nitr = { version = "0.0.0-beta.6", features = ["db"] }
+  nitr = { version = "0.0.0-beta.7", features = ["db"] }
   ```
 
   That requirement also accepts later `0.0.0-beta.N` releases. Use
-  `"=0.0.0-beta.6"` for an exact pin, and commit `Cargo.lock`.
+  `"=0.0.0-beta.7"` for an exact pin, and commit `Cargo.lock`.
 
 - **Or pin a git revision** to use unreleased work:
 

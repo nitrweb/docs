@@ -107,6 +107,7 @@ Applied when a `[database]` section exists. `path` is required.
 | ------------------------- | -------------------------------------- |
 | `allowed_hosts`           | unset (any public host)                |
 | `allow_private_networks`  | `false`                                |
+| `private_hosts`           | empty (no host exempted by name)       |
 | `max_response_bytes`      | 8 MiB                                  |
 | `max_concurrent`          | 8                                      |
 | `max_per_request`         | 32                                     |
@@ -128,6 +129,7 @@ Applied when a `[database]` section exists. `path` is required.
 | `[compression] types`              | `text/*`, `application/json`, `application/javascript`, `application/xml`, `image/svg+xml` |
 | `[cors]`                           | off until `origins` is set                                                                 |
 | `[cors] credentials`               | `false`                                                                                    |
+| `[headers]`                        | empty (no extra response headers)                                                          |
 | `[rate_limit] enabled`             | `false`                                                                                    |
 | `[rate_limit] requests`            | 100                                                                                        |
 | `[rate_limit] window`              | 60 s                                                                                       |

@@ -93,13 +93,17 @@ secure = "auto"     # "auto" | "always" | "never"
 
 Behind a TLS-terminating proxy, `[tls] enabled = false` is correct for
 Nitr but the browser still uses HTTPS, so set `"always"`. Nitr cannot
-detect the proxy, so it warns at startup when cookies would go out
-without `Secure` (`"auto"` without TLS, or `"never"` with TLS). The
-warning is skipped when `dev_mode = true`.
+detect the proxy, so with `"auto"` and TLS off, the **first cookie it
+builds without `Secure`** (a session, a CSRF token, or `set` without an
+explicit `secure`) logs one warning per process. A service that never
+sets a cookie is never warned. `dev_mode = true` and an explicit
+`"never"` stay silent. The only startup warning is `"never"` together
+with `[tls] enabled = true`. `NITR_COOKIES_SECURE=always` sets the
+policy per deployment.
 
 An explicit `secure = true` or `secure = false` in a Lua options table
-always wins over the setting. `nitr test` uses the same setting, so
-tests see what production does.
+always wins over the setting, and never triggers the warning.
+`nitr test` uses the same setting, so tests see what production does.
 
 ### HttpOnly and SameSite on the session and CSRF cookies
 
@@ -109,8 +113,8 @@ The session and CSRF cookies start from `path = "/"`, `SameSite=Lax` and
 ```lua
 -- Keeps HttpOnly and SameSite=Lax; only `path` changes.
 nitr.csrf({
-    secret      = nitr.cfg.csrf_secret,
-    cookie_opts = { path = "/admin" },
+    secret = nitr.cfg.csrf_secret,
+    cookie = { path = "/admin" },
 })
 ```
 
@@ -309,30 +313,25 @@ fetch('/api/thing', {
 
 ### CSRF options
 
-| Option        | Default        | Meaning                                                 |
-| ------------- | -------------- | ------------------------------------------------------- |
-| `secret`      | **required**   | The HMAC key. At least 16 bytes, or the factory raises. |
-| `cookie`      | `_csrf`        | The cookie **name** (a string, not a table).            |
-| `header`      | `x-csrf-token` | Header the token may arrive in (matched in any case).   |
-| `field`       | `_csrf`        | Form field the token may arrive in.                     |
-| `cookie_opts` | none           | The cookie **attributes**, merged over the defaults.    |
+| Option   | Default        | Meaning                                                 |
+| -------- | -------------- | ------------------------------------------------------- |
+| `secret` | **required**   | The HMAC key. At least 16 bytes, or the factory raises. |
+| `name`   | `_csrf`        | The cookie **name**.                                    |
+| `header` | `x-csrf-token` | Header the token may arrive in (matched in any case).   |
+| `field`  | `_csrf`        | Form field the token may arrive in.                     |
+| `cookie` | none           | The cookie **attributes**, merged over the defaults.    |
 
-### The option naming trap
-
-`nitr.csrf` and `nitr.session` name the same two things differently:
-
-|                       | `nitr.csrf(opts)`          | `nitr.session(req, opts)`  |
-| --------------------- | -------------------------- | -------------------------- |
-| Cookie **name**       | `cookie` (default `_csrf`) | `name` (default `session`) |
-| Cookie **attributes** | `cookie_opts`              | `cookie`                   |
+`nitr.csrf` and `nitr.session` spell their options the same way: `name`
+is the cookie's name and `cookie` its attribute table.
 
 ```lua
-nitr.csrf({ secret = s, cookie_opts = { path = "/admin" } })  -- not `cookie = {...}`
-nitr.session(req, { secret = s, name = "my_session" })         -- not `cookie = "..."`
+nitr.csrf({ secret = s, name = "_token", cookie = { path = "/admin" } })
+nitr.session(req, { secret = s, name = "my_session", cookie = { path = "/" } })
 ```
 
-Mixing them up raises a Lua conversion error that does not name the
-option.
+The older CSRF spellings are refused when the factory runs, with an
+error naming the new one: `cookie_opts` (now `cookie`), and a string
+`cookie` (the name is now `name`).
 
 ### What it checks
 
@@ -344,7 +343,10 @@ option.
 - The middleware reads the form with `req:form()`, which is cached, so
   your handler can still read it.
 - On failure the answer is `403` with the body
-  `Forbidden: missing or invalid CSRF token`.
+  `Forbidden: missing or invalid CSRF token`. When the request's
+  `Accept` header names `application/json`, the body is
+  `{"code":"CSRF_INVALID","message":"missing or invalid CSRF token"}`
+  instead, like Nitr's [built-in rejections](./errors#built-in-rejections).
 - `nitr.csrf.token(req)` raises if the middleware did not run for this
   request.
 
@@ -362,13 +364,13 @@ so a retry succeeds.
 The token alone cannot prove the cookie came from your site: a sibling
 subdomain, or plain HTTP, can plant one. So an unsafe request that the
 browser marks `Sec-Fetch-Site: cross-site` is refused without checking
-the token. Setting `cookie_opts = { same_site = "None" }` turns this off,
+the token. Setting `cookie = { same_site = "None" }` turns this off,
 for forms that are meant to be posted from other sites:
 
 ```lua
 app:use(nitr.csrf({
-    secret      = nitr.cfg.csrf_secret,
-    cookie_opts = { same_site = "None" },   -- the token alone is the check
+    secret = nitr.cfg.csrf_secret,
+    cookie = { same_site = "None" },   -- the token alone is the check
 }))
 ```
 
@@ -378,20 +380,16 @@ only.
 ## Where secrets come from
 
 Keep secrets out of `nitr.toml`, the file you commit. Read them once in
-`config.lua`:
+`config.lua` with [`nitr.env.secret`](./configuration/env#secrets),
+which stops startup when one is unset, empty or shorter than 32 bytes,
+instead of failing on the first login:
 
 ```lua
 -- config.lua
-local function secret(name)
-    -- nitr.env.get returns nil for an unset variable; failing here
-    -- stops startup instead of the first login.
-    return assert(nitr.env.get(name), name .. " is not set")
-end
-
 return {
-    session_secret = secret("SESSION_SECRET"),
-    csrf_secret    = secret("CSRF_SECRET"),
-    cookie_secret  = secret("COOKIE_SECRET"),
+    session_secret = nitr.env.secret("SESSION_SECRET"),
+    csrf_secret    = nitr.env.secret("CSRF_SECRET"),
+    cookie_secret  = nitr.env.secret("COOKIE_SECRET"),
 }
 ```
 

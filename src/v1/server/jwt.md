@@ -35,7 +35,10 @@ local token = nitr.crypto.jwt.sign({
 
 -- Check
 local claims, reason = nitr.crypto.jwt.verify(token, nitr.cfg.jwt_secret, {
-    algorithms = { "HS256" },   -- required
+    algorithms = { "HS256" },                 -- required
+    issuer     = "https://auth.example.com",  -- iss must equal this
+    audience   = "billing-api",               -- aud must be or list this
+    require    = { "exp" },                   -- a token without exp fails
 })
 if not claims then
     nitr.log.warn("token rejected", { reason = reason })
@@ -43,9 +46,10 @@ if not claims then
 end
 ```
 
-`verify` only proves the token was signed with your key and is within
-its `exp`/`nbf` window. You still have to check who issued it and who it
-is for; see [Writing the checks yourself](#writing-the-checks-yourself).
+Without options beyond `algorithms`, `verify` only proves the token was
+signed with your key and is within its `exp`/`nbf` window. Who issued
+it and who it is for are checked only when you pass `issuer` and
+`audience`; see [Checking the claims](#checking-the-claims).
 
 ## Signing
 
@@ -75,22 +79,32 @@ nitr.crypto.jwt.verify(token, key, opts) -> table|nil, string|nil
 
 It returns the claims, or `nil` and a reason.
 
-| Option       | Type       | Notes                                                                 |
-| ------------ | ---------- | --------------------------------------------------------------------- |
-| `algorithms` | `string[]` | **Required.** The algorithms you accept.                              |
-| `leeway`     | `number?`  | Seconds of clock difference allowed for `exp` and `nbf`. Default `0`. |
+| Option       | Type        | Notes                                                                            |
+| ------------ | ----------- | -------------------------------------------------------------------------------- |
+| `algorithms` | `string[]`  | **Required.** The algorithms you accept.                                         |
+| `leeway`     | `number?`   | Seconds of clock difference allowed for `exp`, `nbf` and `max_age`. Default `0`. |
+| `issuer`     | `string?`   | `iss` must equal it.                                                             |
+| `audience`   | `string?`   | `aud` must equal it, or, when `aud` is an array, contain it.                     |
+| `subject`    | `string?`   | `sub` must equal it.                                                             |
+| `require`    | `string[]?` | Claims that must be present and not `null`, for example `{ "exp", "jti" }`.      |
+| `max_age`    | `number?`   | Most seconds since `iat`. A token without `iat` fails with `missing claim iat`.  |
 
 The reason is one of:
 
-| Reason                  | Meaning                                                                    |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `malformed token`       | Not three dot-separated parts.                                             |
-| `malformed header`      | The header is not base64url-encoded JSON.                                  |
-| `algorithm not allowed` | The header's `alg` is not in `algorithms`.                                 |
-| `invalid signature`     | Wrong key, or the token was changed.                                       |
-| `malformed claims`      | The claims are not base64url-encoded JSON, or `exp`/`nbf` is not a number. |
-| `token expired`         | `exp` is in the past, beyond `leeway`.                                     |
-| `token not yet valid`   | `nbf` is in the future, beyond `leeway`.                                   |
+| Reason                  | Meaning                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| `malformed token`       | Not three dot-separated parts.                                                                         |
+| `malformed header`      | The header is not base64url-encoded JSON.                                                              |
+| `algorithm not allowed` | The header's `alg` is not in `algorithms`.                                                             |
+| `invalid signature`     | Wrong key, or the token was changed.                                                                   |
+| `malformed claims`      | The claims are not base64url-encoded JSON, or `exp`/`nbf` is not a number (`iat` too, with `max_age`). |
+| `token expired`         | `exp` is in the past, beyond `leeway`.                                                                 |
+| `token not yet valid`   | `nbf` is in the future, beyond `leeway`.                                                               |
+| `issuer mismatch`       | `iss` is missing or differs from `issuer`.                                                             |
+| `audience mismatch`     | `aud` is missing, or neither equals nor lists `audience`.                                              |
+| `subject mismatch`      | `sub` is missing or differs from `subject`.                                                            |
+| `missing claim <name>`  | A claim named in `require` is absent or `null`, or `iat` with `max_age`.                               |
+| `token too old`         | More than `max_age` seconds (plus `leeway`) have passed since `iat`.                                   |
 
 Log the reason, but answer every failure with the same `401`: telling a
 caller whether a token was expired or forged helps an attacker.
@@ -98,7 +112,7 @@ caller whether a token was expired or forged helps an attacker.
 `verify` never raises because of the token itself, so garbage input is
 a `401`, not a `500`, and you need no `pcall`. It does raise for a
 mistake in your call: no `algorithms`, a name it does not support, or a
-`leeway` that is negative or not finite.
+`leeway` or `max_age` that is negative or not finite.
 
 ### The `algorithms` list
 
@@ -107,60 +121,43 @@ the classic JWT attack. Names are exact (`hs256` is not `HS256`), and an
 unknown name raises instead of being skipped, so a typo cannot turn
 verification off. List only the algorithms you actually sign with.
 
-### What `verify` does not check
+### What `verify` checks
 
-It checks the signature, the `alg`, and `exp`/`nbf` **when present**.
-It never reads `iss`, `aud`, `sub`, `jti` or `typ`. So:
+Always: the signature, the `alg`, and `exp`/`nbf` **when present**. The
+registered claims are compared only when an option asks for it; what
+you do not ask for is not checked. So, with `algorithms` alone:
 
 - A token from any issuer, or for any audience, verifies if the key
   matches.
-- **A token with no `exp` never expires.** If yours must expire, reject
-  tokens without one.
+- **A token with no `exp` never expires.** Pass `require = { "exp" }`
+  if yours must expire.
 
-## Writing the checks yourself
+`typ` is never checked, whatever the options: `sign` writes
+`"typ": "JWT"` in the header, and `verify` does not read it.
 
-Wrap `verify` with your policy:
+## Checking the claims
+
+Put your policy in the options, once, and wrap `verify` so every route
+uses it:
 
 ```lua
-local EXPECTED_ISS = "https://auth.example.com"
-local EXPECTED_AUD = "billing-api"
-
--- `aud` may be a string or an array (RFC 7519).
-local function audience_matches(aud, expected)
-    if type(aud) == "string" then
-        return aud == expected
-    end
-    if type(aud) == "table" then
-        for _, value in ipairs(aud) do
-            if value == expected then
-                return true
-            end
-        end
-    end
-    return false
-end
-
 --- Returns the claims, or nil plus a reason (for the log, not the body).
 local function authenticate(token, key)
-    local claims, reason = nitr.crypto.jwt.verify(token, key, {
+    return nitr.crypto.jwt.verify(token, key, {
         algorithms = { "HS256" },
-        leeway = 30,
+        leeway     = 30,
+        issuer     = "https://auth.example.com",
+        audience   = "billing-api",        -- a string or an array `aud`
+        require    = { "exp", "jti" },
+        max_age    = 3600,                 -- issued within the last hour
     })
-    if not claims then
-        return nil, reason
-    end
-    if claims.exp == nil then
-        return nil, "no expiry"
-    end
-    if claims.iss ~= EXPECTED_ISS then
-        return nil, "wrong issuer"
-    end
-    if not audience_matches(claims.aud, EXPECTED_AUD) then
-        return nil, "wrong audience"
-    end
-    return claims
 end
 ```
+
+Checks run in order, and the first that fails is the reason returned:
+signature and `alg`, `exp`/`nbf`, `issuer`, `audience`, `subject`,
+`require`, then `max_age`. Anything beyond the registered claims, such
+as a role or a scope, is still yours to check on the returned table.
 
 ## A bearer-token middleware
 
@@ -254,14 +251,16 @@ may be the better fit.
 
 ## Testing expiry
 
-`exp` and `nbf` are checked against the standard library's clock, which
-tests can move with [`t.clock`](./testing#clock) instead of waiting.
+`exp`, `nbf` and `max_age` are checked against the standard library's
+clock, which tests can move with [`t.clock`](./testing#clock) instead of
+waiting.
 
 ## Checklist
 
 - `algorithms` names only the algorithms you sign with.
-- Every token has an `exp`, and your check rejects tokens without one.
-- `iss` and `aud` are compared explicitly, with `aud` arrays handled.
+- Every token has an `exp`, and `require = { "exp" }` rejects tokens
+  without one.
+- `issuer` and `audience` are passed to `verify`.
 - The rejection reason is logged, never returned; every failure is the
   same `401`.
 - The key is at least 32 random bytes from the environment.

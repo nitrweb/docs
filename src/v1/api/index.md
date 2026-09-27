@@ -65,10 +65,12 @@ registered. See [Extension modules](../library/extension-modules).
 
 A JSON response (`nitr.json({ ok = true })`). It is also the codec:
 
-|                                     |                                        |
-| ----------------------------------- | -------------------------------------- |
-| `nitr.json:encode(value) -> string` | Encodes a value as JSON.               |
-| `nitr.json:decode(s) -> any`        | Decodes JSON; errors on invalid input. |
+|                                     |                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `nitr.json:encode(value) -> string` | Encodes a value as JSON.                                                                                    |
+| `nitr.json:decode(s) -> any`        | Decodes JSON; errors on invalid input. `[]` becomes an array-marked table, `null` becomes `nitr.json.null`. |
+| `nitr.json.array(t) -> table`       | Marks `t` as a JSON array, so an empty one encodes as `[]`; returns the same table. Note the dot.           |
+| `nitr.json.null`                    | JSON `null` as a value a table can hold: `{ deleted_at = nitr.json.null }` keeps the key, `nil` drops it.   |
 
 A table whose keys are `1..n` becomes an array, with holes as `null`
 (`{ 1, nil, 3 }` → `[1,null,3]`); a table with only a few high indices
@@ -76,7 +78,9 @@ stays an object (`{ [5] = "x" }` → `{"5":"x"}`). A table mixing list
 items and named keys (`{ "a", total = 1 }`) has no JSON shape and
 **raises**, here and wherever Nitr serializes a value: the cache,
 sessions, JWT claims and templates. Keep the list under a key of its
-own.
+own. An empty table encodes as `{}` unless marked with
+`nitr.json.array`; [`nitr.db:query`](#nitr-db) marks its results. See
+[Responses → Empty lists and `null`](../server/responses#empty-lists-and-null).
 
 > [!NOTE] Strings must be UTF-8
 >
@@ -180,16 +184,24 @@ even an oversized one, returns `false, nil`.
 _(std feature: `crypto`)_ — HMAC JWTs (HS256, HS384, HS512). See
 [JWT](../server/jwt).
 
-|                                                                       |                                                                                                         |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `nitr.crypto.jwt.sign(claims, key, opts?) -> string`                  | Signs a token. `opts.alg` defaults to `"HS256"`.                                                        |
-| `nitr.crypto.jwt.verify(token, key, opts) -> table\|nil, string\|nil` | The claims, or `nil` plus a reason. `opts.algorithms` is required; `leeway` (seconds, ≥ 0) is optional. |
+|                                                                       |                                                                                                                                                              |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `nitr.crypto.jwt.sign(claims, key, opts?) -> string`                  | Signs a token. `opts.alg` defaults to `"HS256"`.                                                                                                             |
+| `nitr.crypto.jwt.verify(token, key, opts) -> table\|nil, string\|nil` | The claims, or `nil` plus a reason. `opts.algorithms` is required. Optional: `leeway` (seconds, ≥ 0), `issuer`, `audience`, `subject`, `require`, `max_age`. |
 
-> [!WARNING] `verify` checks only the signature, `alg`, `exp` and `nbf`
+`issuer`, `audience` and `subject` must equal `iss`, `aud` (a string,
+or an array that contains it) and `sub`; `require` lists claims that
+must be present (`{ "exp", "jti" }`); `max_age` bounds the seconds
+since `iat`. The extra rejection reasons are `issuer mismatch`,
+`audience mismatch`, `subject mismatch`, `missing claim <name>` and
+`token too old`.
+
+> [!WARNING] What is not asked for is not checked
 >
-> It never reads `iss` or `aud` (which may be a string or an array);
-> compare them yourself. A token without `exp` never expires, so require
-> `exp` if your tokens must expire.
+> Without those options, `verify` checks only the signature, `alg`, and
+> `exp`/`nbf` when present: any issuer or audience verifies, and a token
+> without `exp` never expires. `typ` is never checked. See
+> [JWT](../server/jwt#checking-the-claims).
 
 ### `nitr.auth`
 
@@ -219,16 +231,20 @@ CSRF middleware for `app:use`, using a signed double-submit cookie.
 Unsafe methods must send the token back in the `X-CSRF-Token` header or
 a `_csrf` form field. A request the browser marks
 `Sec-Fetch-Site: cross-site` is refused before the token is checked,
-unless `cookie_opts.same_site = "None"`. See
-[Cookies & sessions](../server/cookies-sessions).
+unless `cookie.same_site = "None"`. A refusal is a `403`: plain text, or
+`{ "code": "CSRF_INVALID", ... }` when the request accepts
+`application/json`. See [Cookies & sessions](../server/cookies-sessions).
 
-| Option        | Default             | What it is                                                               |
-| ------------- | ------------------- | ------------------------------------------------------------------------ |
-| `secret`      | required, 16+ bytes | Signing key for the token cookie.                                        |
-| `cookie`      | `"_csrf"`           | The cookie **name**.                                                     |
-| `header`      | `"x-csrf-token"`    | Header the token may arrive in.                                          |
-| `field`       | `"_csrf"`           | Form field the token may arrive in.                                      |
-| `cookie_opts` | —                   | The cookie **attributes**, merged over the [defaults](#cookie-defaults). |
+| Option   | Default             | What it is                                                               |
+| -------- | ------------------- | ------------------------------------------------------------------------ |
+| `secret` | required, 16+ bytes | Signing key for the token cookie.                                        |
+| `name`   | `"_csrf"`           | The cookie **name**.                                                     |
+| `header` | `"x-csrf-token"`    | Header the token may arrive in.                                          |
+| `field`  | `"_csrf"`           | Form field the token may arrive in.                                      |
+| `cookie` | —                   | The cookie **attributes**, merged over the [defaults](#cookie-defaults). |
+
+The old `cookie_opts` key, and a string `cookie`, are refused with an
+error naming the new spelling.
 
 |                                  |                                                                       |
 | -------------------------------- | --------------------------------------------------------------------- |
@@ -249,11 +265,8 @@ Loads or starts a session stored entirely in a signed cookie. See
 | `max_age` | none                | Lifetime in seconds, also checked on the server.                         |
 | `cookie`  | —                   | The cookie **attributes**, merged over the [defaults](#cookie-defaults). |
 
-> [!WARNING] `cookie` means different things in `nitr.csrf` and `nitr.session`
->
-> In `nitr.csrf`, `cookie` is the name and `cookie_opts` the attributes.
-> In `nitr.session`, `name` is the name and `cookie` the attributes.
-> Mixing them up gives the wrong cookie without an error.
+`nitr.csrf` and `nitr.session` share these spellings: `name` is the
+cookie's name, `cookie` its attribute table.
 
 #### Cookie defaults
 
@@ -261,7 +274,8 @@ Both cookies start from `path = "/"`, `HttpOnly` and `SameSite=Lax`, and
 your attribute table is merged over them. `http_only` cannot be turned
 off. When you leave `secure` out, the [`[cookies] secure`](../server/configuration/file#cookies)
 setting decides; its default `"auto"` sets it whenever
-[TLS](../server/tls) is on.
+[TLS](../server/tls) is on, and the first cookie sent without it logs a
+warning.
 
 ### `nitr.cookie`
 
@@ -292,14 +306,14 @@ _(std feature: `db`)_ — The SQLite database from `[database] path`. See
 `NULL`. A row is a column→value table, so a result with two columns of
 the same name raises (alias one with `AS`).
 
-|                                                     |                                                                                                                    |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `nitr.db:execute(sql, params?) -> integer`          | Runs a statement; returns the number of affected rows.                                                             |
-| `nitr.db:query(sql, params?) -> table[]`            | All rows, each a column→value table. Raises when the result exceeds `[database] max_rows` (default 10000).         |
-| `nitr.db:query_row(sql, params?) -> table\|nil`     | The first row, or `nil` when there is none.                                                                        |
-| `nitr.db:query_one(sql, params?) -> table`          | The only row. Raises when there are none or more than one. It returns a row, so read a column: `query_one(...).n`. |
-| `nitr.db:transaction(fn) -> any`                    | Runs `fn(tx)` in a transaction; rolls back on error. Can be nested. Use `tx` inside, not `nitr.db`.                |
-| `nitr.db:query_async(sql, params?, kind?) -> table` | An unsent query, to run alongside fetches in `nitr.await_all`.                                                     |
+|                                                     |                                                                                                                                                                                                                          |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `nitr.db:execute(sql, params?) -> integer`          | Runs a statement; returns the number of affected rows.                                                                                                                                                                   |
+| `nitr.db:query(sql, params?) -> table[]`            | All rows, each a column→value table, in a list marked as a JSON array (no rows encode as `[]`). Raises when the result exceeds `[database] max_rows` (default 10000).                                                    |
+| `nitr.db:query_row(sql, params?) -> table\|nil`     | The first row, or `nil` when there is none.                                                                                                                                                                              |
+| `nitr.db:query_one(sql, params?) -> table`          | The only row. Raises when there are none or more than one. It returns a row, so read a column: `query_one(...).n`.                                                                                                       |
+| `nitr.db:transaction(fn) -> ...`                    | Runs `fn(tx)` in a transaction and returns every value it returns. On an error, rolls back and re-raises the very value `fn` raised (a table stays a table). Nest with `tx:transaction`. Use `tx` inside, not `nitr.db`. |
+| `nitr.db:query_async(sql, params?, kind?) -> table` | An unsent query, to run alongside fetches in `nitr.await_all`.                                                                                                                                                           |
 
 ### `nitr.cache`
 
@@ -363,8 +377,9 @@ rule table; `opts` overrides any key.
 
 An outbound HTTP request, with SSRF protection and checked redirects.
 Options: `headers`, `query`, `json`, `body`, `timeout`, `retry`
-(`{ attempts, backoff }`, idempotent methods only, never after a
-`[fetch]` policy refusal). Returns an **unsent**
+(`{ attempts, backoff, idempotent? }`, idempotent methods only unless
+`idempotent = true` vouches for the call, never after a `[fetch]`
+policy refusal). Returns an **unsent**
 [handle](./types#nitr-fetchhandle). See
 [Outbound HTTP](../server/fetch).
 
@@ -457,12 +472,17 @@ _(std feature: `env`)_ — Read-only environment variables, limited to the
 names `[env] allow` permits. `NITR_*` variables are never visible. See
 [Environment variables](../server/configuration/env#the-nitr-env-builtin).
 
-|                                                  |                                                                                                                  |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `nitr.env.get(name, default?) -> string\|nil`    | The value, or the default when unset or not allowed.                                                             |
-| `nitr.env.has(name) -> boolean`                  | Whether it is set and allowed.                                                                                   |
-| `nitr.env.number(name, default?) -> number\|nil` | The value as a number; the default when unset, not a number, or not finite (`nan`, `inf`).                       |
-| `nitr.env.bool(name, default?) -> boolean\|nil`  | `1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off` (any case). Empty is `false`; anything else returns the default. |
+|                                                  |                                                                                                                                                                                                                                 |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nitr.env.get(name, default?) -> string\|nil`    | The value, or the default when unset or not allowed.                                                                                                                                                                            |
+| `nitr.env.has(name) -> boolean`                  | Whether it is set and allowed.                                                                                                                                                                                                  |
+| `nitr.env.number(name, default?) -> number\|nil` | The value as a number; the default when unset, not a number, or not finite (`nan`, `inf`).                                                                                                                                      |
+| `nitr.env.bool(name, default?) -> boolean\|nil`  | `1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off` (any case); anything else returns the default.                                                                                                                                  |
+| `nitr.env.secret(name, opts?) -> string`         | A secret that fails closed: unset, empty or shorter than `opts.min_len` (default 32 bytes) raises an error naming the variable. `opts.dev` is a fallback used only when `mode` is `"dev"` or `"test"`. Read it in `config.lua`. |
+| `nitr.env.mode: string`                          | `"run"`, `"dev"` (`dev_mode = true`) or `"test"` (under `nitr test`). Decided by the server, never by a script.                                                                                                                 |
+
+An empty value reads as unset in every function. See
+[Environment variables → Secrets](../server/configuration/env#secrets).
 
 ---
 
@@ -556,15 +576,15 @@ Testing](./types#nitr-test-response).
 
 Reset before every test.
 
-|                                                           |                                                                                                                               |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `t.fetch.mock(rule, ...)`                                 | Canned answers for `nitr.fetch`: `{ url, method?, status?, headers?, json? \| body?, times? }`; `url` exact or ending in `*`. |
-| `t.fetch.strict(on?)`                                     | A request no rule matches raises instead of going out.                                                                        |
-| `t.fetch.calls() -> table[]`                              | Every outbound call: `{ method, url, headers, body?, json?, mocked }`.                                                        |
-| `t.fetch.reset()`                                         | Drops the rules, the calls and the strict flag.                                                                               |
-| `t.clock.set(ts)` / `advance(secs)` / `now()` / `reset()` | Controls the clock behind `nitr.time`, session and JWT expiry, cache TTLs and the rate limiter.                               |
-| `t.env.set(name, value)` / `unset(name)` / `reset()`      | Overrides `nitr.env`; names `[env] allow` hides stay hidden.                                                                  |
-| `t.logs() -> table[]` / `t.logs.clear()`                  | The current test's log entries: `{ level, target, message, fields?, request_id? }`.                                           |
+|                                                           |                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `t.fetch.mock(rule, ...)`                                 | Canned answers for `nitr.fetch`: `{ url, method?, status?, headers?, json? \| body?, times?, error? }`; `url` exact or ending in `*`. `error = "connection reset"` fails the call like a network error instead of answering, and takes no `status`, `body` or `json`. Mocks answer before retries run, so it is not retried. |
+| `t.fetch.strict(on?)`                                     | A request no rule matches raises instead of going out.                                                                                                                                                                                                                                                                       |
+| `t.fetch.calls() -> table[]`                              | Every outbound call: `{ method, url, headers, body?, json?, mocked }`.                                                                                                                                                                                                                                                       |
+| `t.fetch.reset()`                                         | Drops the rules, the calls and the strict flag.                                                                                                                                                                                                                                                                              |
+| `t.clock.set(ts)` / `advance(secs)` / `now()` / `reset()` | Controls the clock behind `nitr.time`, session and JWT expiry, cache TTLs and the rate limiter.                                                                                                                                                                                                                              |
+| `t.env.set(name, value)` / `unset(name)` / `reset()`      | Overrides `nitr.env`; names `[env] allow` hides stay hidden.                                                                                                                                                                                                                                                                 |
+| `t.logs() -> table[]` / `t.logs.clear()`                  | The current test's log entries: `{ level, target, message, fields?, request_id? }`.                                                                                                                                                                                                                                          |
 
 #### Database fixtures
 

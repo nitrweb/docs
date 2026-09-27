@@ -44,8 +44,9 @@ end, {
 })
 ```
 
-On routes without `input`, `req.valid` is `nil`, so shared middleware can
-test `if req.valid then`.
+On routes without `input`, `req.valid` is `nil`. Validation runs after
+the middleware, so `req.valid` is for the handler; see
+[Where validation runs](#where-validation-runs).
 
 ## Text becomes values
 
@@ -197,12 +198,18 @@ Note the `body.` prefix in the key.
 ## Where validation runs
 
 ```text
-limits (413, 414) → routing (404, 405) → input validation (415, 422) → middleware → handler
+limits (413, 414) → routing (404, 405) → media type (415)
+  → app middleware → group middleware → route middleware → input (422) → handler
 ```
 
-- **Validation runs before your middleware.** A malformed request from a
-  client that is not logged in gets a `422`, not a `401`. If auth must
-  come first, check it in the handler.
+- **Validation runs after your middleware.** A malformed request from a
+  client that is not logged in gets the `401` your auth middleware
+  answers, not a `422` that describes the schema. The `422` (or your
+  `on_invalid` answer) goes back up through the middleware like any
+  response.
+- **The media type is checked first.** A body the route does not accept
+  at all is a `415` before any middleware runs, and before the body is
+  read.
 - **Size limits come first.** A body over `[limits] max_body_bytes` is a
   `413` before any schema runs. `max_bytes` in a rule limits one field.
 
@@ -232,7 +239,7 @@ and line:
 ```text
 route `POST /upload` (app.lua:42): input.body: a `file` rule needs `content = { "multipart" }` (or "raw"), which is opt-in
 route `GET /items/:id` (app.lua:57): input.params names `di`, which the route pattern does not capture (captured: id)
-app:post("/x", ...): unknown option `imput` (allowed: on_error, on_invalid, input, doc)
+app:post("/x", ...): unknown option `imput` (allowed: on_error, on_invalid, input, doc, rate_limit)
 ```
 
 `nitr check` runs the same load, so CI catches these. To test validated

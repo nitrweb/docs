@@ -22,20 +22,20 @@ the [production checklist](#a-production-checklist) lists them.
 
 ### Requests, responses and outbound calls
 
-| Risk                         | What Nitr does                                                                                                                                                                                                         |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Oversized requests           | URI, header, body, form and file sizes and the connection count are capped in Rust before Lua runs (`[limits]`). The body is counted as it arrives, not trusted from `Content-Length`.                                 |
-| Unchecked or extra input     | A route's [`input`](./validation/route-input) is checked in Rust first. Undeclared fields are removed, and a failure is a `422` the handler never sees. A misspelt rule is a load-time error.                          |
-| Disguised uploads            | A `file` rule detects the type from the bytes, not the declared `Content-Type`. Executables are refused unless `allow_executables` is set. `max_pixels` limits decompression bombs.                                    |
-| Path traversal               | Static files and upload paths are resolved and checked to stay inside their root, symlinks included.                                                                                                                   |
-| Files served by accident     | Static mounts hide `.`-prefixed paths (`.env`, `.git/`), except `.well-known/`.                                                                                                                                        |
-| SSRF through `nitr.fetch`    | Private, loopback, link-local and other internal addresses are refused, including IPv6 forms that embed an IPv4 address. The check happens when the name is resolved and again on every redirect.                      |
-| Header and log injection     | Cookie names and values must be valid, so request data cannot add attributes to `Set-Cookie`. SSE data is split on every line break. `nitr.log` escapes control characters.                                            |
-| Forged cookies and tokens    | Signed cookies and sessions use HMAC-SHA256 with constant-time checks. A session's `max_age` is enforced from inside the signed data. JWT verification requires an algorithm allow-list and never accepts `alg: none`. |
-| Cross-site request forgery   | The CSRF middleware refuses an unsafe request a browser marks `Sec-Fetch-Site: cross-site` before it compares tokens.                                                                                                  |
-| Cookies read by scripts      | Session and CSRF cookies are always `HttpOnly` and default to `SameSite=Lax`. `Secure` follows [`[cookies] secure`](./cookies-sessions#secure-comes-from-configuration).                                               |
-| Password hashing as a DoS    | Passwords over 1 KiB are refused before hashing, and a stored hash with an excessive cost is refused. Hashing runs off the request threads, so `/healthz` keeps answering.                                             |
-| Traffic sent to a dying node | `/readyz` reports `503` as soon as a shutdown starts, and handlers cannot change it.                                                                                                                                   |
+| Risk                         | What Nitr does                                                                                                                                                                                                                                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Oversized requests           | URI, header, body, form and file sizes and the connection count are capped in Rust before Lua runs (`[limits]`). The body is counted as it arrives, not trusted from `Content-Length`.                                                                                                          |
+| Unchecked or extra input     | A route's [`input`](./validation/route-input) is checked in Rust after the middleware (so authentication answers first) and before the handler. Undeclared fields are removed, and a failure is a `422` the handler never sees. A misspelt rule is a load-time error.                           |
+| Disguised uploads            | A `file` rule detects the type from the bytes, not the declared `Content-Type`. Executables are refused unless `allow_executables` is set. `max_pixels` limits decompression bombs.                                                                                                             |
+| Path traversal               | Static files and upload paths are resolved and checked to stay inside their root, symlinks included.                                                                                                                                                                                            |
+| Files served by accident     | Static mounts hide `.`-prefixed paths (`.env`, `.git/`), except `.well-known/`.                                                                                                                                                                                                                 |
+| SSRF through `nitr.fetch`    | Private, loopback, link-local and other internal addresses are refused, including IPv6 forms that embed an IPv4 address. The check happens when the name is resolved and again on every redirect. Only hosts named in `[fetch] private_hosts` are exempt while `allow_private_networks` is off. |
+| Header and log injection     | Cookie names and values must be valid, so request data cannot add attributes to `Set-Cookie`. SSE data is split on every line break. `nitr.log` escapes control characters.                                                                                                                     |
+| Forged cookies and tokens    | Signed cookies and sessions use HMAC-SHA256 with constant-time checks. A session's `max_age` is enforced from inside the signed data. JWT verification requires an algorithm allow-list and never accepts `alg: none`.                                                                          |
+| Cross-site request forgery   | The CSRF middleware refuses an unsafe request a browser marks `Sec-Fetch-Site: cross-site` before it compares tokens.                                                                                                                                                                           |
+| Cookies read by scripts      | Session and CSRF cookies are always `HttpOnly` and default to `SameSite=Lax`. `Secure` follows [`[cookies] secure`](./cookies-sessions#secure-comes-from-configuration).                                                                                                                        |
+| Password hashing as a DoS    | Passwords over 1 KiB are refused before hashing, and a stored hash with an excessive cost is refused. Hashing runs off the request threads, so `/healthz` keeps answering.                                                                                                                      |
+| Traffic sent to a dying node | `/readyz` reports `503` as soon as a shutdown starts, and handlers cannot change it.                                                                                                                                                                                                            |
 
 ### Unsafe configuration refuses to start
 
@@ -47,6 +47,9 @@ the [production checklist](#a-production-checklist) lists them.
 - A `[fetch]` proxy without `allowed_hosts` or
   `allow_private_networks = true`, because a proxy bypasses the address
   check.
+- A `[fetch] private_hosts` entry that is not a bare host name (a
+  scheme, port or path in it).
+- A `[headers]` entry whose name or value is not a valid header.
 - `"debug"` in `[lua] stdlib`, or `[lua] memory_limit = 0` (no memory
   cap).
 - Limits that disable themselves: `max_streams = 0`,
@@ -55,9 +58,12 @@ max_uri_bytes` that is not below the header buffer.
 - A `[cors] origins` entry with a path or trailing slash, and an invalid
   `[log] level`.
 
-Nitr also **warns** at startup when cookies will not be `Secure`, when
-the `[tls] key` file is readable by other users, and when `max_streams`
-lets open streams hold every Lua state.
+Nitr also **warns** at startup when `[cookies] secure = "never"` is
+set on a server with `[tls] enabled = true`, when the `[tls] key` file
+is readable by other users, and when `max_streams` lets open streams
+hold every Lua state. With `[cookies] secure = "auto"` and TLS off, the
+first cookie built without `Secure` logs a warning instead, once per
+process.
 
 ## What it does not defend against
 
@@ -234,6 +240,9 @@ them with `make fuzz` in the Nitr repository.
 - [ ] `[fetch] allowed_hosts` set when a URL can come from user input.
 - [ ] `[static] dir` holding public files only, with `dotfiles` off
       and no backups or exports inside.
+- [ ] Security headers (`X-Content-Type-Options`, `X-Frame-Options`,
+      `Referrer-Policy`) in [`[headers]`](./configuration/file#headers),
+      so static files and Nitr's own answers carry them too.
 - [ ] `[std] features` listing only the builtins you use.
 - [ ] `[openapi]` and `[swagger]` enabled only if you want the API map
       public. Both are off in a new scaffold; `NITR_OPENAPI_ENABLED=false`
@@ -243,17 +252,19 @@ them with `make fuzz` in the Nitr repository.
 
 - [ ] TLS terminated by Nitr ([TLS](./tls)) or by a
       [proxy in front](./deployment/#terminating-at-a-proxy-in-front).
-- [ ] No startup warning about the `Secure` attribute. Behind a proxy,
-      that means `[cookies] secure = "always"`.
+- [ ] No warning about the `Secure` attribute, at startup or when the
+      first cookie is set. Behind a proxy, that means
+      `[cookies] secure = "always"`.
 - [ ] The TLS key file at mode `0600`, and never inside a `nitr build`
       artifact or an image layer.
-- [ ] `Strict-Transport-Security` sent by a handler or the proxy. There
-      is no `[tls] hsts` setting; see [TLS](./tls#hsts).
+- [ ] `Strict-Transport-Security` sent through `[headers]` or by the
+      proxy. There is no `[tls] hsts` setting; see [TLS](./tls#hsts).
 
 ### Secrets
 
-- [ ] Not in `nitr.toml`. Read them in `config.lua` with `nitr.env`, so
-      a missing one fails at startup.
+- [ ] Not in `nitr.toml`. Read them in `config.lua` with
+      [`nitr.env.secret`](./configuration/env#secrets), so a missing,
+      empty or short one fails at startup.
 - [ ] `[env] allow` limited to the names you need.
 - [ ] Generated randomly, for example `head -c 32 /dev/urandom | base64`.
 
@@ -272,8 +283,8 @@ them with `make fuzz` in the Nitr repository.
 - [ ] Passwords hashed with `nitr.crypto.password_hash` (or
       `nitr hash-password`), and the no-such-user login branch calling
       `password_verify_dummy`, with the same answer for every failure.
-- [ ] `nitr.crypto.jwt.verify` given `algorithms`, with `iss`, `aud`
-      and `exp` checked by you.
+- [ ] `nitr.crypto.jwt.verify` given `algorithms`, `issuer`,
+      `audience` and `require = { "exp" }`.
 - [ ] [CSRF middleware](./cookies-sessions#csrf-protection) on
       cookie-authenticated forms.
 - [ ] `| safe` in templates only for markup you generated, and no HTML

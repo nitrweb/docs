@@ -20,7 +20,7 @@ You write the request handling in Lua. Everything underneath — HTTP,
 routing, TLS, compression, static files, SQLite, the HTTP client,
 cryptography — is Rust, and it ships in one binary.
 
-The current release is **`0.0.0-beta.6`**, published on
+The current release is **`0.0.0-beta.7`**, published on
 [crates.io](https://crates.io/crates/nitr-cli). The source lives at
 [github.com/nitrweb/nitr](https://github.com/nitrweb/nitr).
 

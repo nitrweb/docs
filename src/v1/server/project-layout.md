@@ -107,7 +107,8 @@ db:execute("CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY)")
 return { app_name = "my-app" }
 ```
 
-Use it for work you want to do once: reading environment variables,
+Use it for work you want to do once: reading environment variables
+(secrets with [`nitr.env.secret`](./configuration/env#secrets)),
 building lookup tables, one-off setup. Return plain data only (tables,
 strings, numbers, booleans); functions and userdata are an error.
 Without a config script, `nitr.cfg` is `nil`.
@@ -122,17 +123,8 @@ local app = nitr.app()
 
 app:doc({ title = "My App", version = "0.1.0" })   -- OpenAPI document info
 
-app:use(function(next)                               -- middleware
-    return function(req)
-        local started = nitr.time.monotonic()
-        local resp = next(req)
-        nitr.log.info("request", {
-            path = req.path,
-            ms = math.floor((nitr.time.monotonic() - started) * 1000),
-        })
-        return resp
-    end
-end)
+-- Middleware (app:use) would go here, before the routes. Nitr already
+-- logs every request with its id, status and timing.
 
 require("routes.notes")(app)                         -- route modules
 
@@ -144,14 +136,16 @@ app:get("/hello/:name", function(req)                -- an inline route
 end)
 
 app:on_error(function(err, req)                      -- the error response
-    nitr.log.error("handler failed", { error = err.message, kind = err.kind })
-    return nitr.error(500, { code = "INTERNAL" })
+    return nitr.error(500, { code = "INTERNAL", request_id = req.id })
 end)
 
 return app                                           -- required
 ```
 
-- `app:use` must come before the routes it should wrap.
+- `app:use` must come before the routes it should wrap. The scaffold
+  has none: Nitr writes the access log line itself.
+- `on_error` only shapes the answer. Nitr has already logged the failure
+  (kind, message, source, line, traceback) with the request id.
 - Code at the top of the file runs once per state, so compile schemas
   and build tables there. Only handler functions run per request.
 - Async builtins such as `nitr.crypto.password_hash` cannot run at the

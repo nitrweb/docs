@@ -124,6 +124,11 @@ responses = {
 }
 ```
 
+An operation whose documented responses have no `2xx` entry, such as
+one that lists only its `404`, still gets a default `200` response
+described as `OK`, so a generated client always has a success shape.
+Document the real success code to replace it.
+
 Response schemas are documentation only: Nitr never checks what a
 handler returns (see
 [What the document claims](./#what-the-document-claims)).

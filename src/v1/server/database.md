@@ -49,6 +49,18 @@ local n = nitr.db:execute("UPDATE users SET active = 0 WHERE last_seen < ?", { c
 `[database] max_rows` (10 000 by default). Page with `LIMIT`/`OFFSET`, or
 raise the setting.
 
+The list `query` returns is marked as a JSON array, so a result with no
+rows encodes as `[]`, not `{}`:
+
+```lua
+app:get("/api/notes", function(req)
+    return nitr.json(nitr.db:query("SELECT id, text FROM notes"))  -- [] when empty
+end)
+```
+
+A list you build yourself needs [`nitr.json.array`](./responses#empty-lists-and-null)
+for the same result.
+
 Because a row is a column→value table, a result with two columns of the
 same name raises (`SELECT a.id, b.id ...`). Give one an alias:
 `b.id AS b_id`.
@@ -94,9 +106,33 @@ end)
 ```
 
 The block commits when it returns and **rolls back on any error**, even
-one raised deep inside a helper. Whatever the block returns is the
-result of `transaction(...)`. Transactions nest (as savepoints), so a
-helper that opens its own transaction works inside a larger one.
+one raised deep inside a helper. Every value the block returns is
+returned by `transaction(...)`, so `return id, total` gives you both.
+Transactions nest (`tx:transaction(...)`, as savepoints), so a helper
+that opens its own transaction works inside a larger one.
+
+After the rollback, the error the block raised is raised again
+**unchanged**. A table stays a table, so a structured error reaches your
+`pcall` intact:
+
+```lua
+local ok, err = pcall(function()
+    return nitr.db:transaction(function(tx)
+        local stock = tx:query_one("SELECT qty FROM stock WHERE sku = ?", { sku }).qty
+        if stock < qty then
+            error({ code = "OUT_OF_STOCK", sku = sku })   -- rolls back
+        end
+        tx:execute("UPDATE stock SET qty = qty - ? WHERE sku = ?", { qty, sku })
+    end)
+end)
+
+if not ok then
+    if type(err) == "table" and err.code == "OUT_OF_STOCK" then
+        return nitr.error(409, err)
+    end
+    error(err, 0)   -- anything else: let on_error handle it
+end
+```
 
 > [!WARNING] Use `tx`, not `nitr.db`
 >
@@ -154,9 +190,21 @@ $ nitr migrate --status
 ```
 
 **The server (and `nitr check`) refuses to start while a migration is
-pending.** Migrations never run on boot, so in a rolling deploy two
-instances cannot race to change the schema: run `nitr migrate` once,
-then start the new instances. `nitr test` applies them to its own
+pending.** `nitr migrate` creates the database file's directory when it
+is missing, so a first deploy needs no `mkdir data`.
+
+Migrations never run on boot unless you ask. For a single instance, such
+as one container, `--migrate` applies what is pending and then serves:
+
+```sh
+nitr run --migrate     # nitr migrate, then nitr run, in one command
+nitr dev --migrate
+```
+
+A failed migration stops the command before the server starts. In a
+rolling deploy with several instances, do not use `--migrate`: two
+instances would race to change the schema. Run `nitr migrate` once,
+then start the new instances. `nitr test` applies migrations to its own
 scratch database; see [Testing](./testing#tests-and-the-database).
 
 ### Never edit an applied migration

@@ -60,8 +60,8 @@ your handlers for each request. See [How Nitr works](../how-it-works).
 
 | Page                                     | What is in it                           |
 | ---------------------------------------- | --------------------------------------- |
-| [Routing](./routing)                     | Paths, parameters, methods              |
-| [Middleware](./middleware)               | Global and per-route middleware         |
+| [Routing](./routing)                     | Paths, parameters, groups, rate limits  |
+| [Middleware](./middleware)               | Global, group and per-route middleware  |
 | [Requests](./requests)                   | `req` fields, bodies, uploads           |
 | [Responses](./responses)                 | Response helpers, headers, status codes |
 | [Cookies & sessions](./cookies-sessions) | Signed cookies, sessions, CSRF          |

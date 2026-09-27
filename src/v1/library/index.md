@@ -23,7 +23,7 @@ own Rust code.
 ```toml
 # Cargo.toml
 [dependencies]
-nitr = "0.0.0-beta.6"
+nitr = "0.0.0-beta.7"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -65,7 +65,7 @@ continue with [Getting started](./getting-started#your-own-rust-in-lua).
 | `nitr-http` | HTTP server, configuration, HTTP↔Lua bridge            | Unstable before 1.0            |
 | `nitr-cli`  | The `nitr` binary                                      | Flags follow the config policy |
 
-All five are on crates.io at **0.0.0-beta.6**. The API reference is on
+All five are on crates.io at **0.0.0-beta.7**. The API reference is on
 [docs.rs/nitr](https://docs.rs/nitr). The `nitr` crate re-exports what
 you need from the others. The [extension
 API](./extension-modules) (`ServerBuilder::module`, `nitr_table`,

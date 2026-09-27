@@ -72,10 +72,10 @@ something is wrong, instead of guessing. For example:
   compiled into the binary;
 - a pending database migration.
 
-A few risky but valid setups only log a warning, for example cookies
-that will not be `Secure` (see
-[`[cookies]`](./file#cookies)). The error or warning always names the
-setting. Run [`nitr check`](../cli#check) in CI to catch all of this
+A few risky but valid setups only log a warning, for example
+`[cookies] secure = "never"` on a server with `[tls] enabled = true`
+(see [`[cookies]`](./file#cookies)). The error or warning always names
+the setting. Run [`nitr check`](../cli#check) in CI to catch all of this
 before deploying.
 
 ## Secrets
@@ -93,7 +93,8 @@ allow = ["APP_", "API_TOKEN"]
 ```
 
 ```lua
-local token = nitr.env.get("API_TOKEN")
+-- config.lua: an unset, empty or short value stops startup
+local token = nitr.env.secret("API_TOKEN")
 ```
 
 For login passwords, store only a hash made with

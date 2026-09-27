@@ -48,6 +48,19 @@ return app
 `app:static(mount, dir, opts)` takes the same options as `[static]`:
 `spa`, `cache_control` and `dotfiles`.
 
+- **A relative `dir` is resolved against the handler script's
+  directory**, not the working directory. `"public/assets"` next to
+  `app.lua` is the same folder wherever the process starts, and a
+  [`nitr build`](./deployment/single-file) executable serves the same
+  files from anywhere.
+- **The directory must exist.** A missing one fails the script load with
+  an error naming the mount, instead of answering `404` forever.
+  `nitr check` and `nitr test` only warn and skip the mount, so they can
+  run before your front-end build; `nitr run` refuses it.
+- `[static] dir` in `nitr.toml` keeps its own rules: relative to the
+  working directory, checked at startup. See
+  [`[static]`](./configuration/file#static).
+
 Routes are matched first. A static mount answers a `GET` or `HEAD` for
 a path no route serves with that method, including a path routed only
 for other methods (a `POST /items` route does not hide `public/items`).
@@ -75,15 +88,33 @@ mount = "/"
 spa = true
 ```
 
-With `spa = true`, a path that matches no file and no route gets
-`index.html` instead of `404`, so the client-side router can take over.
-A path a route serves with other methods still answers `405`. API routes
-in the same app still win, because routes are matched first:
+With `spa = true`, a browser navigation to a path that matches no file
+and no route gets `index.html` instead of `404`, so the client-side
+router can take over. A path a route serves with other methods still
+answers `405`. API routes in the same app still win, because routes are
+matched first:
 
 ```lua
 app:get("/api/users", list_users)          -- a route: always wins
 app:static("/", "dist", { spa = true })    -- everything else → the SPA
 ```
+
+The fallback answers only a request whose `Accept` header names
+`text/html`, which is what a browser sends when it navigates. An API
+client asking for JSON, or sending `Accept: */*`, gets the `404`, so a
+mistyped `/api/userz` fails as JSON instead of returning your HTML
+page:
+
+```sh
+curl -H 'Accept: text/html' http://127.0.0.1:3000/settings     # index.html
+curl http://127.0.0.1:3000/settings                            # 404: curl sends */*
+curl -H 'Accept: application/json' http://127.0.0.1:3000/api/userz
+# 404 {"code":"NOT_FOUND","message":"Not Found"}
+```
+
+You do not need an `/api/*` catch-all route to keep API clients out of
+the SPA. See [Built-in rejections](./errors#built-in-rejections) for the
+JSON body.
 
 ## Caching strategy
 

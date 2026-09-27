@@ -23,7 +23,9 @@ systemctl reload myapp   # 4. or restart, or your orchestrator's rollout
 >
 > Run `nitr migrate` once per deploy, not from every starting instance,
 > so two instances never race to change the schema. The server refuses
-> to start while a migration is pending, so a missed step is loud.
+> to start while a migration is pending, so a missed step is loud. With
+> exactly one instance, `nitr run --migrate` applies pending migrations
+> and then serves, in one command.
 
 ## At a glance
 
@@ -165,7 +167,7 @@ trust_forwarded_for = true       # rate-limit by the client address the proxy re
 
 - `[cookies] secure = "always"` is required. The default `"auto"`
   follows `[tls] enabled`, which is off here, so cookies would lose
-  `Secure`. Nitr warns at startup when that happens.
+  `Secure`. The first cookie sent that way logs a warning.
 - `trust_request_id` and `trust_forwarded_for` are safe **only** behind
   a proxy. Without one, any client could pick its own request id or
   rate-limit key. The limiter uses the **last** `X-Forwarded-For`

@@ -361,13 +361,29 @@ t.it("publishes to the webhook once", function()
 end)
 ```
 
-| Rule field          | Meaning                                                   |
-| ------------------- | --------------------------------------------------------- |
-| `url`               | Exact URL, or a prefix ending in `*`. Required.           |
-| `method`            | Matches any method when omitted.                          |
-| `status`, `headers` | The canned response.                                      |
-| `json` or `body`    | The canned body. `json` also sets `content-type`.         |
-| `times`             | How many calls the rule answers before it stops matching. |
+| Rule field          | Meaning                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `url`               | Exact URL, or a prefix ending in `*`. Required.                                                              |
+| `method`            | Matches any method when omitted.                                                                             |
+| `status`, `headers` | The canned response.                                                                                         |
+| `json` or `body`    | The canned body. `json` also sets `content-type`.                                                            |
+| `times`             | How many calls the rule answers before it stops matching.                                                    |
+| `error`             | Fail the call like a network error instead of answering. Cannot be combined with `status`, `body` or `json`. |
+
+A rule with `error` makes `:send()` raise as a dropped connection
+would, instead of answering: a network failure, not an HTTP status.
+Mocks answer before retries run, so it is not retried. Use it to test
+the path your handler takes when an upstream is unreachable:
+
+```lua
+-- The handler wraps nitr.fetch in pcall and answers { degraded = true }.
+t.it("degrades when the upstream is unreachable", function()
+    t.fetch.mock({ url = "https://api.example/users/*", error = "connection reset" })
+    local resp = t.get("/api/profile/1")
+    t.expect(resp).to_have_status(200)
+    t.expect(resp).to_have_json({ degraded = true })
+end)
+```
 
 The first matching rule answers. A mocked call never leaves the
 process, and it is matched before the `[fetch]` policy, so you can mock
@@ -405,7 +421,12 @@ t.env.unset("API_TOKEN")            -- reads as unset
 ```
 
 Overrides apply **after** the `[env] allow` policy, so a variable the
-policy hides stays hidden.
+policy hides stays hidden. An empty value reads as unset, as it does
+outside tests.
+
+Under `nitr test`, [`nitr.env.mode`](./configuration/env#the-run-mode)
+is `"test"`, so a `nitr.env.secret(name, { dev = ... })` fallback in
+`config.lua` applies and the suite runs without real secrets.
 
 ### Logs
 
@@ -427,8 +448,8 @@ log lines as they happen instead.
 
 ## Unit testing handlers
 
-To test a handler without going through the protection layer and route
-validation, build a request by hand:
+To test a handler without going through the protection layer, build a
+request by hand:
 
 ```lua
 local app = t.app()   -- the application, compiled into this test state
@@ -452,20 +473,21 @@ end)
 - **`t.fake_request(spec)`** returns a real request object:
   `{ method?, path?, params?, valid?, ... }` plus every `t.request`
   option. `nitr.session`, `nitr.csrf.token` and `nitr.auth.*` accept
-  it. It skips the protection layer, body limits and route validation,
-  so `req.valid` is whatever the spec sets. Multipart parts cannot
-  `:save()`.
+  it. It skips the protection layer and body limits. Passed to
+  `app:handler`'s function, `req.valid` is whatever the spec sets.
+  Multipart parts cannot `:save()`.
 - **`t.app()`** loads the handler script into the test state once per
   file. `app:handler(method, path)` returns a route's own function
   without its middleware, matched by pattern (`"/notes/:id"`) or by a
   real path. `app:dispatch(method, path, req)` runs the router and the
-  middleware chain. `app:routes()` lists `{ method, path, file, line }`
-  in registration order.
+  composed chain: the middleware and, on a route that declares
+  `input`, its validation (and `on_invalid`) between the middleware and
+  the handler, in the server's order. `app:routes()` lists
+  `{ method, path, file, line }` in registration order.
 
-`app:dispatch` does not run route `input` validation, `on_invalid`,
-`on_error` or the protection layer. To cover those, use `t.request`.
-To check a validation schema on its own, call
-[`schema:check(value)`](./validation/).
+`app:dispatch` does not run `on_error` or the protection layer. To
+cover those, use `t.request`. To check a validation schema on its own,
+call [`schema:check(value)`](./validation/).
 
 ## Tests and the database
 
@@ -561,7 +583,7 @@ end)
 ## In CI
 
 ```yaml
-- run: cargo install nitr-cli --version 0.0.0-beta.6
+- run: cargo install nitr-cli --version 0.0.0-beta.7
 - run: nitr check # configuration and scripts load
 - run: nitr migrate # the real schema is current
 - run: nitr test --reporter junit --output junit.xml # behaviour is correct

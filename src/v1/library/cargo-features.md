@@ -30,7 +30,7 @@ cargo add nitr --features all               # everything
 ```
 
 ```toml
-nitr = { version = "0.0.0-beta.6", features = ["db", "template"] }
+nitr = { version = "0.0.0-beta.7", features = ["db", "template"] }
 ```
 
 `fetch` is by far the largest (reqwest is over half of the full
@@ -56,7 +56,7 @@ runtime (`[std] features`, or `.builtins(...)`):
 
 ```toml
 # Cargo.toml
-nitr = { version = "0.0.0-beta.6", features = ["db"] }
+nitr = { version = "0.0.0-beta.7", features = ["db"] }
 ```
 
 ```toml
@@ -140,6 +140,6 @@ configuration. With neither, `Builtins::minimal()` applies.
 To build the binary with fewer features:
 
 ```sh
-cargo install nitr-cli --version 0.0.0-beta.6 \
+cargo install nitr-cli --version 0.0.0-beta.7 \
   --no-default-features --features db,template
 ```

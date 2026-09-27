@@ -28,6 +28,10 @@ ssh server '
 '
 ```
 
+On a single machine, `myapp run --migrate` as the service's command
+does the same in one step. `migrate` creates the database's directory
+if it is missing.
+
 The artifact takes the same subcommands as `nitr` (`run`, `migrate`,
 `check`, `reload`, …) and applies them to its bundled application. It
 refuses `--config`, since it carries its own configuration: values that
@@ -80,8 +84,8 @@ be copied with the artifact.
 ## What changes inside a bundle
 
 - **`dev_mode` is forced off**, with a warning if the config asked for
-  it. `[openapi] output` is ignored for the same reason; use
-  `nitr openapi --output` instead.
+  it. `[openapi] output` is ignored for the same reason, also with a
+  warning; use `nitr openapi --output` instead.
 - **The application is extracted on first start** into the user's
   private cache: `$XDG_CACHE_HOME/nitr/apps`, else
   `~/.cache/nitr/apps`, mode `0700`. Later starts of the same artifact
@@ -91,6 +95,9 @@ be copied with the artifact.
   extracted to a fresh temporary directory on every start and a warning
   says where. It works; it is just not reused. The [systemd](./systemd)
   and [Docker](./docker) pages show how to give it a cache directory.
+- These warnings are ordinary `WARN` log lines, written once logging is
+  set up, so they follow `[log] format` (one JSON object each with
+  `format = "json"`) and reach your log shipper.
 - **A tampered bundle refuses to run.** Entries with `..`, absolute
   names or symlinks are rejected, and a crash during extraction never
   leaves a half-extracted directory behind.
